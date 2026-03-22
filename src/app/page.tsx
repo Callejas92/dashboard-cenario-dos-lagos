@@ -1,20 +1,22 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { LayoutDashboard, BarChart3, ShieldCheck, PlusCircle, RefreshCw, Plug } from "lucide-react";
+import { LayoutDashboard, BarChart3, ShieldCheck, PlusCircle, RefreshCw, Plug, Globe } from "lucide-react";
 import TabVisaoGeral from "@/components/TabVisaoGeral";
 import TabCanais from "@/components/TabCanais";
 import TabQualidade from "@/components/TabQualidade";
 import TabIntegracoes from "@/components/TabIntegracoes";
+import TabAnalytics from "@/components/TabAnalytics";
 import FormSemanal from "@/components/FormSemanal";
 import { MetricsData } from "@/lib/types";
 
-type Tab = "geral" | "canais" | "qualidade" | "integracoes" | "inserir";
+type Tab = "geral" | "canais" | "qualidade" | "analytics" | "integracoes" | "inserir";
 
 const tabs: { id: Tab; label: string; icon: typeof LayoutDashboard }[] = [
   { id: "geral", label: "Visao Geral", icon: LayoutDashboard },
   { id: "canais", label: "Canais", icon: BarChart3 },
   { id: "qualidade", label: "Qualidade", icon: ShieldCheck },
+  { id: "analytics", label: "Site", icon: Globe },
   { id: "integracoes", label: "APIs", icon: Plug },
   { id: "inserir", label: "Inserir Dados", icon: PlusCircle },
 ];
@@ -117,6 +119,7 @@ export default function Home() {
         {activeTab === "geral" && <TabVisaoGeral data={data} />}
         {activeTab === "canais" && <TabCanais data={data} />}
         {activeTab === "qualidade" && <TabQualidade data={data} />}
+        {activeTab === "analytics" && <TabAnalytics />}
         {activeTab === "integracoes" && <TabIntegracoes />}
         {activeTab === "inserir" && <FormSemanal data={data} onSaved={loadData} />}
       </main>
