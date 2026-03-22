@@ -47,7 +47,7 @@ async function fetchCampaignData(
   `;
 
   const res = await fetch(
-    `${GOOGLE_ADS_API}/customers/${customerId}/googleAds:searchStream`,
+    `${GOOGLE_ADS_API}/customers/${customerId}/googleAds:search`,
     {
       method: "POST",
       headers: {
@@ -64,23 +64,24 @@ async function fetchCampaignData(
 
   if (!res.ok) {
     const err = await res.text();
+    if (res.status === 501) {
+      throw new Error("Developer token em modo teste. Aguardando aprovação do acesso básico pelo Google (1-3 dias úteis).");
+    }
     throw new Error(`Google Ads API error: ${res.status} — ${err}`);
   }
 
   const data = await res.json();
   const results: GoogleAdsMetrics[] = [];
 
-  for (const batch of data) {
-    for (const row of batch.results || []) {
-      results.push({
-        campaignId: row.campaign?.id || "",
-        campaignName: row.campaign?.name || "",
-        impressions: parseInt(row.metrics?.impressions || "0"),
-        clicks: parseInt(row.metrics?.clicks || "0"),
-        costMicros: parseInt(row.metrics?.costMicros || "0"),
-        conversions: parseFloat(row.metrics?.conversions || "0"),
-      });
-    }
+  for (const row of data.results || []) {
+    results.push({
+      campaignId: row.campaign?.id || "",
+      campaignName: row.campaign?.name || "",
+      impressions: parseInt(row.metrics?.impressions || "0"),
+      clicks: parseInt(row.metrics?.clicks || "0"),
+      costMicros: parseInt(row.metrics?.costMicros || "0"),
+      conversions: parseFloat(row.metrics?.conversions || "0"),
+    });
   }
 
   return results;
