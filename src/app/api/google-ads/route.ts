@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-const GOOGLE_ADS_API = "https://googleads.googleapis.com/v17";
+const GOOGLE_ADS_API = "https://googleads.googleapis.com/v19";
 
 interface GoogleAdsMetrics {
   impressions: number;
