@@ -1,0 +1,74 @@
+@import "tailwindcss";
+
+:root {
+  --navy: #1a1a2e;
+  --navy-light: #16213e;
+  --navy-dark: #0f0f23;
+  --red: #e94560;
+  --red-dark: #c23152;
+  --blue: #4285f4;
+  --green: #10b981;
+  --orange: #f4a236;
+  --text: #e2e8f0;
+  --text-muted: #94a3b8;
+  --text-dim: #64748b;
+  --surface: rgba(255, 255, 255, 0.03);
+  --border: rgba(255, 255, 255, 0.06);
+}
+
+body {
+  background: linear-gradient(180deg, #0a0a14 0%, #0f1525 50%, #0a0f1a 100%);
+  color: var(--text);
+  font-family: "Inter", "Segoe UI", system-ui, sans-serif;
+  min-height: 100vh;
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.1) transparent;
+}
+
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button {
+  opacity: 1;
+}
+
+.kpi-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 1rem;
+  padding: 1.25rem;
+  transition: all 0.2s;
+}
+
+.kpi-card:hover {
+  border-color: rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.tab-active {
+  background: linear-gradient(135deg, var(--red), var(--red-dark));
+  color: white;
+  font-weight: 700;
+}
+
+.tab-inactive {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+}
+
+.tab-inactive:hover {
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text);
+}
+
+.status-good {
+  color: var(--green);
+}
+.status-bad {
+  color: var(--red);
+}
+.status-neutral {
+  color: var(--text-muted);
+}
