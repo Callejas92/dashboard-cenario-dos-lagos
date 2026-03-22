@@ -23,6 +23,9 @@ async function getAccessToken(): Promise<string> {
     }),
   });
   const data = await res.json();
+  if (!data.access_token) {
+    throw new Error(`OAuth failed: ${JSON.stringify(data)}`);
+  }
   return data.access_token;
 }
 
