@@ -1,19 +1,20 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { LayoutDashboard, BarChart3, ShieldCheck, PlusCircle, RefreshCw, Plug, Globe } from "lucide-react";
+import { BarChart3, ShieldCheck, PlusCircle, RefreshCw, Plug, Globe, Sun, Moon } from "lucide-react";
 import TabVisaoGeral from "@/components/TabVisaoGeral";
 import TabCanais from "@/components/TabCanais";
 import TabQualidade from "@/components/TabQualidade";
 import TabIntegracoes from "@/components/TabIntegracoes";
 import TabAnalytics from "@/components/TabAnalytics";
 import FormSemanal from "@/components/FormSemanal";
+import LoginScreen from "@/components/LoginScreen";
 import { MetricsData } from "@/lib/types";
 
 type Tab = "geral" | "canais" | "qualidade" | "analytics" | "integracoes" | "inserir";
 
-const tabs: { id: Tab; label: string; icon: typeof LayoutDashboard }[] = [
-  { id: "geral", label: "Visao Geral", icon: LayoutDashboard },
+const tabs: { id: Tab; label: string; icon: typeof BarChart3 }[] = [
+  { id: "geral", label: "Visao Geral", icon: BarChart3 },
   { id: "canais", label: "Canais", icon: BarChart3 },
   { id: "qualidade", label: "Qualidade", icon: ShieldCheck },
   { id: "analytics", label: "Site", icon: Globe },
@@ -22,9 +23,23 @@ const tabs: { id: Tab; label: string; icon: typeof LayoutDashboard }[] = [
 ];
 
 export default function Home() {
+  const [authenticated, setAuthenticated] = useState(false);
   const [activeTab, setActiveTab] = useState<Tab>("geral");
   const [data, setData] = useState<MetricsData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [dark, setDark] = useState(false);
+
+  useEffect(() => {
+    const saved = localStorage.getItem("theme");
+    setDark(saved === "dark");
+  }, []);
+
+  function toggleTheme() {
+    const next = !dark;
+    setDark(next);
+    localStorage.setItem("theme", next ? "dark" : "light");
+    document.documentElement.classList.toggle("dark", next);
+  }
 
   const loadData = useCallback(async () => {
     try {
@@ -38,15 +53,19 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
-    loadData();
-  }, [loadData]);
+    if (authenticated) loadData();
+  }, [loadData, authenticated]);
+
+  if (!authenticated) {
+    return <LoginScreen onLogin={() => setAuthenticated(true)} dark={dark} onToggleTheme={toggleTheme} />;
+  }
 
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
-          <RefreshCw size={32} className="animate-spin mx-auto mb-4" style={{ color: "#e94560" }} />
-          <p style={{ color: "#94a3b8" }}>Carregando dashboard...</p>
+          <RefreshCw size={32} className="animate-spin mx-auto mb-4" style={{ color: "#1a5c3a" }} />
+          <p style={{ color: "var(--text-muted)" }}>Carregando dashboard...</p>
         </div>
       </div>
     );
@@ -55,7 +74,7 @@ export default function Home() {
   if (!data) {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <p style={{ color: "#e94560" }}>Erro ao carregar dados. Verifique o arquivo data/metrics.json.</p>
+        <p style={{ color: "var(--red)" }}>Erro ao carregar dados. Verifique o arquivo data/metrics.json.</p>
       </div>
     );
   }
@@ -63,19 +82,15 @@ export default function Home() {
   return (
     <div className="min-h-screen">
       {/* Header */}
-      <header className="sticky top-0 z-50 backdrop-blur-xl" style={{ background: "rgba(10, 10, 20, 0.85)", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
+      <header className="sticky top-0 z-50 backdrop-blur-xl" style={{ background: "var(--bg-header)", borderBottom: "1px solid var(--border)" }}>
         <div className="max-w-7xl mx-auto px-4 sm:px-6">
           <div className="flex items-center justify-between h-16">
             <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ background: "linear-gradient(135deg, #e94560, #c23152)" }}>
-                <LayoutDashboard size={18} color="white" />
-              </div>
-              <div>
-                <h1 className="text-base font-extrabold" style={{ color: "#f1f5f9" }}>
-                  Cenario dos Lagos
-                </h1>
-                <p className="text-xs" style={{ color: "#64748b" }}>Dashboard Marketing</p>
-              </div>
+              <img
+                src={dark ? "/logo-cenario-negativa.png" : "/logo-cenario.png"}
+                alt="Cenário dos Lagos"
+                className="h-10 object-contain"
+              />
             </div>
 
             <div className="flex items-center gap-2">
@@ -83,11 +98,20 @@ export default function Home() {
                 {data.semanas.length} semanas
               </span>
               <button
-                onClick={loadData}
-                className="p-2 rounded-lg transition-colors hover:bg-white/5"
-                title="Atualizar dados"
+                onClick={toggleTheme}
+                className="p-2 rounded-lg transition-colors"
+                style={{ color: "var(--text-dim)" }}
+                title={dark ? "Modo claro" : "Modo escuro"}
               >
-                <RefreshCw size={14} style={{ color: "#64748b" }} />
+                {dark ? <Sun size={16} /> : <Moon size={16} />}
+              </button>
+              <button
+                onClick={loadData}
+                className="p-2 rounded-lg transition-colors"
+                title="Atualizar dados"
+                style={{ color: "var(--text-dim)" }}
+              >
+                <RefreshCw size={14} />
               </button>
             </div>
           </div>
@@ -95,7 +119,7 @@ export default function Home() {
       </header>
 
       {/* Tabs */}
-      <div className="sticky top-16 z-40 backdrop-blur-xl" style={{ background: "rgba(10, 10, 20, 0.7)" }}>
+      <div className="sticky top-16 z-40 backdrop-blur-xl" style={{ background: "var(--bg-tabs)" }}>
         <div className="max-w-7xl mx-auto px-4 sm:px-6">
           <div className="flex gap-2 py-3 overflow-x-auto">
             {tabs.map((tab) => (
@@ -125,10 +149,14 @@ export default function Home() {
       </main>
 
       {/* Footer */}
-      <footer className="text-center py-6" style={{ borderTop: "1px solid rgba(255,255,255,0.04)" }}>
-        <p className="text-xs" style={{ color: "#475569" }}>
-          Dashboard Marketing — Cenario dos Lagos — {new Date().getFullYear()}
-        </p>
+      <footer className="text-center py-6" style={{ borderTop: "1px solid var(--border)" }}>
+        <div className="flex items-center justify-center gap-3">
+          <img src={dark ? "/logo-mangaba-negativa.png" : "/logo-mangaba.png"} alt="Mangaba Urbanismo" className="h-6 object-contain" />
+          <span className="text-xs" style={{ color: "var(--text-dim)" }}>|</span>
+          <p className="text-xs" style={{ color: "var(--text-dim)" }}>
+            Dashboard Marketing — {new Date().getFullYear()}
+          </p>
+        </div>
       </footer>
     </div>
   );

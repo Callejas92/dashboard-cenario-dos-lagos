@@ -85,7 +85,7 @@ export default function FormSemanal({ data, onSaved }: Props) {
   }
 
   const inputClass = "w-full rounded-lg px-3 py-2 text-sm text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-[#e94560]";
-  const inputStyle = { background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)" };
+  const inputStyle = { background: "var(--input-bg)", border: "1px solid var(--input-border)" };
 
   const fields: { key: keyof CanalData; label: string; prefix?: string; suffix?: string }[] = [
     { key: "investimento", label: "Investimento", prefix: "R$" },
@@ -103,7 +103,7 @@ export default function FormSemanal({ data, onSaved }: Props) {
       <div className="kpi-card">
         <div className="flex flex-col sm:flex-row sm:items-center gap-4">
           <div className="flex-1">
-            <label className="text-xs font-semibold uppercase tracking-wider block mb-2" style={{ color: "#64748b" }}>
+            <label className="text-xs font-semibold uppercase tracking-wider block mb-2" style={{ color: "var(--text-dim)" }}>
               Semana
             </label>
             <div className="flex items-center gap-3">
@@ -120,14 +120,14 @@ export default function FormSemanal({ data, onSaved }: Props) {
                 className={inputClass}
                 style={{ ...inputStyle, maxWidth: 100 }}
               />
-              <span className="text-sm" style={{ color: "#94a3b8" }}>
+              <span className="text-sm" style={{ color: "var(--text-muted)" }}>
                 {formatDate(weekStart)} — {formatDate(weekEnd)}
               </span>
             </div>
           </div>
           <div>
             {data.semanas.length > 0 && (
-              <p className="text-xs" style={{ color: "#64748b" }}>
+              <p className="text-xs" style={{ color: "var(--text-dim)" }}>
                 {data.semanas.length} semana(s) cadastrada(s)
               </p>
             )}
@@ -145,20 +145,20 @@ export default function FormSemanal({ data, onSaved }: Props) {
                 onClick={() => setExpandedCanal(isExpanded ? null : canal)}
                 className="w-full flex items-center justify-between"
               >
-                <span className="text-sm font-bold" style={{ color: "#e2e8f0" }}>{canal}</span>
-                {isExpanded ? <ChevronDown size={16} style={{ color: "#64748b" }} /> : <ChevronRight size={16} style={{ color: "#64748b" }} />}
+                <span className="text-sm font-bold" style={{ color: "var(--text)" }}>{canal}</span>
+                {isExpanded ? <ChevronDown size={16} style={{ color: "var(--text-dim)" }} /> : <ChevronRight size={16} style={{ color: "var(--text-dim)" }} />}
               </button>
 
               {isExpanded && (
                 <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 mt-4">
                   {fields.map((f) => (
                     <div key={f.key}>
-                      <label className="text-xs block mb-1" style={{ color: "#64748b" }}>
+                      <label className="text-xs block mb-1" style={{ color: "var(--text-dim)" }}>
                         {f.label}
                       </label>
                       <div className="relative">
                         {f.prefix && (
-                          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs" style={{ color: "#64748b" }}>{f.prefix}</span>
+                          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs" style={{ color: "var(--text-dim)" }}>{f.prefix}</span>
                         )}
                         <input
                           type="number"
@@ -171,7 +171,7 @@ export default function FormSemanal({ data, onSaved }: Props) {
                           placeholder="0"
                         />
                         {f.suffix && (
-                          <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs" style={{ color: "#64748b" }}>{f.suffix}</span>
+                          <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs" style={{ color: "var(--text-dim)" }}>{f.suffix}</span>
                         )}
                       </div>
                     </div>

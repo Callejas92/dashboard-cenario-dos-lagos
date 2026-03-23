@@ -12,19 +12,19 @@ interface KPICardProps {
 
 export default function KPICard({ label, value, meta, status = "neutral", icon }: KPICardProps) {
   const statusColor =
-    status === "good" ? "#10b981" : status === "bad" ? "#e94560" : "#94a3b8";
+    status === "good" ? "#10b981" : status === "bad" ? "#e94560" : "var(--text-muted)";
   const StatusIcon =
     status === "good" ? TrendingUp : status === "bad" ? TrendingDown : Minus;
 
   return (
     <div className="kpi-card">
       <div className="flex items-center justify-between mb-2">
-        <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: "#64748b" }}>
+        <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--text-dim)" }}>
           {label}
         </span>
         {icon || <StatusIcon size={14} style={{ color: statusColor }} />}
       </div>
-      <div className="text-2xl font-extrabold" style={{ color: "#f1f5f9" }}>
+      <div className="text-2xl font-extrabold" style={{ color: "var(--text)" }}>
         {value}
       </div>
       {meta && (

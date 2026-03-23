@@ -45,8 +45,8 @@ export default function TabAnalytics() {
   useEffect(() => { fetchData(); }, [days]);
 
   const tooltipStyle = {
-    contentStyle: { background: "#1a1a2e", border: "1px solid rgba(255,255,255,0.1)", borderRadius: "0.75rem", color: "#e2e8f0" },
-    labelStyle: { color: "#94a3b8" },
+    contentStyle: { background: "var(--tooltip-bg)", border: "1px solid var(--tooltip-border)", borderRadius: "0.75rem", color: "var(--tooltip-text)" },
+    labelStyle: { color: "var(--tooltip-label)" },
   };
 
   if (!data && !loading) return null;
@@ -57,7 +57,7 @@ export default function TabAnalytics() {
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
           <Globe size={18} style={{ color: "#4285f4" }} />
-          <h3 className="text-sm font-bold" style={{ color: "#e2e8f0" }}>Google Analytics — mangabaurbanismo.com.br</h3>
+          <h3 className="text-sm font-bold" style={{ color: "var(--text)" }}>Google Analytics — mangabaurbanismo.com.br</h3>
         </div>
         <div className="flex items-center gap-2">
           {[7, 14, 30, 90].map((d) => (
@@ -72,15 +72,15 @@ export default function TabAnalytics() {
             </button>
           ))}
           <button onClick={fetchData} disabled={loading} className="p-1.5 rounded-lg hover:bg-white/5">
-            <RefreshCw size={14} className={loading ? "animate-spin" : ""} style={{ color: "#64748b" }} />
+            <RefreshCw size={14} className={loading ? "animate-spin" : ""} style={{ color: "var(--text-dim)" }} />
           </button>
         </div>
       </div>
 
       {!data?.configured && (
         <div className="kpi-card text-center py-12">
-          <XCircle size={24} className="mx-auto mb-2" style={{ color: "#64748b" }} />
-          <p className="text-sm" style={{ color: "#94a3b8" }}>{data?.message || data?.error || "Aguardando configuracao."}</p>
+          <XCircle size={24} className="mx-auto mb-2" style={{ color: "var(--text-dim)" }} />
+          <p className="text-sm" style={{ color: "var(--text-muted)" }}>{data?.message || data?.error || "Aguardando configuracao."}</p>
         </div>
       )}
 
@@ -129,14 +129,14 @@ export default function TabAnalytics() {
           {/* Grafico diario */}
           {data.daily && data.daily.length > 0 && (
             <div className="kpi-card">
-              <h3 className="text-sm font-bold mb-4" style={{ color: "#94a3b8" }}>TRAFEGO DIARIO</h3>
+              <h3 className="text-sm font-bold mb-4" style={{ color: "var(--text-muted)" }}>TRAFEGO DIARIO</h3>
               <ResponsiveContainer width="100%" height={300}>
                 <LineChart data={data.daily}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
-                  <XAxis dataKey="date" tick={{ fill: "#64748b", fontSize: 10 }} interval="preserveStartEnd" />
-                  <YAxis tick={{ fill: "#64748b", fontSize: 11 }} />
+                  <CartesianGrid strokeDasharray="3 3" stroke="var(--chart-grid)" />
+                  <XAxis dataKey="date" tick={{ fill: "var(--text-dim)", fontSize: 10 }} interval="preserveStartEnd" />
+                  <YAxis tick={{ fill: "var(--text-dim)", fontSize: 11 }} />
                   <Tooltip {...tooltipStyle} />
-                  <Legend wrapperStyle={{ color: "#94a3b8", fontSize: 12 }} />
+                  <Legend wrapperStyle={{ color: "var(--text-muted)", fontSize: 12 }} />
                   <Line type="monotone" dataKey="users" name="Usuarios" stroke="#4285f4" strokeWidth={2} dot={false} />
                   <Line type="monotone" dataKey="sessions" name="Sessoes" stroke="#10b981" strokeWidth={2} dot={false} />
                   <Line type="monotone" dataKey="pageViews" name="Page Views" stroke="#f4a236" strokeWidth={2} dot={false} />
@@ -148,12 +148,12 @@ export default function TabAnalytics() {
           {/* Fontes de trafego */}
           {data.sources && data.sources.length > 0 && (
             <div className="kpi-card">
-              <h3 className="text-sm font-bold mb-4" style={{ color: "#94a3b8" }}>FONTES DE TRAFEGO</h3>
+              <h3 className="text-sm font-bold mb-4" style={{ color: "var(--text-muted)" }}>FONTES DE TRAFEGO</h3>
               <ResponsiveContainer width="100%" height={Math.max(200, data.sources.length * 40)}>
                 <BarChart data={data.sources} layout="vertical">
-                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
-                  <XAxis type="number" tick={{ fill: "#64748b", fontSize: 11 }} />
-                  <YAxis dataKey="channel" type="category" tick={{ fill: "#94a3b8", fontSize: 11 }} width={140} />
+                  <CartesianGrid strokeDasharray="3 3" stroke="var(--chart-grid)" />
+                  <XAxis type="number" tick={{ fill: "var(--text-dim)", fontSize: 11 }} />
+                  <YAxis dataKey="channel" type="category" tick={{ fill: "var(--text-muted)", fontSize: 11 }} width={140} />
                   <Tooltip {...tooltipStyle} />
                   <Bar dataKey="sessions" name="Sessoes" fill="#4285f4" radius={[0, 4, 4, 0]} />
                 </BarChart>
@@ -164,21 +164,21 @@ export default function TabAnalytics() {
           {/* Top paginas */}
           {data.topPages && data.topPages.length > 0 && (
             <div className="kpi-card overflow-x-auto">
-              <h3 className="text-sm font-bold mb-4" style={{ color: "#94a3b8" }}>PAGINAS MAIS VISITADAS</h3>
+              <h3 className="text-sm font-bold mb-4" style={{ color: "var(--text-muted)" }}>PAGINAS MAIS VISITADAS</h3>
               <table className="w-full text-sm">
                 <thead>
-                  <tr style={{ borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
-                    <th className="text-left py-2 px-2 font-semibold" style={{ color: "#64748b" }}>Pagina</th>
-                    <th className="text-right py-2 px-2 font-semibold" style={{ color: "#64748b" }}>Views</th>
-                    <th className="text-right py-2 px-2 font-semibold" style={{ color: "#64748b" }}>Usuarios</th>
+                  <tr style={{ borderBottom: "1px solid var(--border)" }}>
+                    <th className="text-left py-2 px-2 font-semibold" style={{ color: "var(--text-dim)" }}>Pagina</th>
+                    <th className="text-right py-2 px-2 font-semibold" style={{ color: "var(--text-dim)" }}>Views</th>
+                    <th className="text-right py-2 px-2 font-semibold" style={{ color: "var(--text-dim)" }}>Usuarios</th>
                   </tr>
                 </thead>
                 <tbody>
                   {data.topPages.map((p, i) => (
-                    <tr key={i} style={{ borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
-                      <td className="py-2 px-2" style={{ color: "#cbd5e1" }}>{p.path}</td>
-                      <td className="text-right py-2 px-2" style={{ color: "#e2e8f0" }}>{formatNumber(p.views)}</td>
-                      <td className="text-right py-2 px-2" style={{ color: "#94a3b8" }}>{formatNumber(p.users)}</td>
+                    <tr key={i} style={{ borderBottom: "1px solid var(--border)" }}>
+                      <td className="py-2 px-2" style={{ color: "var(--text)" }}>{p.path}</td>
+                      <td className="text-right py-2 px-2" style={{ color: "var(--text)" }}>{formatNumber(p.views)}</td>
+                      <td className="text-right py-2 px-2" style={{ color: "var(--text-muted)" }}>{formatNumber(p.users)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -187,7 +187,7 @@ export default function TabAnalytics() {
           )}
 
           {data.fetchedAt && (
-            <p className="text-xs text-right" style={{ color: "#475569" }}>
+            <p className="text-xs text-right" style={{ color: "var(--text-dim)" }}>
               Atualizado: {new Date(data.fetchedAt).toLocaleString("pt-BR")}
             </p>
           )}

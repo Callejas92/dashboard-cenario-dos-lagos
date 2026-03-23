@@ -27,6 +27,7 @@ async function readData() {
         access: "public",
         contentType: "application/json",
         addRandomSuffix: false,
+    allowOverwrite: true,
       });
       return DEFAULT_DATA;
     }
@@ -42,6 +43,7 @@ async function writeData(data: unknown) {
     access: "public",
     contentType: "application/json",
     addRandomSuffix: false,
+    allowOverwrite: true,
   });
 }
 
@@ -72,8 +74,8 @@ export async function POST(request: Request) {
 
     await writeData(data);
     return NextResponse.json({ success: true });
-  } catch {
-    return NextResponse.json({ error: "Erro ao salvar dados" }, { status: 500 });
+  } catch (error) {
+    return NextResponse.json({ error: "Erro ao salvar: " + String(error) }, { status: 500 });
   }
 }
 
@@ -86,9 +88,13 @@ export async function PUT(request: Request) {
       data.config = { ...data.config, ...body.config };
     }
 
+    if (body.semanas) {
+      data.semanas = body.semanas;
+    }
+
     await writeData(data);
     return NextResponse.json({ success: true });
-  } catch {
-    return NextResponse.json({ error: "Erro ao atualizar config" }, { status: 500 });
+  } catch (error) {
+    return NextResponse.json({ error: "Erro ao atualizar: " + String(error) }, { status: 500 });
   }
 }
