@@ -623,9 +623,9 @@ export default function TabVisaoGeral({ data }: Props) {
             <YAxis yAxisId="right" orientation="right" tick={axisTick} />
             <Tooltip
               {...tooltipStyle}
-              formatter={(value: number, name: string) => {
-                if (name === "Taxa Conv.") return value.toFixed(1) + "%";
-                return formatNumber(value);
+              formatter={(value, name) => {
+                if (name === "Taxa Conv.") return Number(value ?? 0).toFixed(1) + "%";
+                return formatNumber(Number(value ?? 0));
               }}
             />
             <Legend wrapperStyle={{ color: "var(--text-muted)", fontSize: 12 }} />
