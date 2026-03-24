@@ -67,9 +67,6 @@ async function fetchCampaignData(
 
   if (!res.ok) {
     const err = await res.text();
-    if (res.status === 501) {
-      throw new Error("Developer token em modo teste. Aguardando aprovação do acesso básico pelo Google (1-3 dias úteis).");
-    }
     throw new Error(`Google Ads API error: ${res.status} — ${err}`);
   }
 
