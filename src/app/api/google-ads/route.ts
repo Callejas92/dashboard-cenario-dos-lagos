@@ -40,55 +40,6 @@ function getHeaders(accessToken: string) {
   };
 }
 
-async function fetchAccountInfo(accessToken: string, customerId: string) {
-  const query = `SELECT customer.id, customer.descriptive_name, customer.status FROM customer LIMIT 1`;
-  const res = await fetch(
-    `${GOOGLE_ADS_API}/customers/${customerId}/googleAds:search`,
-    {
-      method: "POST",
-      headers: getHeaders(accessToken),
-      body: JSON.stringify({ query }),
-    }
-  );
-
-  if (!res.ok) {
-    const err = await res.text();
-    // If permission denied, try the manager account directly
-    if (res.status === 403) {
-      // Account might still be in setup - try manager account
-      const managerId = process.env.GOOGLE_ADS_LOGIN_CUSTOMER_ID || "";
-      if (managerId && managerId !== customerId) {
-        const mgrRes = await fetch(
-          `${GOOGLE_ADS_API}/customers/${managerId}/googleAds:search`,
-          {
-            method: "POST",
-            headers: getHeaders(accessToken),
-            body: JSON.stringify({ query }),
-          }
-        );
-        if (mgrRes.ok) {
-          const mgrData = await mgrRes.json();
-          return {
-            connected: true,
-            accountName: mgrData.results?.[0]?.customer?.descriptiveName || "Conta Manager",
-            note: "Conta de anuncios ainda em configuracao. Usando conta Manager.",
-            useManagerId: true,
-          };
-        }
-      }
-      throw new Error(`Conta de anuncios (${customerId}) sem permissao. Complete a configuracao da conta no Google Ads.`);
-    }
-    throw new Error(`Google Ads API error: ${res.status} — ${err}`);
-  }
-
-  const data = await res.json();
-  return {
-    connected: true,
-    accountName: data.results?.[0]?.customer?.descriptiveName || "",
-    useManagerId: false,
-  };
-}
-
 async function fetchCampaignData(
   accessToken: string,
   customerId: string,
@@ -120,10 +71,6 @@ async function fetchCampaignData(
 
   if (!res.ok) {
     const err = await res.text();
-    // 403 = account still in setup, return empty campaigns
-    if (res.status === 403) {
-      return [];
-    }
     throw new Error(`Google Ads API error: ${res.status} — ${err}`);
   }
 
@@ -145,7 +92,6 @@ async function fetchCampaignData(
 }
 
 export async function GET(request: Request) {
-  // Check if credentials are configured
   if (!process.env.GOOGLE_CLIENT_ID || !process.env.GOOGLE_ADS_DEVELOPER_TOKEN) {
     return NextResponse.json({
       configured: false,
@@ -162,15 +108,41 @@ export async function GET(request: Request) {
 
     const accessToken = await getAccessToken();
 
-    // First check account connectivity
-    const accountInfo = await fetchAccountInfo(accessToken, customerId);
+    // First verify connection with a simple query (no metrics)
+    const checkRes = await fetch(
+      `${GOOGLE_ADS_API}/customers/${customerId}/googleAds:search`,
+      {
+        method: "POST",
+        headers: getHeaders(accessToken),
+        body: JSON.stringify({
+          query: "SELECT customer.id, customer.descriptive_name, customer.status FROM customer LIMIT 1",
+        }),
+      }
+    );
 
-    // Fetch campaigns from the appropriate account
-    const queryCustomerId = accountInfo.useManagerId
-      ? (process.env.GOOGLE_ADS_LOGIN_CUSTOMER_ID || customerId)
-      : customerId;
+    if (!checkRes.ok) {
+      const checkErr = await checkRes.text();
 
-    const campaigns = await fetchCampaignData(accessToken, queryCustomerId, dateFrom, dateTo);
+      // Account still in setup — show as connected but waiting
+      if (checkRes.status === 403) {
+        return NextResponse.json({
+          configured: true,
+          accountName: "Mangaba Urbanismo - Cenario dos Lagos",
+          note: "Conta de anuncios em configuracao. Complete o setup no Google Ads (adicione faturamento).",
+          campaigns: [],
+          totals: { impressions: 0, clicks: 0, cost: 0, conversions: 0, ctr: "0", cpc: "0", cpa: "0" },
+          fetchedAt: new Date().toISOString(),
+        });
+      }
+
+      throw new Error(`Google Ads API error: ${checkRes.status} — ${checkErr}`);
+    }
+
+    const checkData = await checkRes.json();
+    const accountName = checkData.results?.[0]?.customer?.descriptiveName || "";
+
+    // Now fetch campaign metrics
+    const campaigns = await fetchCampaignData(accessToken, customerId, dateFrom, dateTo);
 
     const totals = campaigns.reduce(
       (acc, c) => ({
@@ -182,15 +154,14 @@ export async function GET(request: Request) {
       { impressions: 0, clicks: 0, cost: 0, conversions: 0 }
     );
 
-    // Calculate derived metrics
     const ctr = totals.impressions > 0 ? (totals.clicks / totals.impressions) * 100 : 0;
     const cpc = totals.clicks > 0 ? totals.cost / totals.clicks : 0;
     const cpa = totals.conversions > 0 ? totals.cost / totals.conversions : 0;
 
     return NextResponse.json({
       configured: true,
-      accountName: accountInfo.accountName,
-      note: accountInfo.note || null,
+      accountName,
+      note: campaigns.length === 0 ? "Nenhuma campanha ativa encontrada no periodo." : null,
       dateFrom,
       dateTo,
       campaigns: campaigns.map((c) => ({
