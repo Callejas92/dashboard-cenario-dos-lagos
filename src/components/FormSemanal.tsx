@@ -7,9 +7,10 @@ import { MetricsData, emptyCanalData, CanalData } from "@/lib/types";
 interface Props {
   data: MetricsData;
   onSaved: () => void;
+  authToken: string;
 }
 
-export default function FormSemanal({ data, onSaved }: Props) {
+export default function FormSemanal({ data, onSaved, authToken }: Props) {
   const [semana, setSemana] = useState(data.semanas.length + 1);
   const [canais, setCanais] = useState<Record<string, CanalData>>(() => {
     const obj: Record<string, CanalData> = {};
@@ -68,7 +69,7 @@ export default function FormSemanal({ data, onSaved }: Props) {
 
       const res = await fetch("/api/metrics", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${authToken}` },
         body: JSON.stringify(body),
       });
 

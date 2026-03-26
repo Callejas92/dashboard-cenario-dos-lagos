@@ -3,6 +3,13 @@ import { put, list } from "@vercel/blob";
 
 const BLOB_NAME = "metrics.json";
 
+function isAuthorized(request: Request): boolean {
+  const authHeader = request.headers.get("authorization");
+  const dashPassword = process.env.DASHBOARD_PASSWORD;
+  if (!dashPassword) return false;
+  return authHeader === `Bearer ${dashPassword}`;
+}
+
 const DEFAULT_DATA = {
   config: {
     empreendimento: "Cenário dos Lagos",
@@ -57,6 +64,9 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
+  if (!isAuthorized(request)) {
+    return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
+  }
   try {
     const body = await request.json();
     const data = await readData();
@@ -80,6 +90,9 @@ export async function POST(request: Request) {
 }
 
 export async function PUT(request: Request) {
+  if (!isAuthorized(request)) {
+    return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
+  }
   try {
     const body = await request.json();
     const data = await readData();

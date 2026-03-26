@@ -1,0 +1,1782 @@
+[
+  {
+    "id": "Q1-L1",
+    "quadra": 1,
+    "lote": 1,
+    "area": 1573.54,
+    "rua": "Rua Jenipapo",
+    "valorTotal": 485138.91,
+    "valorM2": 308.31,
+    "classificacao": "B"
+  },
+  {
+    "id": "Q1-L2",
+    "quadra": 1,
+    "lote": 2,
+    "area": 1500.23,
+    "rua": "Rua Jenipapo",
+    "valorTotal": 440511.11,
+    "valorM2": 293.63,
+    "classificacao": "B"
+  },
+  {
+    "id": "Q1-L3",
+    "quadra": 1,
+    "lote": 3,
+    "area": 1500.02,
+    "rua": "Rua Jenipapo",
+    "valorTotal": 440449.45,
+    "valorM2": 293.63,
+    "classificacao": "B"
+  },
+  {
+    "id": "Q1-L5",
+    "quadra": 1,
+    "lote": 5,
+    "area": 1556.79,
+    "rua": "Rua Jenipapo",
+    "valorTotal": 457118.77,
+    "valorM2": 293.63,
+    "classificacao": "B"
+  },
+  {
+    "id": "Q1-L6",
+    "quadra": 1,
+    "lote": 6,
+    "area": 1556.79,
+    "rua": "Rua Jenipapo",
+    "valorTotal": 457118.77,
+    "valorM2": 293.63,
+    "classificacao": "B"
+  },
+  {
+    "id": "Q1-L7",
+    "quadra": 1,
+    "lote": 7,
+    "area": 1556.79,
+    "rua": "Rua Jenipapo",
+    "valorTotal": 445690.8,
+    "valorM2": 286.29,
+    "classificacao": "C"
+  },
+  {
+    "id": "Q1-L8",
+    "quadra": 1,
+    "lote": 8,
+    "area": 1607.54,
+    "rua": "Rua Jenipapo",
+    "valorTotal": 471150.16,
+    "valorM2": 293.09,
+    "classificacao": "D"
+  },
+  {
+    "id": "Q1-L9",
+    "quadra": 1,
+    "lote": 9,
+    "area": 2376.48,
+    "rua": "Avenida Buriti / Rua Jenipapo",
+    "valorTotal": 664790.75,
+    "valorM2": 279.74,
+    "classificacao": "B"
+  },
+  {
+    "id": "Q1-L10",
+    "quadra": 1,
+    "lote": 10,
+    "area": 1500.0,
+    "rua": "Avenida Buriti",
+    "valorTotal": 460863.0,
+    "valorM2": 307.24,
+    "classificacao": "A"
+  },
+  {
+    "id": "Q1-L11",
+    "quadra": 1,
+    "lote": 11,
+    "area": 1500.0,
+    "rua": "Avenida Buriti",
+    "valorTotal": 460863.0,
+    "valorM2": 307.24,
+    "classificacao": "A"
+  },
+  {
+    "id": "Q1-L12",
+    "quadra": 1,
+    "lote": 12,
+    "area": 1500.0,
+    "rua": "Avenida Buriti",
+    "valorTotal": 460863.0,
+    "valorM2": 307.24,
+    "classificacao": "A"
+  },
+  {
+    "id": "Q1-L13",
+    "quadra": 1,
+    "lote": 13,
+    "area": 1500.0,
+    "rua": "Avenida Buriti",
+    "valorTotal": 460863.0,
+    "valorM2": 307.24,
+    "classificacao": "A"
+  },
+  {
+    "id": "Q1-L14",
+    "quadra": 1,
+    "lote": 14,
+    "area": 1500.0,
+    "rua": "Avenida Buriti",
+    "valorTotal": 449341.42,
+    "valorM2": 299.56,
+    "classificacao": "B"
+  },
+  {
+    "id": "Q1-L15",
+    "quadra": 1,
+    "lote": 15,
+    "area": 1500.0,
+    "rua": "Avenida Buriti",
+    "valorTotal": 449341.42,
+    "valorM2": 299.56,
+    "classificacao": "B"
+  },
+  {
+    "id": "Q1-L16",
+    "quadra": 1,
+    "lote": 16,
+    "area": 1500.0,
+    "rua": "Avenida Buriti",
+    "valorTotal": 449341.42,
+    "valorM2": 299.56,
+    "classificacao": "B"
+  },
+  {
+    "id": "Q2-L18",
+    "quadra": 2,
+    "lote": 18,
+    "area": 1593.16,
+    "rua": "Rua Jenipapo",
+    "valorTotal": 443880.61,
+    "valorM2": 278.62,
+    "classificacao": "F"
+  },
+  {
+    "id": "Q2-L19",
+    "quadra": 2,
+    "lote": 19,
+    "area": 1556.79,
+    "rua": "Rua Jenipapo",
+    "valorTotal": 413092.7,
+    "valorM2": 265.35,
+    "classificacao": "F"
+  },
+  {
+    "id": "Q2-L21",
+    "quadra": 2,
+    "lote": 21,
+    "area": 1500.0,
+    "rua": "Rua Jenipapo",
+    "valorTotal": 398023.53,
+    "valorM2": 265.35,
+    "classificacao": "F"
+  },
+  {
+    "id": "Q2-L22",
+    "quadra": 2,
+    "lote": 22,
+    "area": 1500.0,
+    "rua": "Avenida Buriti",
+    "valorTotal": 426367.62,
+    "valorM2": 284.25,
+    "classificacao": "F"
+  },
+  {
+    "id": "Q2-L23",
+    "quadra": 2,
+    "lote": 23,
+    "area": 1500.0,
+    "rua": "Avenida Buriti",
+    "valorTotal": 406064.4,
+    "valorM2": 270.71,
+    "classificacao": "F"
+  },
+  {
+    "id": "Q2-L24",
+    "quadra": 2,
+    "lote": 24,
+    "area": 1500.0,
+    "rua": "Avenida Buriti",
+    "valorTotal": 406064.4,
+    "valorM2": 270.71,
+    "classificacao": "F"
+  },
+  {
+    "id": "Q2-L25",
+    "quadra": 2,
+    "lote": 25,
+    "area": 1500.0,
+    "rua": "Avenida Buriti",
+    "valorTotal": 416476.31,
+    "valorM2": 277.65,
+    "classificacao": "E"
+  },
+  {
+    "id": "Q2-L26",
+    "quadra": 2,
+    "lote": 26,
+    "area": 1500.0,
+    "rua": "Avenida Buriti",
+    "valorTotal": 416476.31,
+    "valorM2": 277.65,
+    "classificacao": "E"
+  },
+  {
+    "id": "Q2-L27",
+    "quadra": 2,
+    "lote": 27,
+    "area": 1536.25,
+    "rua": "Avenida Buriti",
+    "valorTotal": 437478.11,
+    "valorM2": 284.77,
+    "classificacao": "D"
+  },
+  {
+    "id": "Q2-L29",
+    "quadra": 2,
+    "lote": 29,
+    "area": 3009.9,
+    "rua": "Avenida Buriti",
+    "valorTotal": 756761.96,
+    "valorM2": 251.42,
+    "classificacao": "B"
+  },
+  {
+    "id": "Q3-L30",
+    "quadra": 3,
+    "lote": 30,
+    "area": 1649.07,
+    "rua": "Avenida Buriti",
+    "valorTotal": 531996.74,
+    "valorM2": 322.6,
+    "classificacao": "A"
+  },
+  {
+    "id": "Q3-L31",
+    "quadra": 3,
+    "lote": 31,
+    "area": 1827.64,
+    "rua": "Avenida Buriti",
+    "valorTotal": 551462.52,
+    "valorM2": 301.73,
+    "classificacao": "A"
+  },
+  {
+    "id": "Q3-L32",
+    "quadra": 3,
+    "lote": 32,
+    "area": 1778.77,
+    "rua": "Avenida Buriti",
+    "valorTotal": 532620.74,
+    "valorM2": 299.43,
+    "classificacao": "A"
+  },
+  {
+    "id": "Q3-L34",
+    "quadra": 3,
+    "lote": 34,
+    "area": 1681.83,
+    "rua": "Avenida Buriti",
+    "valorTotal": 511612.69,
+    "valorM2": 304.2,
+    "classificacao": "A"
+  },
+  {
+    "id": "Q3-L35",
+    "quadra": 3,
+    "lote": 35,
+    "area": 1757.37,
+    "rua": "Avenida Buriti",
+    "valorTotal": 553099.94,
+    "valorM2": 314.73,
+    "classificacao": "A"
+  },
+  {
+    "id": "Q4-L36",
+    "quadra": 4,
+    "lote": 36,
+    "area": 1924.89,
+    "rua": "Avenida Buriti",
+    "valorTotal": 586225.95,
+    "valorM2": 304.55,
+    "classificacao": "B"
+  },
+  {
+    "id": "Q4-L37",
+    "quadra": 4,
+    "lote": 37,
+    "area": 1719.89,
+    "rua": "Avenida Buriti",
+    "valorTotal": 490998.93,
+    "valorM2": 285.48,
+    "classificacao": "C"
+  },
+  {
+    "id": "Q4-L38",
+    "quadra": 4,
+    "lote": 38,
+    "area": 1778.37,
+    "rua": "Avenida Buriti",
+    "valorTotal": 481223.95,
+    "valorM2": 270.6,
+    "classificacao": "E"
+  },
+  {
+    "id": "Q4-L40",
+    "quadra": 4,
+    "lote": 40,
+    "area": 1687.34,
+    "rua": "Avenida Buriti / Rua Cagaita",
+    "valorTotal": 507219.03,
+    "valorM2": 300.6,
+    "classificacao": "C"
+  },
+  {
+    "id": "Q4-L41",
+    "quadra": 4,
+    "lote": 41,
+    "area": 1557.07,
+    "rua": "Rua Guavira / Rua Cagaita",
+    "valorTotal": 442589.49,
+    "valorM2": 284.25,
+    "classificacao": "F"
+  },
+  {
+    "id": "Q4-L42",
+    "quadra": 4,
+    "lote": 42,
+    "area": 1752.04,
+    "rua": "Rua Guavira",
+    "valorTotal": 467472.17,
+    "valorM2": 266.82,
+    "classificacao": "F"
+  },
+  {
+    "id": "Q5-L43",
+    "quadra": 5,
+    "lote": 43,
+    "area": 2102.89,
+    "rua": "Avenida Buriti",
+    "valorTotal": 595887.82,
+    "valorM2": 283.37,
+    "classificacao": "C"
+  },
+  {
+    "id": "Q5-L44",
+    "quadra": 5,
+    "lote": 44,
+    "area": 1500.0,
+    "rua": "Avenida Buriti",
+    "valorTotal": 429432.49,
+    "valorM2": 286.29,
+    "classificacao": "C"
+  },
+  {
+    "id": "Q5-L45",
+    "quadra": 5,
+    "lote": 45,
+    "area": 1500.0,
+    "rua": "Avenida Buriti",
+    "valorTotal": 440443.57,
+    "valorM2": 293.63,
+    "classificacao": "B"
+  },
+  {
+    "id": "Q5-L46",
+    "quadra": 5,
+    "lote": 46,
+    "area": 1500.0,
+    "rua": "Avenida Buriti",
+    "valorTotal": 440443.57,
+    "valorM2": 293.63,
+    "classificacao": "B"
+  },
+  {
+    "id": "Q5-L47",
+    "quadra": 5,
+    "lote": 47,
+    "area": 1500.0,
+    "rua": "Avenida Buriti",
+    "valorTotal": 440443.57,
+    "valorM2": 293.63,
+    "classificacao": "B"
+  },
+  {
+    "id": "Q5-L49",
+    "quadra": 5,
+    "lote": 49,
+    "area": 1500.0,
+    "rua": "Avenida Buriti",
+    "valorTotal": 444892.5,
+    "valorM2": 296.59,
+    "classificacao": "B"
+  },
+  {
+    "id": "Q5-L50",
+    "quadra": 5,
+    "lote": 50,
+    "area": 1500.0,
+    "rua": "Avenida Buriti",
+    "valorTotal": 444892.5,
+    "valorM2": 296.59,
+    "classificacao": "B"
+  },
+  {
+    "id": "Q5-L51",
+    "quadra": 5,
+    "lote": 51,
+    "area": 1500.0,
+    "rua": "Avenida Buriti",
+    "valorTotal": 444892.5,
+    "valorM2": 296.59,
+    "classificacao": "B"
+  },
+  {
+    "id": "Q5-L52",
+    "quadra": 5,
+    "lote": 52,
+    "area": 1500.0,
+    "rua": "Avenida Buriti",
+    "valorTotal": 456300.0,
+    "valorM2": 304.2,
+    "classificacao": "A"
+  },
+  {
+    "id": "Q5-L53",
+    "quadra": 5,
+    "lote": 53,
+    "area": 1500.0,
+    "rua": "Avenida Buriti",
+    "valorTotal": 456300.0,
+    "valorM2": 304.2,
+    "classificacao": "A"
+  },
+  {
+    "id": "Q5-L56",
+    "quadra": 5,
+    "lote": 56,
+    "area": 1500.0,
+    "rua": "Avenida Mangaba",
+    "valorTotal": 468000.0,
+    "valorM2": 312.0,
+    "classificacao": "2A"
+  },
+  {
+    "id": "Q5-L57",
+    "quadra": 5,
+    "lote": 57,
+    "area": 1500.0,
+    "rua": "Avenida Mangaba",
+    "valorTotal": 468000.0,
+    "valorM2": 312.0,
+    "classificacao": "2A"
+  },
+  {
+    "id": "Q5-L58",
+    "quadra": 5,
+    "lote": 58,
+    "area": 1500.0,
+    "rua": "Avenida Mangaba",
+    "valorTotal": 468000.0,
+    "valorM2": 312.0,
+    "classificacao": "2A"
+  },
+  {
+    "id": "Q5-L59",
+    "quadra": 5,
+    "lote": 59,
+    "area": 1500.0,
+    "rua": "Avenida Mangaba",
+    "valorTotal": 468000.0,
+    "valorM2": 312.0,
+    "classificacao": "2A"
+  },
+  {
+    "id": "Q5-L60",
+    "quadra": 5,
+    "lote": 60,
+    "area": 1500.0,
+    "rua": "Avenida Mangaba",
+    "valorTotal": 491400.0,
+    "valorM2": 327.6,
+    "classificacao": "2A"
+  },
+  {
+    "id": "Q5-L61",
+    "quadra": 5,
+    "lote": 61,
+    "area": 3091.08,
+    "rua": "Rua Murici / Rua Cagaita",
+    "valorTotal": 733961.54,
+    "valorM2": 237.45,
+    "classificacao": "D"
+  },
+  {
+    "id": "Q5-L62",
+    "quadra": 5,
+    "lote": 62,
+    "area": 1600.07,
+    "rua": "Rua Murici",
+    "valorTotal": 455652.14,
+    "valorM2": 284.77,
+    "classificacao": "D"
+  },
+  {
+    "id": "Q5-L63",
+    "quadra": 5,
+    "lote": 63,
+    "area": 1600.07,
+    "rua": "Rua Murici",
+    "valorTotal": 462708.44,
+    "valorM2": 289.18,
+    "classificacao": "C"
+  },
+  {
+    "id": "Q5-L66",
+    "quadra": 5,
+    "lote": 66,
+    "area": 1600.07,
+    "rua": "Rua Murici",
+    "valorTotal": 462708.44,
+    "valorM2": 289.18,
+    "classificacao": "C"
+  },
+  {
+    "id": "Q5-L67",
+    "quadra": 5,
+    "lote": 67,
+    "area": 1600.07,
+    "rua": "Rua Murici",
+    "valorTotal": 462708.44,
+    "valorM2": 289.18,
+    "classificacao": "C"
+  },
+  {
+    "id": "Q5-L70",
+    "quadra": 5,
+    "lote": 70,
+    "area": 1533.99,
+    "rua": "Rua Murici",
+    "valorTotal": 454973.76,
+    "valorM2": 296.59,
+    "classificacao": "B"
+  },
+  {
+    "id": "Q5-L71",
+    "quadra": 5,
+    "lote": 71,
+    "area": 1500.0,
+    "rua": "Rua Murici",
+    "valorTotal": 444892.5,
+    "valorM2": 296.59,
+    "classificacao": "B"
+  },
+  {
+    "id": "Q5-L72",
+    "quadra": 5,
+    "lote": 72,
+    "area": 1500.0,
+    "rua": "Rua Murici",
+    "valorTotal": 444892.5,
+    "valorM2": 296.59,
+    "classificacao": "B"
+  },
+  {
+    "id": "Q5-L73",
+    "quadra": 5,
+    "lote": 73,
+    "area": 1521.37,
+    "rua": "Rua Murici",
+    "valorTotal": 473792.27,
+    "valorM2": 311.42,
+    "classificacao": "B"
+  },
+  {
+    "id": "Q6-L74",
+    "quadra": 6,
+    "lote": 74,
+    "area": 1500.0,
+    "rua": "Avenida Mangaba",
+    "valorTotal": 504000.0,
+    "valorM2": 336.0,
+    "classificacao": "3A"
+  },
+  {
+    "id": "Q6-L75",
+    "quadra": 6,
+    "lote": 75,
+    "area": 1500.0,
+    "rua": "Avenida Mangaba",
+    "valorTotal": 480000.0,
+    "valorM2": 320.0,
+    "classificacao": "3A"
+  },
+  {
+    "id": "Q6-L76",
+    "quadra": 6,
+    "lote": 76,
+    "area": 1500.0,
+    "rua": "Avenida Mangaba",
+    "valorTotal": 480000.0,
+    "valorM2": 320.0,
+    "classificacao": "3A"
+  },
+  {
+    "id": "Q6-L78",
+    "quadra": 6,
+    "lote": 78,
+    "area": 1500.0,
+    "rua": "Avenida Mangaba",
+    "valorTotal": 480000.0,
+    "valorM2": 320.0,
+    "classificacao": "3A"
+  },
+  {
+    "id": "Q6-L79",
+    "quadra": 6,
+    "lote": 79,
+    "area": 2150.64,
+    "rua": "Avenida Mangaba / Rua Jatobá",
+    "valorTotal": 678891.36,
+    "valorM2": 315.67,
+    "classificacao": "3A"
+  },
+  {
+    "id": "Q6-L80",
+    "quadra": 6,
+    "lote": 80,
+    "area": 1500.0,
+    "rua": "Rua Murici",
+    "valorTotal": 467137.12,
+    "valorM2": 311.42,
+    "classificacao": "B"
+  },
+  {
+    "id": "Q6-L81",
+    "quadra": 6,
+    "lote": 81,
+    "area": 1500.0,
+    "rua": "Rua Murici",
+    "valorTotal": 444892.5,
+    "valorM2": 296.59,
+    "classificacao": "B"
+  },
+  {
+    "id": "Q6-L82",
+    "quadra": 6,
+    "lote": 82,
+    "area": 1500.0,
+    "rua": "Rua Murici",
+    "valorTotal": 444892.5,
+    "valorM2": 296.59,
+    "classificacao": "B"
+  },
+  {
+    "id": "Q6-L83",
+    "quadra": 6,
+    "lote": 83,
+    "area": 1500.0,
+    "rua": "Rua Murici",
+    "valorTotal": 444892.5,
+    "valorM2": 296.59,
+    "classificacao": "B"
+  },
+  {
+    "id": "Q6-L84",
+    "quadra": 6,
+    "lote": 84,
+    "area": 1500.0,
+    "rua": "Rua Murici",
+    "valorTotal": 444892.5,
+    "valorM2": 296.59,
+    "classificacao": "B"
+  },
+  {
+    "id": "Q6-L85",
+    "quadra": 6,
+    "lote": 85,
+    "area": 1977.51,
+    "rua": "Rua Murici / Rua Jatobá",
+    "valorTotal": 600975.03,
+    "valorM2": 303.9,
+    "classificacao": "B"
+  },
+  {
+    "id": "Q7-L86",
+    "quadra": 7,
+    "lote": 86,
+    "area": 1534.64,
+    "rua": "Avenida Mangaba / Rua Jatobá",
+    "valorTotal": 515639.04,
+    "valorM2": 336.0,
+    "classificacao": "3A"
+  },
+  {
+    "id": "Q7-L88",
+    "quadra": 7,
+    "lote": 88,
+    "area": 1500.0,
+    "rua": "Avenida Mangaba",
+    "valorTotal": 480000.0,
+    "valorM2": 320.0,
+    "classificacao": "3A"
+  },
+  {
+    "id": "Q7-L89",
+    "quadra": 7,
+    "lote": 89,
+    "area": 1500.0,
+    "rua": "Avenida Mangaba",
+    "valorTotal": 480000.0,
+    "valorM2": 320.0,
+    "classificacao": "3A"
+  },
+  {
+    "id": "Q7-L90",
+    "quadra": 7,
+    "lote": 90,
+    "area": 1500.0,
+    "rua": "Avenida Mangaba",
+    "valorTotal": 480000.0,
+    "valorM2": 320.0,
+    "classificacao": "3A"
+  },
+  {
+    "id": "Q7-L91",
+    "quadra": 7,
+    "lote": 91,
+    "area": 1500.0,
+    "rua": "Avenida Mangaba",
+    "valorTotal": 480000.0,
+    "valorM2": 320.0,
+    "classificacao": "3A"
+  },
+  {
+    "id": "Q7-L92",
+    "quadra": 7,
+    "lote": 92,
+    "area": 1500.0,
+    "rua": "Avenida Mangaba",
+    "valorTotal": 480000.0,
+    "valorM2": 320.0,
+    "classificacao": "3A"
+  },
+  {
+    "id": "Q7-L93",
+    "quadra": 7,
+    "lote": 93,
+    "area": 1500.0,
+    "rua": "Avenida Mangaba",
+    "valorTotal": 480000.0,
+    "valorM2": 320.0,
+    "classificacao": "3A"
+  },
+  {
+    "id": "Q7-L95",
+    "quadra": 7,
+    "lote": 95,
+    "area": 2421.04,
+    "rua": "Avenida Mangaba",
+    "valorTotal": 720629.28,
+    "valorM2": 297.65,
+    "classificacao": "3A"
+  },
+  {
+    "id": "Q7-L96",
+    "quadra": 7,
+    "lote": 96,
+    "area": 1534.64,
+    "rua": "Rua Murici / Rua Jatobá",
+    "valorTotal": 465976.76,
+    "valorM2": 303.64,
+    "classificacao": "C"
+  },
+  {
+    "id": "Q7-L97",
+    "quadra": 7,
+    "lote": 97,
+    "area": 1500.0,
+    "rua": "Rua Murici",
+    "valorTotal": 422925.93,
+    "valorM2": 281.95,
+    "classificacao": "D"
+  },
+  {
+    "id": "Q7-L99",
+    "quadra": 7,
+    "lote": 99,
+    "area": 1500.0,
+    "rua": "Rua Murici",
+    "valorTotal": 422925.93,
+    "valorM2": 281.95,
+    "classificacao": "D"
+  },
+  {
+    "id": "Q7-L100",
+    "quadra": 7,
+    "lote": 100,
+    "area": 1500.0,
+    "rua": "Rua Murici",
+    "valorTotal": 433770.19,
+    "valorM2": 289.18,
+    "classificacao": "C"
+  },
+  {
+    "id": "Q7-L101",
+    "quadra": 7,
+    "lote": 101,
+    "area": 1500.0,
+    "rua": "Rua Murici",
+    "valorTotal": 444892.5,
+    "valorM2": 296.59,
+    "classificacao": "B"
+  },
+  {
+    "id": "Q7-L102",
+    "quadra": 7,
+    "lote": 102,
+    "area": 1500.0,
+    "rua": "Rua Murici",
+    "valorTotal": 444892.5,
+    "valorM2": 296.59,
+    "classificacao": "B"
+  },
+  {
+    "id": "Q7-L103",
+    "quadra": 7,
+    "lote": 103,
+    "area": 1500.0,
+    "rua": "Rua Murici",
+    "valorTotal": 444892.5,
+    "valorM2": 296.59,
+    "classificacao": "B"
+  },
+  {
+    "id": "Q7-L105",
+    "quadra": 7,
+    "lote": 105,
+    "area": 1500.0,
+    "rua": "Rua Murici",
+    "valorTotal": 456300.0,
+    "valorM2": 304.2,
+    "classificacao": "A"
+  },
+  {
+    "id": "Q7-L106",
+    "quadra": 7,
+    "lote": 106,
+    "area": 2562.86,
+    "rua": "Rua Murici / Rua Guavira",
+    "valorTotal": 716756.04,
+    "valorM2": 279.67,
+    "classificacao": "A"
+  },
+  {
+    "id": "Q8-L107",
+    "quadra": 8,
+    "lote": 107,
+    "area": 1554.51,
+    "rua": "Rua Murici / Rua Cagaita",
+    "valorTotal": 433112.09,
+    "valorM2": 278.62,
+    "classificacao": "F"
+  },
+  {
+    "id": "Q8-L108",
+    "quadra": 8,
+    "lote": 108,
+    "area": 1500.0,
+    "rua": "Rua Murici",
+    "valorTotal": 418696.67,
+    "valorM2": 279.13,
+    "classificacao": "D"
+  },
+  {
+    "id": "Q8-L109",
+    "quadra": 8,
+    "lote": 109,
+    "area": 1500.0,
+    "rua": "Rua Murici",
+    "valorTotal": 429432.49,
+    "valorM2": 286.29,
+    "classificacao": "C"
+  },
+  {
+    "id": "Q8-L110",
+    "quadra": 8,
+    "lote": 110,
+    "area": 1500.0,
+    "rua": "Rua Murici",
+    "valorTotal": 444892.5,
+    "valorM2": 296.59,
+    "classificacao": "B"
+  },
+  {
+    "id": "Q8-L111",
+    "quadra": 8,
+    "lote": 111,
+    "area": 1500.0,
+    "rua": "Rua Murici",
+    "valorTotal": 444892.5,
+    "valorM2": 296.59,
+    "classificacao": "B"
+  },
+  {
+    "id": "Q8-L112",
+    "quadra": 8,
+    "lote": 112,
+    "area": 1500.0,
+    "rua": "Rua Murici",
+    "valorTotal": 456300.0,
+    "valorM2": 304.2,
+    "classificacao": "A"
+  },
+  {
+    "id": "Q8-L113",
+    "quadra": 8,
+    "lote": 113,
+    "area": 1500.0,
+    "rua": "Rua Murici",
+    "valorTotal": 456300.0,
+    "valorM2": 304.2,
+    "classificacao": "A"
+  },
+  {
+    "id": "Q8-L115",
+    "quadra": 8,
+    "lote": 115,
+    "area": 1500.0,
+    "rua": "Rua Murici",
+    "valorTotal": 456300.0,
+    "valorM2": 304.2,
+    "classificacao": "A"
+  },
+  {
+    "id": "Q8-L116",
+    "quadra": 8,
+    "lote": 116,
+    "area": 1500.0,
+    "rua": "Rua Murici",
+    "valorTotal": 479115.0,
+    "valorM2": 319.41,
+    "classificacao": "A"
+  },
+  {
+    "id": "Q8-L117",
+    "quadra": 8,
+    "lote": 117,
+    "area": 1895.6,
+    "rua": "Rua Baru / Rua Cagaita",
+    "valorTotal": 578016.79,
+    "valorM2": 304.93,
+    "classificacao": "B"
+  },
+  {
+    "id": "Q8-L118",
+    "quadra": 8,
+    "lote": 118,
+    "area": 2197.01,
+    "rua": "Rua Baru",
+    "valorTotal": 610276.84,
+    "valorM2": 277.78,
+    "classificacao": "B"
+  },
+  {
+    "id": "Q8-L119",
+    "quadra": 8,
+    "lote": 119,
+    "area": 2115.11,
+    "rua": "Rua Baru",
+    "valorTotal": 590843.93,
+    "valorM2": 279.34,
+    "classificacao": "B"
+  },
+  {
+    "id": "Q8-L121",
+    "quadra": 8,
+    "lote": 121,
+    "area": 1616.21,
+    "rua": "Rua Baru",
+    "valorTotal": 503327.8,
+    "valorM2": 311.42,
+    "classificacao": "B"
+  },
+  {
+    "id": "Q9-L123",
+    "quadra": 9,
+    "lote": 123,
+    "area": 1500.0,
+    "rua": "Rua Murici",
+    "valorTotal": 456300.0,
+    "valorM2": 304.2,
+    "classificacao": "A"
+  },
+  {
+    "id": "Q9-L124",
+    "quadra": 9,
+    "lote": 124,
+    "area": 1500.0,
+    "rua": "Rua Murici",
+    "valorTotal": 456300.0,
+    "valorM2": 304.2,
+    "classificacao": "A"
+  },
+  {
+    "id": "Q9-L125",
+    "quadra": 9,
+    "lote": 125,
+    "area": 1500.0,
+    "rua": "Rua Murici",
+    "valorTotal": 456300.0,
+    "valorM2": 304.2,
+    "classificacao": "A"
+  },
+  {
+    "id": "Q9-L126",
+    "quadra": 9,
+    "lote": 126,
+    "area": 1500.0,
+    "rua": "Rua Murici",
+    "valorTotal": 456300.0,
+    "valorM2": 304.2,
+    "classificacao": "A"
+  },
+  {
+    "id": "Q9-L127",
+    "quadra": 9,
+    "lote": 127,
+    "area": 1593.48,
+    "rua": "Rua Murici / Rua Jatobá",
+    "valorTotal": 508973.45,
+    "valorM2": 319.41,
+    "classificacao": "A"
+  },
+  {
+    "id": "Q9-L128",
+    "quadra": 9,
+    "lote": 128,
+    "area": 1500.39,
+    "rua": "Rua Baru",
+    "valorTotal": 479239.57,
+    "valorM2": 319.41,
+    "classificacao": "A"
+  },
+  {
+    "id": "Q9-L129",
+    "quadra": 9,
+    "lote": 129,
+    "area": 1500.0,
+    "rua": "Rua Baru",
+    "valorTotal": 433770.19,
+    "valorM2": 289.18,
+    "classificacao": "C"
+  },
+  {
+    "id": "Q9-L130",
+    "quadra": 9,
+    "lote": 130,
+    "area": 1500.0,
+    "rua": "Rua Baru",
+    "valorTotal": 444892.5,
+    "valorM2": 296.59,
+    "classificacao": "B"
+  },
+  {
+    "id": "Q9-L132",
+    "quadra": 9,
+    "lote": 132,
+    "area": 1500.0,
+    "rua": "Rua Baru",
+    "valorTotal": 444892.5,
+    "valorM2": 296.59,
+    "classificacao": "B"
+  },
+  {
+    "id": "Q9-L133",
+    "quadra": 9,
+    "lote": 133,
+    "area": 1593.48,
+    "rua": "Rua Baru / Rua Jatobá",
+    "valorTotal": 483842.88,
+    "valorM2": 303.64,
+    "classificacao": "C"
+  },
+  {
+    "id": "Q10-L136",
+    "quadra": 10,
+    "lote": 136,
+    "area": 1500.0,
+    "rua": "Rua Murici",
+    "valorTotal": 456300.0,
+    "valorM2": 304.2,
+    "classificacao": "A"
+  },
+  {
+    "id": "Q10-L137",
+    "quadra": 10,
+    "lote": 137,
+    "area": 1500.0,
+    "rua": "Rua Murici",
+    "valorTotal": 456300.0,
+    "valorM2": 304.2,
+    "classificacao": "A"
+  },
+  {
+    "id": "Q10-L138",
+    "quadra": 10,
+    "lote": 138,
+    "area": 1500.0,
+    "rua": "Rua Murici",
+    "valorTotal": 456300.0,
+    "valorM2": 304.2,
+    "classificacao": "A"
+  },
+  {
+    "id": "Q10-L139",
+    "quadra": 10,
+    "lote": 139,
+    "area": 1500.0,
+    "rua": "Rua Murici",
+    "valorTotal": 456300.0,
+    "valorM2": 304.2,
+    "classificacao": "A"
+  },
+  {
+    "id": "Q10-L140",
+    "quadra": 10,
+    "lote": 140,
+    "area": 1500.0,
+    "rua": "Rua Murici",
+    "valorTotal": 456300.0,
+    "valorM2": 304.2,
+    "classificacao": "A"
+  },
+  {
+    "id": "Q10-L141",
+    "quadra": 10,
+    "lote": 141,
+    "area": 1500.0,
+    "rua": "Rua Murici",
+    "valorTotal": 456300.0,
+    "valorM2": 304.2,
+    "classificacao": "A"
+  },
+  {
+    "id": "Q10-L142",
+    "quadra": 10,
+    "lote": 142,
+    "area": 1500.0,
+    "rua": "Rua Murici",
+    "valorTotal": 456300.0,
+    "valorM2": 304.2,
+    "classificacao": "A"
+  },
+  {
+    "id": "Q10-L143",
+    "quadra": 10,
+    "lote": 143,
+    "area": 1500.0,
+    "rua": "Rua Murici",
+    "valorTotal": 456300.0,
+    "valorM2": 304.2,
+    "classificacao": "A"
+  },
+  {
+    "id": "Q10-L144",
+    "quadra": 10,
+    "lote": 144,
+    "area": 1500.0,
+    "rua": "Rua Murici",
+    "valorTotal": 456300.0,
+    "valorM2": 304.2,
+    "classificacao": "A"
+  },
+  {
+    "id": "Q10-L145",
+    "quadra": 10,
+    "lote": 145,
+    "area": 2925.58,
+    "rua": "Rua Murici / Rua Guavira",
+    "valorTotal": 752322.34,
+    "valorM2": 257.15,
+    "classificacao": "A"
+  },
+  {
+    "id": "Q10-L146",
+    "quadra": 10,
+    "lote": 146,
+    "area": 1534.64,
+    "rua": "Rua Baru / Rua Jatobá",
+    "valorTotal": 465976.76,
+    "valorM2": 303.64,
+    "classificacao": "C"
+  },
+  {
+    "id": "Q10-L147",
+    "quadra": 10,
+    "lote": 147,
+    "area": 1500.0,
+    "rua": "Rua Baru",
+    "valorTotal": 433770.19,
+    "valorM2": 289.18,
+    "classificacao": "C"
+  },
+  {
+    "id": "Q10-L148",
+    "quadra": 10,
+    "lote": 148,
+    "area": 1500.0,
+    "rua": "Rua Baru",
+    "valorTotal": 433770.19,
+    "valorM2": 289.18,
+    "classificacao": "C"
+  },
+  {
+    "id": "Q10-L149",
+    "quadra": 10,
+    "lote": 149,
+    "area": 1500.0,
+    "rua": "Rua Baru",
+    "valorTotal": 433770.19,
+    "valorM2": 289.18,
+    "classificacao": "C"
+  },
+  {
+    "id": "Q10-L150",
+    "quadra": 10,
+    "lote": 150,
+    "area": 1500.0,
+    "rua": "Rua Baru",
+    "valorTotal": 433770.19,
+    "valorM2": 289.18,
+    "classificacao": "C"
+  },
+  {
+    "id": "Q10-L151",
+    "quadra": 10,
+    "lote": 151,
+    "area": 1500.0,
+    "rua": "Rua Baru",
+    "valorTotal": 422925.93,
+    "valorM2": 281.95,
+    "classificacao": "D"
+  },
+  {
+    "id": "Q10-L152",
+    "quadra": 10,
+    "lote": 152,
+    "area": 1500.0,
+    "rua": "Rua Baru",
+    "valorTotal": 422925.93,
+    "valorM2": 281.95,
+    "classificacao": "D"
+  },
+  {
+    "id": "Q10-L153",
+    "quadra": 10,
+    "lote": 153,
+    "area": 1500.0,
+    "rua": "Rua Baru",
+    "valorTotal": 433770.19,
+    "valorM2": 289.18,
+    "classificacao": "C"
+  },
+  {
+    "id": "Q10-L154",
+    "quadra": 10,
+    "lote": 154,
+    "area": 1500.0,
+    "rua": "Rua Baru",
+    "valorTotal": 433770.19,
+    "valorM2": 289.18,
+    "classificacao": "C"
+  },
+  {
+    "id": "Q10-L155",
+    "quadra": 10,
+    "lote": 155,
+    "area": 1500.0,
+    "rua": "Rua Baru",
+    "valorTotal": 433770.19,
+    "valorM2": 289.18,
+    "classificacao": "C"
+  },
+  {
+    "id": "Q10-L158",
+    "quadra": 10,
+    "lote": 158,
+    "area": 2947.89,
+    "rua": "Rua Baru / Rua Guavira",
+    "valorTotal": 701258.14,
+    "valorM2": 237.88,
+    "classificacao": "D"
+  },
+  {
+    "id": "Q11-L159",
+    "quadra": 11,
+    "lote": 159,
+    "area": 1644.78,
+    "rua": "Rua Baru / Rua Cagaita",
+    "valorTotal": 504413.77,
+    "valorM2": 306.68,
+    "classificacao": "C"
+  },
+  {
+    "id": "Q11-L161",
+    "quadra": 11,
+    "lote": 161,
+    "area": 2197.01,
+    "rua": "Rua Baru",
+    "valorTotal": 585945.86,
+    "valorM2": 266.7,
+    "classificacao": "D"
+  },
+  {
+    "id": "Q11-L162",
+    "quadra": 11,
+    "lote": 162,
+    "area": 2536.35,
+    "rua": "Rua Baru",
+    "valorTotal": 658840.36,
+    "valorM2": 259.76,
+    "classificacao": "D"
+  },
+  {
+    "id": "Q11-L163",
+    "quadra": 11,
+    "lote": 163,
+    "area": 1644.78,
+    "rua": "Rua Guavira / Rua Cagaita",
+    "valorTotal": 462891.71,
+    "valorM2": 281.43,
+    "classificacao": "F"
+  },
+  {
+    "id": "Q11-L164",
+    "quadra": 11,
+    "lote": 164,
+    "area": 1500.0,
+    "rua": "Rua Guavira",
+    "valorTotal": 398023.53,
+    "valorM2": 265.35,
+    "classificacao": "F"
+  },
+  {
+    "id": "Q11-L165",
+    "quadra": 11,
+    "lote": 165,
+    "area": 1500.0,
+    "rua": "Rua Guavira",
+    "valorTotal": 398023.53,
+    "valorM2": 265.35,
+    "classificacao": "F"
+  },
+  {
+    "id": "Q11-L166",
+    "quadra": 11,
+    "lote": 166,
+    "area": 1500.0,
+    "rua": "Rua Guavira",
+    "valorTotal": 408229.26,
+    "valorM2": 272.15,
+    "classificacao": "E"
+  },
+  {
+    "id": "Q11-L167",
+    "quadra": 11,
+    "lote": 167,
+    "area": 1500.0,
+    "rua": "Rua Guavira",
+    "valorTotal": 408229.26,
+    "valorM2": 272.15,
+    "classificacao": "E"
+  },
+  {
+    "id": "Q11-L168",
+    "quadra": 11,
+    "lote": 168,
+    "area": 1500.0,
+    "rua": "Rua Guavira",
+    "valorTotal": 412352.78,
+    "valorM2": 274.9,
+    "classificacao": "E"
+  },
+  {
+    "id": "Q11-L169",
+    "quadra": 11,
+    "lote": 169,
+    "area": 1500.0,
+    "rua": "Rua Guavira",
+    "valorTotal": 412352.78,
+    "valorM2": 274.9,
+    "classificacao": "E"
+  },
+  {
+    "id": "Q12-L171",
+    "quadra": 12,
+    "lote": 171,
+    "area": 1500.0,
+    "rua": "Rua Baru",
+    "valorTotal": 444072.23,
+    "valorM2": 296.05,
+    "classificacao": "D"
+  },
+  {
+    "id": "Q12-L172",
+    "quadra": 12,
+    "lote": 172,
+    "area": 1500.0,
+    "rua": "Rua Baru",
+    "valorTotal": 422925.93,
+    "valorM2": 281.95,
+    "classificacao": "D"
+  },
+  {
+    "id": "Q12-L173",
+    "quadra": 12,
+    "lote": 173,
+    "area": 1500.0,
+    "rua": "Rua Baru",
+    "valorTotal": 422925.93,
+    "valorM2": 281.95,
+    "classificacao": "D"
+  },
+  {
+    "id": "Q12-L175",
+    "quadra": 12,
+    "lote": 175,
+    "area": 1500.0,
+    "rua": "Rua Baru",
+    "valorTotal": 444892.5,
+    "valorM2": 296.59,
+    "classificacao": "B"
+  },
+  {
+    "id": "Q12-L176",
+    "quadra": 12,
+    "lote": 176,
+    "area": 1500.0,
+    "rua": "Rua Baru",
+    "valorTotal": 444892.5,
+    "valorM2": 296.59,
+    "classificacao": "B"
+  },
+  {
+    "id": "Q12-L177",
+    "quadra": 12,
+    "lote": 177,
+    "area": 1505.14,
+    "rua": "Rua Baru / Rua Araça",
+    "valorTotal": 468737.85,
+    "valorM2": 311.42,
+    "classificacao": "B"
+  },
+  {
+    "id": "Q12-L178",
+    "quadra": 12,
+    "lote": 178,
+    "area": 1500.0,
+    "rua": "Rua Guavira",
+    "valorTotal": 432970.42,
+    "valorM2": 288.65,
+    "classificacao": "E"
+  },
+  {
+    "id": "Q12-L179",
+    "quadra": 12,
+    "lote": 179,
+    "area": 1500.0,
+    "rua": "Rua Guavira",
+    "valorTotal": 412352.78,
+    "valorM2": 274.9,
+    "classificacao": "E"
+  },
+  {
+    "id": "Q12-L180",
+    "quadra": 12,
+    "lote": 180,
+    "area": 1500.0,
+    "rua": "Rua Guavira",
+    "valorTotal": 412352.78,
+    "valorM2": 274.9,
+    "classificacao": "E"
+  },
+  {
+    "id": "Q12-L182",
+    "quadra": 12,
+    "lote": 182,
+    "area": 1500.0,
+    "rua": "Rua Guavira",
+    "valorTotal": 433770.19,
+    "valorM2": 289.18,
+    "classificacao": "C"
+  },
+  {
+    "id": "Q12-L183",
+    "quadra": 12,
+    "lote": 183,
+    "area": 1500.0,
+    "rua": "Rua Guavira",
+    "valorTotal": 433770.19,
+    "valorM2": 289.18,
+    "classificacao": "C"
+  },
+  {
+    "id": "Q12-L184",
+    "quadra": 12,
+    "lote": 184,
+    "area": 1505.14,
+    "rua": "Rua Guavira / Rua Araça",
+    "valorTotal": 445593.92,
+    "valorM2": 296.05,
+    "classificacao": "D"
+  },
+  {
+    "id": "Q13-L186",
+    "quadra": 13,
+    "lote": 186,
+    "area": 1500.0,
+    "rua": "Rua Baru",
+    "valorTotal": 444892.5,
+    "valorM2": 296.59,
+    "classificacao": "B"
+  },
+  {
+    "id": "Q13-L187",
+    "quadra": 13,
+    "lote": 187,
+    "area": 1500.0,
+    "rua": "Rua Baru",
+    "valorTotal": 444892.5,
+    "valorM2": 296.59,
+    "classificacao": "B"
+  },
+  {
+    "id": "Q13-L188",
+    "quadra": 13,
+    "lote": 188,
+    "area": 1500.0,
+    "rua": "Rua Baru",
+    "valorTotal": 433770.19,
+    "valorM2": 289.18,
+    "classificacao": "C"
+  },
+  {
+    "id": "Q13-L189",
+    "quadra": 13,
+    "lote": 189,
+    "area": 1500.0,
+    "rua": "Rua Baru",
+    "valorTotal": 433770.19,
+    "valorM2": 289.18,
+    "classificacao": "C"
+  },
+  {
+    "id": "Q13-L190",
+    "quadra": 13,
+    "lote": 190,
+    "area": 1500.0,
+    "rua": "Rua Baru",
+    "valorTotal": 422925.93,
+    "valorM2": 281.95,
+    "classificacao": "D"
+  },
+  {
+    "id": "Q13-L191",
+    "quadra": 13,
+    "lote": 191,
+    "area": 1500.0,
+    "rua": "Rua Baru",
+    "valorTotal": 422925.93,
+    "valorM2": 281.95,
+    "classificacao": "D"
+  },
+  {
+    "id": "Q13-L192",
+    "quadra": 13,
+    "lote": 192,
+    "area": 1500.0,
+    "rua": "Rua Baru",
+    "valorTotal": 433770.19,
+    "valorM2": 289.18,
+    "classificacao": "C"
+  },
+  {
+    "id": "Q13-L193",
+    "quadra": 13,
+    "lote": 193,
+    "area": 1500.0,
+    "rua": "Rua Baru",
+    "valorTotal": 433770.19,
+    "valorM2": 289.18,
+    "classificacao": "C"
+  },
+  {
+    "id": "Q13-L194",
+    "quadra": 13,
+    "lote": 194,
+    "area": 1500.0,
+    "rua": "Rua Baru",
+    "valorTotal": 433770.19,
+    "valorM2": 289.18,
+    "classificacao": "C"
+  },
+  {
+    "id": "Q13-L195",
+    "quadra": 13,
+    "lote": 195,
+    "area": 1500.0,
+    "rua": "Rua Baru",
+    "valorTotal": 433770.19,
+    "valorM2": 289.18,
+    "classificacao": "C"
+  },
+  {
+    "id": "Q13-L197",
+    "quadra": 13,
+    "lote": 197,
+    "area": 1500.0,
+    "rua": "Rua Baru",
+    "valorTotal": 433770.19,
+    "valorM2": 289.18,
+    "classificacao": "C"
+  },
+  {
+    "id": "Q13-L198",
+    "quadra": 13,
+    "lote": 198,
+    "area": 2808.72,
+    "rua": "Rua Baru / Rua Guavira",
+    "valorTotal": 676538.12,
+    "valorM2": 240.87,
+    "classificacao": "D"
+  },
+  {
+    "id": "Q13-L199",
+    "quadra": 13,
+    "lote": 199,
+    "area": 1534.64,
+    "rua": "Rua Guavira / Rua Araça",
+    "valorTotal": 454327.34,
+    "valorM2": 296.05,
+    "classificacao": "D"
+  },
+  {
+    "id": "Q13-L200",
+    "quadra": 13,
+    "lote": 200,
+    "area": 1500.0,
+    "rua": "Rua Guavira",
+    "valorTotal": 422925.93,
+    "valorM2": 281.95,
+    "classificacao": "D"
+  },
+  {
+    "id": "Q13-L201",
+    "quadra": 13,
+    "lote": 201,
+    "area": 1500.0,
+    "rua": "Rua Guavira",
+    "valorTotal": 412352.78,
+    "valorM2": 274.9,
+    "classificacao": "E"
+  },
+  {
+    "id": "Q13-L202",
+    "quadra": 13,
+    "lote": 202,
+    "area": 1500.0,
+    "rua": "Rua Guavira",
+    "valorTotal": 412352.78,
+    "valorM2": 274.9,
+    "classificacao": "E"
+  },
+  {
+    "id": "Q13-L203",
+    "quadra": 13,
+    "lote": 203,
+    "area": 1500.0,
+    "rua": "Rua Guavira",
+    "valorTotal": 402043.96,
+    "valorM2": 268.03,
+    "classificacao": "F"
+  },
+  {
+    "id": "Q13-L204",
+    "quadra": 13,
+    "lote": 204,
+    "area": 1500.0,
+    "rua": "Rua Guavira",
+    "valorTotal": 402043.96,
+    "valorM2": 268.03,
+    "classificacao": "F"
+  },
+  {
+    "id": "Q13-L207",
+    "quadra": 13,
+    "lote": 207,
+    "area": 1500.0,
+    "rua": "Rua Guavira",
+    "valorTotal": 433770.19,
+    "valorM2": 289.18,
+    "classificacao": "C"
+  },
+  {
+    "id": "Q13-L208",
+    "quadra": 13,
+    "lote": 208,
+    "area": 1500.0,
+    "rua": "Rua Guavira",
+    "valorTotal": 433770.19,
+    "valorM2": 289.18,
+    "classificacao": "C"
+  },
+  {
+    "id": "Q13-L209",
+    "quadra": 13,
+    "lote": 209,
+    "area": 1500.0,
+    "rua": "Rua Guavira",
+    "valorTotal": 433770.19,
+    "valorM2": 289.18,
+    "classificacao": "C"
+  },
+  {
+    "id": "Q13-L210",
+    "quadra": 13,
+    "lote": 210,
+    "area": 1500.0,
+    "rua": "Rua Guavira",
+    "valorTotal": 433770.19,
+    "valorM2": 289.18,
+    "classificacao": "C"
+  },
+  {
+    "id": "Q13-L211",
+    "quadra": 13,
+    "lote": 211,
+    "area": 1500.0,
+    "rua": "Rua Guavira",
+    "valorTotal": 433770.19,
+    "valorM2": 289.18,
+    "classificacao": "C"
+  },
+  {
+    "id": "Q13-L212",
+    "quadra": 13,
+    "lote": 212,
+    "area": 1500.0,
+    "rua": "Rua Guavira",
+    "valorTotal": 422925.93,
+    "valorM2": 281.95,
+    "classificacao": "D"
+  }
+]
