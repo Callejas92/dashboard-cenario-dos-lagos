@@ -27,7 +27,6 @@ export default function TabVisaoGeral({ data }: Props) {
   const kpis = calcKPIs(data.semanas, data.config.metas, data.config.vgv);
 
   const [expandedKPI, setExpandedKPI] = useState<MetricKey | null>(null);
-  const [viewMode, setViewMode] = useState<"semanal" | "acumulado">("semanal");
   const [detailView, setDetailView] = useState<"tabela" | "grafico">("tabela");
 
   // Week range filter
@@ -48,9 +47,19 @@ export default function TabVisaoGeral({ data }: Props) {
         lq += c.leadsQualificados;
         comp += c.comparecimentos;
       }
+      // Format: "01-07 Mar"
+      const formatWeekName = () => {
+        if (!s.inicio || !s.fim) return `S${s.semana}`;
+        const di = new Date(s.inicio + "T00:00:00");
+        const df = new Date(s.fim + "T00:00:00");
+        const dayI = di.toLocaleDateString("pt-BR", { day: "2-digit" });
+        const dayF = df.toLocaleDateString("pt-BR", { day: "2-digit" });
+        const monthF = df.toLocaleDateString("pt-BR", { month: "short" }).replace(".", "");
+        return `${dayI}-${dayF} ${monthF.charAt(0).toUpperCase() + monthF.slice(1)}`;
+      };
       return {
         semana: s.semana,
-        name: `S${s.semana}`,
+        name: formatWeekName(),
         inicio: s.inicio,
         fim: s.fim,
         investimento: inv,
@@ -91,7 +100,7 @@ export default function TabVisaoGeral({ data }: Props) {
     });
   }, [weeklyData]);
 
-  const chartData = viewMode === "semanal" ? weeklyData : cumulativeData;
+  const chartData = weeklyData;
 
   // ---------- Monthly grouped data ----------
   const monthlyData = useMemo(() => {
@@ -418,56 +427,21 @@ export default function TabVisaoGeral({ data }: Props) {
           <span className="text-xs font-bold" style={{ color: "var(--text-dim)" }}>
             SELECIONE O PERIODO (clique para inicio, clique novamente para fim)
           </span>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => { setWeekStart(1); setWeekEnd(totalWeeks); }}
-              style={{
-                padding: "0.25rem 0.75rem",
-                fontSize: "0.7rem",
-                fontWeight: 600,
-                borderRadius: "0.375rem",
-                background: (weekStart === 1 && weekEnd === totalWeeks) ? "#4285f4" : "var(--surface)",
-                color: (weekStart === 1 && weekEnd === totalWeeks) ? "#fff" : "var(--text-dim)",
-                border: "1px solid var(--border)",
-                cursor: "pointer",
-              }}
-            >
-              Todas
-            </button>
-            {/* View mode toggle */}
-            <div style={{ display: "inline-flex", borderRadius: "0.5rem", overflow: "hidden", border: "1px solid var(--border)" }}>
-              <button
-                onClick={() => setViewMode("semanal")}
-                style={{
-                  padding: "0.375rem 1rem",
-                  fontSize: "0.75rem",
-                  fontWeight: 600,
-                  background: viewMode === "semanal" ? "#e94560" : "var(--surface)",
-                  color: viewMode === "semanal" ? "#fff" : "var(--text-muted)",
-                  border: "none",
-                  cursor: "pointer",
-                  transition: "all 0.2s",
-                }}
-              >
-                Semanal
-              </button>
-              <button
-                onClick={() => setViewMode("acumulado")}
-                style={{
-                  padding: "0.375rem 1rem",
-                  fontSize: "0.75rem",
-                  fontWeight: 600,
-                  background: viewMode === "acumulado" ? "#e94560" : "var(--surface)",
-                  color: viewMode === "acumulado" ? "#fff" : "var(--text-muted)",
-                  border: "none",
-                  cursor: "pointer",
-                  transition: "all 0.2s",
-                }}
-              >
-                Acumulado
-              </button>
-            </div>
-          </div>
+          <button
+            onClick={() => { setWeekStart(1); setWeekEnd(totalWeeks); }}
+            style={{
+              padding: "0.25rem 0.75rem",
+              fontSize: "0.7rem",
+              fontWeight: 600,
+              borderRadius: "0.375rem",
+              background: (weekStart === 1 && weekEnd === totalWeeks) ? "#4285f4" : "var(--surface)",
+              color: (weekStart === 1 && weekEnd === totalWeeks) ? "#fff" : "var(--text-dim)",
+              border: "1px solid var(--border)",
+              cursor: "pointer",
+            }}
+          >
+            Todas
+          </button>
         </div>
 
         {/* Visual week calendar */}
@@ -476,11 +450,6 @@ export default function TabVisaoGeral({ data }: Props) {
             const isSelected = w.semana >= weekStart && w.semana <= weekEnd;
             const isStart = w.semana === weekStart;
             const isEnd = w.semana === weekEnd;
-
-            const formatDate = (d: string) => {
-              if (!d) return "";
-              return new Date(d + "T00:00:00").toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
-            };
 
             return (
               <button
@@ -521,13 +490,7 @@ export default function TabVisaoGeral({ data }: Props) {
                   minWidth: 0,
                 }}
               >
-                <div style={{ fontSize: "0.85rem", fontWeight: 700 }}>S{w.semana}</div>
-                <div style={{ fontSize: "0.6rem", opacity: 0.8, lineHeight: 1.2 }}>
-                  {formatDate(w.inicio)}
-                </div>
-                <div style={{ fontSize: "0.6rem", opacity: 0.8, lineHeight: 1.2 }}>
-                  {formatDate(w.fim)}
-                </div>
+                <div style={{ fontSize: "0.75rem", fontWeight: 700 }}>{w.name}</div>
               </button>
             );
           })}
@@ -613,7 +576,7 @@ export default function TabVisaoGeral({ data }: Props) {
       {/* ===== 3. Chart: Leads x Vendas ===== */}
       <div className="kpi-card">
         <h3 className="text-sm font-bold mb-4" style={{ color: "var(--text-muted)" }}>
-          LEADS x VENDAS {viewMode === "acumulado" ? "(ACUMULADO)" : "POR SEMANA"}
+          LEADS x VENDAS POR SEMANA
         </h3>
         <ResponsiveContainer width="100%" height={320}>
           <BarChart data={chartData} barCategoryGap="20%">
@@ -638,7 +601,7 @@ export default function TabVisaoGeral({ data }: Props) {
       {/* ===== 4. Chart: Receita x Investimento ===== */}
       <div className="kpi-card">
         <h3 className="text-sm font-bold mb-4" style={{ color: "var(--text-muted)" }}>
-          RECEITA x INVESTIMENTO {viewMode === "acumulado" ? "(ACUMULADO)" : "(SEMANAL)"}
+          RECEITA x INVESTIMENTO
         </h3>
         <ResponsiveContainer width="100%" height={320}>
           <AreaChart data={chartData}>

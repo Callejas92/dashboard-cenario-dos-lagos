@@ -53,27 +53,53 @@ export default function TabAnalytics() {
 
   return (
     <div className="space-y-6">
-      {/* Header com seletor de periodo */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <Globe size={18} style={{ color: "#4285f4" }} />
-          <h3 className="text-sm font-bold" style={{ color: "var(--text)" }}>Google Analytics — mangabaurbanismo.com.br</h3>
+      {/* Header */}
+      <div className="flex items-center gap-3 mb-2">
+        <Globe size={18} style={{ color: "#4285f4" }} />
+        <h3 className="text-sm font-bold" style={{ color: "var(--text)" }}>Google Analytics — mangabaurbanismo.com.br</h3>
+        <button onClick={fetchData} disabled={loading} className="p-1.5 rounded-lg hover:bg-white/5 ml-auto">
+          <RefreshCw size={14} className={loading ? "animate-spin" : ""} style={{ color: "var(--text-dim)" }} />
+        </button>
+      </div>
+
+      {/* Period Filter - same style as TabVisaoGeral */}
+      <div className="kpi-card">
+        <div className="flex flex-wrap items-center justify-between gap-4 mb-3">
+          <span className="text-xs font-bold" style={{ color: "var(--text-dim)" }}>
+            SELECIONE O PERIODO
+          </span>
         </div>
-        <div className="flex items-center gap-2">
-          {[7, 14, 30, 90].map((d) => (
-            <button
-              key={d}
-              onClick={() => setDays(d)}
-              className={`px-3 py-1 rounded-lg text-xs font-semibold transition-all ${
-                days === d ? "tab-active" : "tab-inactive"
-              }`}
-            >
-              {d}d
-            </button>
-          ))}
-          <button onClick={fetchData} disabled={loading} className="p-1.5 rounded-lg hover:bg-white/5">
-            <RefreshCw size={14} className={loading ? "animate-spin" : ""} style={{ color: "var(--text-dim)" }} />
-          </button>
+        <div style={{ display: "grid", gridTemplateColumns: `repeat(6, 1fr)`, gap: "0.375rem" }}>
+          {[
+            { value: 7, label: "7 dias" },
+            { value: 14, label: "14 dias" },
+            { value: 30, label: "30 dias" },
+            { value: 60, label: "60 dias" },
+            { value: 90, label: "90 dias" },
+            { value: 365, label: "Total" },
+          ].map((period) => {
+            const isSelected = days === period.value;
+            return (
+              <button
+                key={period.value}
+                onClick={() => setDays(period.value)}
+                style={{
+                  padding: "0.5rem 0.25rem",
+                  borderRadius: "0.5rem",
+                  background: isSelected ? "#4285f4" : "var(--surface)",
+                  color: isSelected ? "#fff" : "var(--text-muted)",
+                  border: isSelected ? "1px solid #4285f4" : "1px solid var(--border)",
+                  cursor: "pointer",
+                  transition: "all 0.15s ease",
+                  textAlign: "center",
+                  fontSize: "0.75rem",
+                  fontWeight: 700,
+                }}
+              >
+                {period.label}
+              </button>
+            );
+          })}
         </div>
       </div>
 
