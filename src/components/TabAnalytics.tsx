@@ -1,9 +1,10 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { RefreshCw, Globe, Users, Clock, MousePointer, Eye, XCircle } from "lucide-react";
 import { BarChart, Bar, LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend } from "recharts";
 import KPICard from "./KPICard";
+import DateRangeFilter from "./DateRangeFilter";
 import { formatNumber } from "@/lib/types";
 
 interface AnalyticsData {
@@ -24,17 +25,32 @@ interface AnalyticsData {
   fetchedAt?: string;
 }
 
-const COLORS = ["#4285f4", "#e94560", "#10b981", "#f4a236", "#8b5cf6", "#ec4899", "#06b6d4", "#84cc16"];
+function today() {
+  return new Date().toISOString().split("T")[0];
+}
+
+function daysAgo(n: number) {
+  const d = new Date();
+  d.setDate(d.getDate() - n);
+  return d.toISOString().split("T")[0];
+}
 
 export default function TabAnalytics() {
   const [data, setData] = useState<AnalyticsData | null>(null);
   const [loading, setLoading] = useState(false);
-  const [days, setDays] = useState(30);
+
+  // Date range state
+  const [startDate, setStartDate] = useState(daysAgo(30));
+  const [endDate, setEndDate] = useState(today());
+  const [activeQuick, setActiveQuick] = useState<number | "total" | null>(30);
+
+  // Calculate days from date range
+  const days = Math.max(1, Math.ceil((new Date(endDate).getTime() - new Date(startDate).getTime()) / (1000 * 60 * 60 * 24)));
 
   async function fetchData() {
     setLoading(true);
     try {
-      const res = await fetch(`/api/analytics?days=${days}`);
+      const res = await fetch(`/api/analytics?days=${days}&startDate=${startDate}&endDate=${endDate}`);
       setData(await res.json());
     } catch {
       setData({ configured: false, message: "Erro de conexao" });
@@ -42,7 +58,18 @@ export default function TabAnalytics() {
     setLoading(false);
   }
 
-  useEffect(() => { fetchData(); }, [days]);
+  useEffect(() => { fetchData(); }, [startDate, endDate]);
+
+  const handleQuickSelect = useCallback((value: number | "total") => {
+    setActiveQuick(value);
+    if (value === "total") {
+      setStartDate("2020-01-01");
+      setEndDate(today());
+    } else {
+      setStartDate(daysAgo(value));
+      setEndDate(today());
+    }
+  }, []);
 
   const tooltipStyle = {
     contentStyle: { background: "var(--tooltip-bg)", border: "1px solid var(--tooltip-border)", borderRadius: "0.75rem", color: "var(--tooltip-text)" },
@@ -62,46 +89,15 @@ export default function TabAnalytics() {
         </button>
       </div>
 
-      {/* Period Filter - same style as TabVisaoGeral */}
-      <div className="kpi-card">
-        <div className="flex flex-wrap items-center justify-between gap-4 mb-3">
-          <span className="text-xs font-bold" style={{ color: "var(--text-dim)" }}>
-            SELECIONE O PERIODO
-          </span>
-        </div>
-        <div style={{ display: "grid", gridTemplateColumns: `repeat(6, 1fr)`, gap: "0.375rem" }}>
-          {[
-            { value: 7, label: "7 dias" },
-            { value: 14, label: "14 dias" },
-            { value: 30, label: "30 dias" },
-            { value: 60, label: "60 dias" },
-            { value: 90, label: "90 dias" },
-            { value: 365, label: "Total" },
-          ].map((period) => {
-            const isSelected = days === period.value;
-            return (
-              <button
-                key={period.value}
-                onClick={() => setDays(period.value)}
-                style={{
-                  padding: "0.5rem 0.25rem",
-                  borderRadius: "0.5rem",
-                  background: isSelected ? "#4285f4" : "var(--surface)",
-                  color: isSelected ? "#fff" : "var(--text-muted)",
-                  border: isSelected ? "1px solid #4285f4" : "1px solid var(--border)",
-                  cursor: "pointer",
-                  transition: "all 0.15s ease",
-                  textAlign: "center",
-                  fontSize: "0.75rem",
-                  fontWeight: 700,
-                }}
-              >
-                {period.label}
-              </button>
-            );
-          })}
-        </div>
-      </div>
+      {/* Date Range Filter */}
+      <DateRangeFilter
+        startDate={startDate}
+        endDate={endDate}
+        onStartChange={(d) => { setStartDate(d); setActiveQuick(null); }}
+        onEndChange={(d) => { setEndDate(d); setActiveQuick(null); }}
+        onQuickSelect={handleQuickSelect}
+        activeQuick={activeQuick}
+      />
 
       {!data?.configured && (
         <div className="kpi-card text-center py-12">

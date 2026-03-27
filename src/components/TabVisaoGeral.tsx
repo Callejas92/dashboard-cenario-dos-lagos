@@ -1,13 +1,14 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useCallback } from "react";
 import {
-  BarChart, Bar, LineChart, Line, AreaChart, Area,
+  BarChart, Bar, AreaChart, Area,
   XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
-  Legend, ComposedChart,
+  Legend, ComposedChart, Line,
 } from "recharts";
 import { DollarSign, Users, ShoppingCart, Target, ChevronDown, ChevronUp, Table, BarChart3, X } from "lucide-react";
 import KPICard from "./KPICard";
+import DateRangeFilter from "./DateRangeFilter";
 import { MetricsData, calcKPIs, formatBRL, formatPercent, formatNumber } from "@/lib/types";
 
 interface Props {
@@ -23,16 +24,29 @@ function getMonthFromDate(dateStr: string): string {
   return date.toLocaleDateString("pt-BR", { month: "short", year: "2-digit" });
 }
 
+// Helper: format date for display
+function formatDateBR(d: string) {
+  if (!d) return "";
+  return new Date(d + "T00:00:00").toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
+}
+
+// Helper: get today in yyyy-mm-dd
+function today() {
+  return new Date().toISOString().split("T")[0];
+}
+
+// Helper: get date N days ago in yyyy-mm-dd
+function daysAgo(n: number) {
+  const d = new Date();
+  d.setDate(d.getDate() - n);
+  return d.toISOString().split("T")[0];
+}
+
 export default function TabVisaoGeral({ data }: Props) {
   const kpis = calcKPIs(data.semanas, data.config.metas, data.config.vgv);
 
   const [expandedKPI, setExpandedKPI] = useState<MetricKey | null>(null);
   const [detailView, setDetailView] = useState<"tabela" | "grafico">("tabela");
-
-  // Week range filter
-  const totalWeeks = data.semanas.length;
-  const [weekStart, setWeekStart] = useState(1);
-  const [weekEnd, setWeekEnd] = useState(totalWeeks);
 
   // ---------- All weekly data ----------
   const allWeeklyData = useMemo(() => {
@@ -72,37 +86,54 @@ export default function TabVisaoGeral({ data }: Props) {
     });
   }, [data.semanas]);
 
-  // ---------- Filtered data ----------
-  const weeklyData = useMemo(() => {
-    return allWeeklyData.filter((w) => w.semana >= weekStart && w.semana <= weekEnd);
-  }, [allWeeklyData, weekStart, weekEnd]);
+  // ---------- Date bounds ----------
+  const minDate = allWeeklyData.length > 0 ? allWeeklyData[0].inicio : "2020-01-01";
+  const maxDate = allWeeklyData.length > 0 ? allWeeklyData[allWeeklyData.length - 1].fim : today();
 
-  // ---------- Cumulative data ----------
-  const cumulativeData = useMemo(() => {
-    let cumInv = 0, cumLeads = 0, cumVendas = 0, cumValor = 0;
-    let cumLq = 0, cumComp = 0;
-    return weeklyData.map((w) => {
-      cumInv += w.investimento;
-      cumLeads += w.leads;
-      cumVendas += w.vendas;
-      cumValor += w.valorVendas;
-      cumLq += w.leadsQualificados;
-      cumComp += w.comparecimentos;
-      return {
-        ...w,
-        investimento: cumInv,
-        leads: cumLeads,
-        vendas: cumVendas,
-        valorVendas: cumValor,
-        leadsQualificados: cumLq,
-        comparecimentos: cumComp,
-      };
+  // ---------- Global filter (KPIs + Funnel) ----------
+  const [globalStart, setGlobalStart] = useState(minDate);
+  const [globalEnd, setGlobalEnd] = useState(maxDate);
+  const [globalQuick, setGlobalQuick] = useState<number | "total" | null>("total");
+
+  // ---------- Chart filters (independent) ----------
+  const [leadsStart, setLeadsStart] = useState(minDate);
+  const [leadsEnd, setLeadsEnd] = useState(maxDate);
+  const [leadsQuick, setLeadsQuick] = useState<number | "total" | null>("total");
+
+  const [receitaStart, setReceitaStart] = useState(minDate);
+  const [receitaEnd, setReceitaEnd] = useState(maxDate);
+  const [receitaQuick, setReceitaQuick] = useState<number | "total" | null>("total");
+
+  // ---------- Quick select handler factory ----------
+  const makeQuickHandler = useCallback((
+    setStart: (v: string) => void,
+    setEnd: (v: string) => void,
+    setQuick: (v: number | "total" | null) => void,
+  ) => (days: number | "total") => {
+    setQuick(days);
+    if (days === "total") {
+      setStart(minDate);
+      setEnd(maxDate);
+    } else {
+      setStart(daysAgo(days));
+      setEnd(today());
+    }
+  }, [minDate, maxDate]);
+
+  // ---------- Filter weekly data by date range ----------
+  const filterByDateRange = useCallback((start: string, end: string) => {
+    return allWeeklyData.filter((w) => {
+      if (!w.inicio || !w.fim) return true;
+      return w.fim >= start && w.inicio <= end;
     });
-  }, [weeklyData]);
+  }, [allWeeklyData]);
 
-  const chartData = weeklyData;
+  // ---------- Filtered datasets ----------
+  const globalData = useMemo(() => filterByDateRange(globalStart, globalEnd), [filterByDateRange, globalStart, globalEnd]);
+  const leadsChartData = useMemo(() => filterByDateRange(leadsStart, leadsEnd), [filterByDateRange, leadsStart, leadsEnd]);
+  const receitaChartData = useMemo(() => filterByDateRange(receitaStart, receitaEnd), [filterByDateRange, receitaStart, receitaEnd]);
 
-  // ---------- Monthly grouped data ----------
+  // ---------- Monthly grouped data (for detail panel) ----------
   const monthlyData = useMemo(() => {
     const groups: Record<string, {
       month: string;
@@ -115,7 +146,7 @@ export default function TabVisaoGeral({ data }: Props) {
       weeks: number;
     }> = {};
 
-    for (const w of weeklyData) {
+    for (const w of globalData) {
       const month = getMonthFromDate(w.inicio) || `S${w.semana}`;
       if (!groups[month]) {
         groups[month] = { month, investimento: 0, leads: 0, vendas: 0, valorVendas: 0, leadsQualificados: 0, comparecimentos: 0, weeks: 0 };
@@ -130,11 +161,11 @@ export default function TabVisaoGeral({ data }: Props) {
     }
 
     return Object.values(groups);
-  }, [weeklyData]);
+  }, [globalData]);
 
-  // ---------- Filtered totals ----------
+  // ---------- Filtered totals (global) ----------
   const filteredTotals = useMemo(() => {
-    return weeklyData.reduce(
+    return globalData.reduce(
       (acc, w) => ({
         investimento: acc.investimento + w.investimento,
         leads: acc.leads + w.leads,
@@ -145,7 +176,7 @@ export default function TabVisaoGeral({ data }: Props) {
       }),
       { investimento: 0, leads: 0, vendas: 0, valorVendas: 0, leadsQualificados: 0, comparecimentos: 0 }
     );
-  }, [weeklyData]);
+  }, [globalData]);
 
   // ---------- Funnel totals ----------
   const funnelTotals = useMemo(() => {
@@ -278,10 +309,10 @@ export default function TabVisaoGeral({ data }: Props) {
                   let monthAcc = 0;
                   const rows: React.ReactNode[] = [];
 
-                  weeklyData.forEach((w, i) => {
+                  globalData.forEach((w, i) => {
                     const currentMonth = getMonthFromDate(w.inicio);
                     const val = w[key] as number;
-                    const prevVal = i > 0 ? (weeklyData[i - 1][key] as number) : 0;
+                    const prevVal = i > 0 ? (globalData[i - 1][key] as number) : 0;
                     const variation = i > 0 && prevVal > 0 ? ((val - prevVal) / prevVal) * 100 : 0;
                     accumulated += val;
 
@@ -305,8 +336,8 @@ export default function TabVisaoGeral({ data }: Props) {
                     lastMonth = currentMonth;
 
                     const periodo = w.inicio && w.fim
-                      ? `${new Date(w.inicio + "T00:00:00").toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })} - ${new Date(w.fim + "T00:00:00").toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })}`
-                      : "—";
+                      ? `${formatDateBR(w.inicio)} - ${formatDateBR(w.fim)}`
+                      : "\u2014";
 
                     rows.push(
                       <tr key={w.name} style={{ borderBottom: "1px solid var(--border)" }}>
@@ -320,7 +351,7 @@ export default function TabVisaoGeral({ data }: Props) {
                           color: i === 0 ? "var(--text-dim)" : variation >= 0 ? "#10b981" : "#e94560",
                           fontWeight: 600,
                         }}>
-                          {i === 0 ? "—" : `${variation >= 0 ? "+" : ""}${variation.toFixed(1)}%`}
+                          {i === 0 ? "\u2014" : `${variation >= 0 ? "+" : ""}${variation.toFixed(1)}%`}
                         </td>
                       </tr>
                     );
@@ -378,7 +409,7 @@ export default function TabVisaoGeral({ data }: Props) {
         ) : (
           /* Evolution Chart */
           <ResponsiveContainer width="100%" height={280}>
-            <ComposedChart data={weeklyData}>
+            <ComposedChart data={globalData}>
               <CartesianGrid strokeDasharray="3 3" stroke="var(--chart-grid)" />
               <XAxis dataKey="name" tick={axisTick} />
               <YAxis
@@ -421,91 +452,15 @@ export default function TabVisaoGeral({ data }: Props) {
   // ---------- Render ----------
   return (
     <div className="space-y-6">
-      {/* ===== Week Calendar Filter + View Mode ===== */}
-      <div className="kpi-card">
-        <div className="flex flex-wrap items-center justify-between gap-4 mb-3">
-          <span className="text-xs font-bold" style={{ color: "var(--text-dim)" }}>
-            SELECIONE O PERIODO (clique para inicio, clique novamente para fim)
-          </span>
-          <button
-            onClick={() => { setWeekStart(1); setWeekEnd(totalWeeks); }}
-            style={{
-              padding: "0.25rem 0.75rem",
-              fontSize: "0.7rem",
-              fontWeight: 600,
-              borderRadius: "0.375rem",
-              background: (weekStart === 1 && weekEnd === totalWeeks) ? "#4285f4" : "var(--surface)",
-              color: (weekStart === 1 && weekEnd === totalWeeks) ? "#fff" : "var(--text-dim)",
-              border: "1px solid var(--border)",
-              cursor: "pointer",
-            }}
-          >
-            Todas
-          </button>
-        </div>
-
-        {/* Visual week calendar */}
-        <div style={{ display: "grid", gridTemplateColumns: `repeat(${Math.min(allWeeklyData.length, 8)}, 1fr)`, gap: "0.375rem" }}>
-          {allWeeklyData.map((w) => {
-            const isSelected = w.semana >= weekStart && w.semana <= weekEnd;
-            const isStart = w.semana === weekStart;
-            const isEnd = w.semana === weekEnd;
-
-            return (
-              <button
-                key={w.semana}
-                onClick={() => {
-                  if (weekStart === weekEnd && w.semana === weekStart) {
-                    // Already single selected, do nothing
-                    return;
-                  }
-                  if (w.semana === weekStart && w.semana === weekEnd) return;
-                  // First click or reset: set as start
-                  if (weekStart !== weekEnd && isSelected) {
-                    // Clicking inside range: set as single
-                    setWeekStart(w.semana);
-                    setWeekEnd(w.semana);
-                  } else if (weekStart === weekEnd) {
-                    // Second click: extend range
-                    if (w.semana < weekStart) {
-                      setWeekStart(w.semana);
-                    } else {
-                      setWeekEnd(w.semana);
-                    }
-                  } else {
-                    // Reset to single selection
-                    setWeekStart(w.semana);
-                    setWeekEnd(w.semana);
-                  }
-                }}
-                style={{
-                  padding: "0.5rem 0.25rem",
-                  borderRadius: isStart && isEnd ? "0.5rem" : isStart ? "0.5rem 0 0 0.5rem" : isEnd ? "0 0.5rem 0.5rem 0" : isSelected ? "0" : "0.5rem",
-                  background: isSelected ? (isStart || isEnd ? "#e94560" : "#e9456030") : "var(--surface)",
-                  color: isStart || isEnd ? "#fff" : isSelected ? "#e94560" : "var(--text-muted)",
-                  border: isSelected ? "1px solid #e94560" : "1px solid var(--border)",
-                  cursor: "pointer",
-                  transition: "all 0.15s ease",
-                  textAlign: "center",
-                  minWidth: 0,
-                }}
-              >
-                <div style={{ fontSize: "0.75rem", fontWeight: 700 }}>{w.name}</div>
-              </button>
-            );
-          })}
-        </div>
-
-        {/* Selected range summary */}
-        <div className="mt-2 text-center">
-          <span style={{ fontSize: "0.7rem", color: "var(--text-dim)" }}>
-            {weekStart === weekEnd
-              ? `Semana ${weekStart} selecionada`
-              : `S${weekStart} ate S${weekEnd} (${weekEnd - weekStart + 1} semanas)`
-            }
-          </span>
-        </div>
-      </div>
+      {/* ===== Global Date Range Filter ===== */}
+      <DateRangeFilter
+        startDate={globalStart}
+        endDate={globalEnd}
+        onStartChange={(d) => { setGlobalStart(d); setGlobalQuick(null); }}
+        onEndChange={(d) => { setGlobalEnd(d); setGlobalQuick(null); }}
+        onQuickSelect={makeQuickHandler(setGlobalStart, setGlobalEnd, setGlobalQuick)}
+        activeQuick={globalQuick}
+      />
 
       {/* ===== 1. KPI Cards - Main (clickable) ===== */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
@@ -573,62 +528,82 @@ export default function TabVisaoGeral({ data }: Props) {
         <KPICard label="VSO" value={kpis.vso > 0 ? formatPercent(kpis.vso) : "--"} meta={`\u2265 ${kpis.metaVso}%`} status={vsoStatus} />
       </div>
 
-      {/* ===== 3. Chart: Leads x Vendas ===== */}
-      <div className="kpi-card">
-        <h3 className="text-sm font-bold mb-4" style={{ color: "var(--text-muted)" }}>
-          LEADS x VENDAS POR SEMANA
-        </h3>
-        <ResponsiveContainer width="100%" height={320}>
-          <BarChart data={chartData} barCategoryGap="20%">
-            <CartesianGrid strokeDasharray="3 3" stroke="var(--chart-grid)" />
-            <XAxis dataKey="name" tick={axisTick} />
-            <YAxis yAxisId="left" tick={axisTick} />
-            <YAxis yAxisId="right" orientation="right" tick={axisTick} />
-            <Tooltip
-              {...tooltipStyle}
-              formatter={(value, name) => {
-                if (name === "Taxa Conv.") return Number(value ?? 0).toFixed(1) + "%";
-                return formatNumber(Number(value ?? 0));
-              }}
-            />
-            <Legend wrapperStyle={{ color: "var(--text-muted)", fontSize: 12 }} />
-            <Bar yAxisId="left" dataKey="leads" name="Leads" fill="#4285f4" radius={[4, 4, 0, 0]} />
-            <Bar yAxisId="left" dataKey="vendas" name="Vendas" fill="#10b981" radius={[4, 4, 0, 0]} />
-          </BarChart>
-        </ResponsiveContainer>
+      {/* ===== 3. Chart: Leads x Vendas (independent filter) ===== */}
+      <div className="space-y-3">
+        <DateRangeFilter
+          startDate={leadsStart}
+          endDate={leadsEnd}
+          onStartChange={(d) => { setLeadsStart(d); setLeadsQuick(null); }}
+          onEndChange={(d) => { setLeadsEnd(d); setLeadsQuick(null); }}
+          onQuickSelect={makeQuickHandler(setLeadsStart, setLeadsEnd, setLeadsQuick)}
+          activeQuick={leadsQuick}
+        />
+        <div className="kpi-card">
+          <h3 className="text-sm font-bold mb-4" style={{ color: "var(--text-muted)" }}>
+            LEADS x VENDAS POR SEMANA
+          </h3>
+          <ResponsiveContainer width="100%" height={320}>
+            <BarChart data={leadsChartData} barCategoryGap="20%">
+              <CartesianGrid strokeDasharray="3 3" stroke="var(--chart-grid)" />
+              <XAxis dataKey="name" tick={axisTick} />
+              <YAxis yAxisId="left" tick={axisTick} />
+              <YAxis yAxisId="right" orientation="right" tick={axisTick} />
+              <Tooltip
+                {...tooltipStyle}
+                formatter={(value, name) => {
+                  if (name === "Taxa Conv.") return Number(value ?? 0).toFixed(1) + "%";
+                  return formatNumber(Number(value ?? 0));
+                }}
+              />
+              <Legend wrapperStyle={{ color: "var(--text-muted)", fontSize: 12 }} />
+              <Bar yAxisId="left" dataKey="leads" name="Leads" fill="#4285f4" radius={[4, 4, 0, 0]} />
+              <Bar yAxisId="left" dataKey="vendas" name="Vendas" fill="#10b981" radius={[4, 4, 0, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
       </div>
 
-      {/* ===== 4. Chart: Receita x Investimento ===== */}
-      <div className="kpi-card">
-        <h3 className="text-sm font-bold mb-4" style={{ color: "var(--text-muted)" }}>
-          RECEITA x INVESTIMENTO
-        </h3>
-        <ResponsiveContainer width="100%" height={320}>
-          <AreaChart data={chartData}>
-            <defs>
-              <linearGradient id="gradReceita" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%" stopColor="#10b981" stopOpacity={0.4} />
-                <stop offset="95%" stopColor="#10b981" stopOpacity={0.05} />
-              </linearGradient>
-              <linearGradient id="gradInvestimento" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%" stopColor="#e94560" stopOpacity={0.4} />
-                <stop offset="95%" stopColor="#e94560" stopOpacity={0.05} />
-              </linearGradient>
-            </defs>
-            <CartesianGrid strokeDasharray="3 3" stroke="var(--chart-grid)" />
-            <XAxis dataKey="name" tick={axisTick} />
-            <YAxis
-              tick={axisTick}
-              tickFormatter={(v: number) =>
-                v >= 1000000 ? (v / 1000000).toFixed(1) + "M" : v >= 1000 ? (v / 1000).toFixed(0) + "K" : String(v)
-              }
-            />
-            <Tooltip {...tooltipStyle} formatter={(v) => formatBRL(Number(v ?? 0))} />
-            <Legend wrapperStyle={{ color: "var(--text-muted)", fontSize: 12 }} />
-            <Area type="monotone" dataKey="valorVendas" name="Receita (R$)" stroke="#10b981" strokeWidth={2} fill="url(#gradReceita)" />
-            <Area type="monotone" dataKey="investimento" name="Investimento (R$)" stroke="#e94560" strokeWidth={2} fill="url(#gradInvestimento)" />
-          </AreaChart>
-        </ResponsiveContainer>
+      {/* ===== 4. Chart: Receita x Investimento (independent filter) ===== */}
+      <div className="space-y-3">
+        <DateRangeFilter
+          startDate={receitaStart}
+          endDate={receitaEnd}
+          onStartChange={(d) => { setReceitaStart(d); setReceitaQuick(null); }}
+          onEndChange={(d) => { setReceitaEnd(d); setReceitaQuick(null); }}
+          onQuickSelect={makeQuickHandler(setReceitaStart, setReceitaEnd, setReceitaQuick)}
+          activeQuick={receitaQuick}
+        />
+        <div className="kpi-card">
+          <h3 className="text-sm font-bold mb-4" style={{ color: "var(--text-muted)" }}>
+            RECEITA x INVESTIMENTO
+          </h3>
+          <ResponsiveContainer width="100%" height={320}>
+            <AreaChart data={receitaChartData}>
+              <defs>
+                <linearGradient id="gradReceita" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="#10b981" stopOpacity={0.4} />
+                  <stop offset="95%" stopColor="#10b981" stopOpacity={0.05} />
+                </linearGradient>
+                <linearGradient id="gradInvestimento" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="#e94560" stopOpacity={0.4} />
+                  <stop offset="95%" stopColor="#e94560" stopOpacity={0.05} />
+                </linearGradient>
+              </defs>
+              <CartesianGrid strokeDasharray="3 3" stroke="var(--chart-grid)" />
+              <XAxis dataKey="name" tick={axisTick} />
+              <YAxis
+                tick={axisTick}
+                tickFormatter={(v: number) =>
+                  v >= 1000000 ? (v / 1000000).toFixed(1) + "M" : v >= 1000 ? (v / 1000).toFixed(0) + "K" : String(v)
+                }
+              />
+              <Tooltip {...tooltipStyle} formatter={(v) => formatBRL(Number(v ?? 0))} />
+              <Legend wrapperStyle={{ color: "var(--text-muted)", fontSize: 12 }} />
+              <Area type="monotone" dataKey="valorVendas" name="Receita (R$)" stroke="#10b981" strokeWidth={2} fill="url(#gradReceita)" />
+              <Area type="monotone" dataKey="investimento" name="Investimento (R$)" stroke="#e94560" strokeWidth={2} fill="url(#gradInvestimento)" />
+            </AreaChart>
+          </ResponsiveContainer>
+        </div>
       </div>
 
       {/* ===== 5. Sales Funnel ===== */}
