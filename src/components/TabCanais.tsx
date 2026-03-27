@@ -1,12 +1,13 @@
 "use client";
 
-import { useState, useMemo, Fragment } from "react";
+import { useState, useMemo, useCallback, Fragment } from "react";
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
   CartesianGrid, Legend, PieChart, Pie, Cell, LineChart, Line,
 } from "recharts";
 import { TrendingUp, TrendingDown, Minus, ChevronDown, ChevronRight } from "lucide-react";
 import { MetricsData, calcKPIsPorCanal, formatBRL, formatNumber } from "@/lib/types";
+import DateRangeFilter from "./DateRangeFilter";
 
 interface Props {
   data: MetricsData;
@@ -14,15 +15,8 @@ interface Props {
 
 const COLORS = ["#e94560", "#4285f4", "#10b981", "#f4a236", "#8b5cf6", "#ec4899", "#06b6d4", "#84cc16", "#f97316"];
 
-type PeriodFilter = "all" | "lastMonth" | "last2Weeks" | "lastWeek";
 type SortKey = "canal" | "investimento" | "leads" | "vendas" | "valorVendas" | "cpl" | "cac" | "roi";
 type SortDir = "asc" | "desc";
-
-function filterSemanas(semanas: Props["data"]["semanas"], filter: PeriodFilter) {
-  if (filter === "all" || semanas.length === 0) return semanas;
-  const count = filter === "lastMonth" ? 4 : filter === "last2Weeks" ? 2 : 1;
-  return semanas.slice(-count);
-}
 
 function roiColor(roi: number): string {
   if (roi > 3) return "#10b981";
@@ -37,13 +31,40 @@ function cplColor(cpl: number): string {
   return "#e94560";
 }
 
+function today() { return new Date().toISOString().split("T")[0]; }
+function daysAgo(n: number) { const d = new Date(); d.setDate(d.getDate() - n); return d.toISOString().split("T")[0]; }
+
 export default function TabCanais({ data }: Props) {
-  const [period, setPeriod] = useState<PeriodFilter>("all");
   const [sortKey, setSortKey] = useState<SortKey>("investimento");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
   const [expandedCanal, setExpandedCanal] = useState<string | null>(null);
 
-  const filteredSemanas = useMemo(() => filterSemanas(data.semanas, period), [data.semanas, period]);
+  // Date bounds from data
+  const minDate = data.semanas.length > 0 ? data.semanas[0].inicio : "2020-01-01";
+  const maxDate = data.semanas.length > 0 ? data.semanas[data.semanas.length - 1].fim : today();
+
+  const [startDate, setStartDate] = useState(minDate);
+  const [endDate, setEndDate] = useState(maxDate);
+  const [activeQuick, setActiveQuick] = useState<number | "total" | null>("total");
+
+  const handleQuickSelect = useCallback((value: number | "total") => {
+    setActiveQuick(value);
+    if (value === "total") {
+      setStartDate(minDate);
+      setEndDate(maxDate);
+    } else {
+      setStartDate(daysAgo(value));
+      setEndDate(today());
+    }
+  }, [minDate, maxDate]);
+
+  // Filter semanas by date range
+  const filteredSemanas = useMemo(() => {
+    return data.semanas.filter((s) => {
+      if (!s.inicio || !s.fim) return true;
+      return s.fim >= startDate && s.inicio <= endDate;
+    });
+  }, [data.semanas, startDate, endDate]);
 
   const canalStats = useMemo(() => {
     return data.config.canais.map((canal, i) => {
@@ -99,8 +120,17 @@ export default function TabCanais({ data }: Props) {
     if (!expandedCanal) return null;
     const weekly = filteredSemanas.map((s) => {
       const c = s.canais[expandedCanal];
+      const formatWeekName = () => {
+        if (!s.inicio || !s.fim) return `S${s.semana}`;
+        const di = new Date(s.inicio + "T00:00:00");
+        const df = new Date(s.fim + "T00:00:00");
+        const dayI = di.toLocaleDateString("pt-BR", { day: "2-digit" });
+        const dayF = df.toLocaleDateString("pt-BR", { day: "2-digit" });
+        const monthF = df.toLocaleDateString("pt-BR", { month: "short" }).replace(".", "");
+        return `${dayI}-${dayF} ${monthF.charAt(0).toUpperCase() + monthF.slice(1)}`;
+      };
       return {
-        semana: `S${s.semana}`,
+        semana: formatWeekName(),
         leads: c?.leads ?? 0,
         vendas: c?.vendas ?? 0,
         investimento: c?.investimento ?? 0,
@@ -116,7 +146,6 @@ export default function TabCanais({ data }: Props) {
       if (w.leads < worstWeek.leads) worstWeek = w;
     }
 
-    // Trend: compare second half average to first half average
     const mid = Math.floor(weekly.length / 2) || 1;
     const firstHalf = weekly.slice(0, mid).reduce((s, w) => s + w.leads, 0) / mid;
     const secondHalf = weekly.slice(mid).reduce((s, w) => s + w.leads, 0) / (weekly.length - mid);
@@ -148,13 +177,6 @@ export default function TabCanais({ data }: Props) {
     );
   }
 
-  const periodButtons: { label: string; value: PeriodFilter }[] = [
-    { label: "Todas", value: "all" },
-    { label: "Último Mês", value: "lastMonth" },
-    { label: "Últimas 2 Semanas", value: "last2Weeks" },
-    { label: "Última Semana", value: "lastWeek" },
-  ];
-
   const thStyle = (key: SortKey, align: "left" | "right" = "right"): React.CSSProperties => ({
     color: sortKey === key ? "var(--text)" : "var(--text-dim)",
     cursor: "pointer",
@@ -164,25 +186,15 @@ export default function TabCanais({ data }: Props) {
 
   return (
     <div className="space-y-6">
-      {/* Period filter */}
-      <div className="kpi-card">
-        <div className="flex flex-wrap gap-2">
-          {periodButtons.map((btn) => (
-            <button
-              key={btn.value}
-              onClick={() => setPeriod(btn.value)}
-              className="px-4 py-2 rounded-lg text-sm font-medium transition-colors"
-              style={{
-                background: period === btn.value ? "var(--text)" : "var(--surface)",
-                color: period === btn.value ? "var(--card-bg)" : "var(--text-muted)",
-                border: `1px solid ${period === btn.value ? "var(--text)" : "var(--border)"}`,
-              }}
-            >
-              {btn.label}
-            </button>
-          ))}
-        </div>
-      </div>
+      {/* Date Range Filter */}
+      <DateRangeFilter
+        startDate={startDate}
+        endDate={endDate}
+        onStartChange={(d) => { setStartDate(d); setActiveQuick(null); }}
+        onEndChange={(d) => { setEndDate(d); setActiveQuick(null); }}
+        onQuickSelect={handleQuickSelect}
+        activeQuick={activeQuick}
+      />
 
       {/* Sortable summary table */}
       <div className="kpi-card overflow-x-auto">
@@ -253,12 +265,10 @@ export default function TabCanais({ data }: Props) {
                       {c.roi > 0 ? c.roi.toFixed(1) + "x" : "\u2014"}
                     </td>
                   </tr>
-                  {/* Expanded detail row */}
                   {isExpanded && weeklyDetail && (
                     <tr>
                       <td colSpan={8} style={{ background: "var(--surface)", borderBottom: "1px solid var(--border)" }}>
                         <div className="p-4 space-y-4">
-                          {/* Stats summary */}
                           <div className="flex flex-wrap gap-6 text-sm">
                             <div>
                               <span style={{ color: "var(--text-dim)" }}>Melhor semana: </span>
@@ -291,7 +301,6 @@ export default function TabCanais({ data }: Props) {
                               )}
                             </div>
                           </div>
-                          {/* Weekly line chart */}
                           {weeklyDetail.weekly.length > 1 && (
                             <ResponsiveContainer width="100%" height={200}>
                               <LineChart data={weeklyDetail.weekly}>
@@ -312,7 +321,6 @@ export default function TabCanais({ data }: Props) {
                 </Fragment>
               );
             })}
-            {/* Meta row */}
             <tr style={{ borderTop: "2px solid var(--border)" }}>
               <td className="py-3 px-2 font-semibold" style={{ color: "var(--text-muted)" }}>
                 <div className="flex items-center gap-2 pl-5">Meta</div>
