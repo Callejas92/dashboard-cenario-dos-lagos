@@ -145,13 +145,22 @@ function PlatformCard({
 
 interface UauResponse {
   configured: boolean;
+  status?: string;
+  uauStatus?: string;
+  uauError?: string;
   message?: string;
   error?: string;
   fetchedAt?: string;
   summary?: {
-    totalObras: number;
-    totalProspects: number;
-    totalVendas: number;
+    totalObras?: number;
+    totalProspects?: number;
+    totalVendas?: number;
+    total?: number;
+    disponivel?: number;
+    vendido?: number;
+    emVenda?: number;
+    vgvTotal?: number;
+    vgvVendido?: number;
   };
 }
 
@@ -195,20 +204,27 @@ function UauCard({ data, loading, onRefresh }: { data: UauResponse | null; loadi
       )}
 
       {data?.configured && !data?.error && data?.summary && (
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           <div className="p-3 rounded-xl" style={{ background: "var(--surface)" }}>
-            <p className="text-xs" style={{ color: "var(--text-dim)" }}>Obras Ativas</p>
-            <p className="text-lg font-bold" style={{ color: "var(--text)" }}>{formatNumber(data.summary.totalObras)}</p>
+            <p className="text-xs" style={{ color: "var(--text-dim)" }}>Total Lotes</p>
+            <p className="text-lg font-bold" style={{ color: "var(--text)" }}>{formatNumber(data.summary.total ?? 0)}</p>
           </div>
           <div className="p-3 rounded-xl" style={{ background: "var(--surface)" }}>
-            <p className="text-xs" style={{ color: "var(--text-dim)" }}>Prospects</p>
-            <p className="text-lg font-bold" style={{ color: "var(--text)" }}>{formatNumber(data.summary.totalProspects)}</p>
+            <p className="text-xs" style={{ color: "var(--text-dim)" }}>Disponíveis</p>
+            <p className="text-lg font-bold" style={{ color: "#10b981" }}>{formatNumber(data.summary.disponivel ?? 0)}</p>
           </div>
           <div className="p-3 rounded-xl" style={{ background: "var(--surface)" }}>
-            <p className="text-xs" style={{ color: "var(--text-dim)" }}>Vendas (90d)</p>
-            <p className="text-lg font-bold" style={{ color: "var(--text)" }}>{formatNumber(data.summary.totalVendas)}</p>
+            <p className="text-xs" style={{ color: "var(--text-dim)" }}>Vendidos</p>
+            <p className="text-lg font-bold" style={{ color: "#e94560" }}>{formatNumber(data.summary.vendido ?? 0)}</p>
+          </div>
+          <div className="p-3 rounded-xl" style={{ background: "var(--surface)" }}>
+            <p className="text-xs" style={{ color: "var(--text-dim)" }}>VGV Total</p>
+            <p className="text-lg font-bold" style={{ color: "var(--text)" }}>{formatBRL(data.summary.vgvTotal ?? 0)}</p>
           </div>
         </div>
+      )}
+      {data?.uauStatus === "offline" && (
+        <p className="text-xs mt-2" style={{ color: "#f59e0b" }}>Usando dados estáticos (UAU offline). Status em tempo real indisponível.</p>
       )}
     </div>
   );
@@ -248,7 +264,21 @@ export default function TabIntegracoes() {
     setLoadingUau(true);
     try {
       const res = await fetch("/api/uau");
-      setUauData(await res.json());
+      const json = await res.json();
+      // Map new API format to expected format
+      if (json.status === "connected") {
+        setUauData({
+          configured: true,
+          status: json.status,
+          uauStatus: json.uauStatus,
+          uauError: json.uauError,
+          summary: json.summary,
+          fetchedAt: new Date().toISOString(),
+          error: json.uauError || undefined,
+        });
+      } else {
+        setUauData({ configured: json.status === "connected", message: json.message || json.uauError || "Erro ao conectar" });
+      }
     } catch {
       setUauData({ configured: false, message: "Erro de conexão" });
     }

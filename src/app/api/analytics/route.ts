@@ -106,6 +106,10 @@ export async function GET(request: Request) {
           { name: "activeUsers" },
           { name: "sessions" },
           { name: "screenPageViews" },
+          { name: "engagementRate" },
+          { name: "bounceRate" },
+          { name: "conversions" },
+          { name: "averageSessionDuration" },
         ],
         orderBys: [{ dimension: { dimensionName: "date" }, desc: false }],
       }),
@@ -117,6 +121,10 @@ export async function GET(request: Request) {
       users: parseInt(row.metricValues[0].value),
       sessions: parseInt(row.metricValues[1].value),
       pageViews: parseInt(row.metricValues[2].value),
+      engagementRate: parseFloat((parseFloat(row.metricValues[3].value) * 100).toFixed(1)),
+      bounceRate: parseFloat((parseFloat(row.metricValues[4].value) * 100).toFixed(1)),
+      conversions: parseInt(row.metricValues[5].value),
+      avgDuration: parseFloat(parseFloat(row.metricValues[6].value).toFixed(0)),
     }));
 
     // Fetch top pages

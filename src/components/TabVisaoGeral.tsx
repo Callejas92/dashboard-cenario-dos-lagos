@@ -521,15 +521,23 @@ export default function TabVisaoGeral({ data }: Props) {
       </div>
 
       {/* ===== 2. Secondary KPIs with metas ===== */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
         <KPICard label="CPL" value={kpis.cpl > 0 ? formatBRL(kpis.cpl) : "--"} meta={`\u2264 ${formatBRL(kpis.metaCpl)}`} status={cplStatus} />
         <KPICard label="CAC" value={kpis.cac > 0 ? formatBRL(kpis.cac) : "--"} meta={`\u2264 ${formatBRL(kpis.metaCac)}`} status={cacStatus} />
         <KPICard label="ROI" value={kpis.roi > 0 ? kpis.roi.toFixed(1) + "x" : "--"} meta={`\u2265 ${kpis.metaRoi}x`} status={roiStatus} />
         <KPICard label="VSO" value={kpis.vso > 0 ? formatPercent(kpis.vso) : "--"} meta={`\u2265 ${kpis.metaVso}%`} status={vsoStatus} />
+        <KPICard
+          label="LTV"
+          value={filteredTotals.vendas > 0 ? formatBRL(filteredTotals.valorVendas / filteredTotals.vendas) : "--"}
+          meta="Valor medio/cliente"
+        />
       </div>
 
       {/* ===== 3. Chart: Leads x Vendas (independent filter) ===== */}
-      <div className="space-y-3">
+      <div className="kpi-card">
+        <h3 className="text-sm font-bold" style={{ color: "var(--text-muted)" }}>
+          LEADS x VENDAS POR SEMANA
+        </h3>
         <DateRangeFilter
           startDate={leadsStart}
           endDate={leadsEnd}
@@ -537,11 +545,8 @@ export default function TabVisaoGeral({ data }: Props) {
           onEndChange={(d) => { setLeadsEnd(d); setLeadsQuick(null); }}
           onQuickSelect={makeQuickHandler(setLeadsStart, setLeadsEnd, setLeadsQuick)}
           activeQuick={leadsQuick}
+          inline
         />
-        <div className="kpi-card">
-          <h3 className="text-sm font-bold mb-4" style={{ color: "var(--text-muted)" }}>
-            LEADS x VENDAS POR SEMANA
-          </h3>
           <ResponsiveContainer width="100%" height={320}>
             <BarChart data={leadsChartData} barCategoryGap="20%">
               <CartesianGrid strokeDasharray="3 3" stroke="var(--chart-grid)" />
@@ -560,11 +565,13 @@ export default function TabVisaoGeral({ data }: Props) {
               <Bar yAxisId="left" dataKey="vendas" name="Vendas" fill="#10b981" radius={[4, 4, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
-        </div>
       </div>
 
       {/* ===== 4. Chart: Receita x Investimento (independent filter) ===== */}
-      <div className="space-y-3">
+      <div className="kpi-card">
+        <h3 className="text-sm font-bold" style={{ color: "var(--text-muted)" }}>
+          RECEITA x INVESTIMENTO
+        </h3>
         <DateRangeFilter
           startDate={receitaStart}
           endDate={receitaEnd}
@@ -572,11 +579,8 @@ export default function TabVisaoGeral({ data }: Props) {
           onEndChange={(d) => { setReceitaEnd(d); setReceitaQuick(null); }}
           onQuickSelect={makeQuickHandler(setReceitaStart, setReceitaEnd, setReceitaQuick)}
           activeQuick={receitaQuick}
+          inline
         />
-        <div className="kpi-card">
-          <h3 className="text-sm font-bold mb-4" style={{ color: "var(--text-muted)" }}>
-            RECEITA x INVESTIMENTO
-          </h3>
           <ResponsiveContainer width="100%" height={320}>
             <AreaChart data={receitaChartData}>
               <defs>
@@ -603,7 +607,6 @@ export default function TabVisaoGeral({ data }: Props) {
               <Area type="monotone" dataKey="investimento" name="Investimento (R$)" stroke="#e94560" strokeWidth={2} fill="url(#gradInvestimento)" />
             </AreaChart>
           </ResponsiveContainer>
-        </div>
       </div>
 
       {/* ===== 5. Sales Funnel ===== */}

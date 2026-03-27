@@ -2,7 +2,10 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { RefreshCw, Globe, Users, Clock, MousePointer, Eye, XCircle } from "lucide-react";
-import { BarChart, Bar, LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend } from "recharts";
+import {
+  BarChart, Bar, LineChart, Line, XAxis, YAxis, Tooltip,
+  ResponsiveContainer, CartesianGrid, Legend,
+} from "recharts";
 import KPICard from "./KPICard";
 import DateRangeFilter from "./DateRangeFilter";
 import { formatNumber } from "@/lib/types";
@@ -20,31 +23,35 @@ interface AnalyticsData {
     conversions: number;
   };
   sources?: { channel: string; sessions: number; users: number; conversions: number }[];
-  daily?: { date: string; users: number; sessions: number; pageViews: number }[];
+  daily?: {
+    date: string;
+    users: number;
+    sessions: number;
+    pageViews: number;
+    engagementRate?: number;
+    bounceRate?: number;
+    conversions?: number;
+    avgDuration?: number;
+  }[];
   topPages?: { path: string; views: number; users: number }[];
   fetchedAt?: string;
 }
 
-function today() {
-  return new Date().toISOString().split("T")[0];
-}
+function today() { return new Date().toISOString().split("T")[0]; }
+function daysAgo(n: number) { const d = new Date(); d.setDate(d.getDate() - n); return d.toISOString().split("T")[0]; }
 
-function daysAgo(n: number) {
-  const d = new Date();
-  d.setDate(d.getDate() - n);
-  return d.toISOString().split("T")[0];
-}
+type DailyMetric = "traffic" | "engagement" | "conversions";
 
 export default function TabAnalytics() {
   const [data, setData] = useState<AnalyticsData | null>(null);
   const [loading, setLoading] = useState(false);
+  const [dailyView, setDailyView] = useState<DailyMetric>("traffic");
 
   // Date range state
   const [startDate, setStartDate] = useState(daysAgo(30));
   const [endDate, setEndDate] = useState(today());
   const [activeQuick, setActiveQuick] = useState<number | "total" | null>(30);
 
-  // Calculate days from date range
   const days = Math.max(1, Math.ceil((new Date(endDate).getTime() - new Date(startDate).getTime()) / (1000 * 60 * 60 * 24)));
 
   async function fetchData() {
@@ -78,10 +85,16 @@ export default function TabAnalytics() {
 
   if (!data && !loading) return null;
 
+  const dailyViewButtons: { key: DailyMetric; label: string }[] = [
+    { key: "traffic", label: "Trafego" },
+    { key: "engagement", label: "Engajamento" },
+    { key: "conversions", label: "Conversoes" },
+  ];
+
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center gap-3 mb-2">
+      <div className="flex items-center gap-3">
         <Globe size={18} style={{ color: "#4285f4" }} />
         <h3 className="text-sm font-bold" style={{ color: "var(--text)" }}>Google Analytics — mangabaurbanismo.com.br</h3>
         <button onClick={fetchData} disabled={loading} className="p-1.5 rounded-lg hover:bg-white/5 ml-auto">
@@ -89,7 +102,7 @@ export default function TabAnalytics() {
         </button>
       </div>
 
-      {/* Date Range Filter */}
+      {/* Global Date Range Filter */}
       <DateRangeFilter
         startDate={startDate}
         endDate={endDate}
@@ -148,20 +161,65 @@ export default function TabAnalytics() {
             />
           </div>
 
-          {/* Grafico diario */}
+          {/* Grafico diario com toggle de views */}
           {data.daily && data.daily.length > 0 && (
             <div className="kpi-card">
-              <h3 className="text-sm font-bold mb-4" style={{ color: "var(--text-muted)" }}>TRAFEGO DIARIO</h3>
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-sm font-bold" style={{ color: "var(--text-muted)" }}>METRICAS DIARIAS</h3>
+                <div className="flex items-center gap-1">
+                  {dailyViewButtons.map((btn) => (
+                    <button
+                      key={btn.key}
+                      onClick={() => setDailyView(btn.key)}
+                      style={{
+                        padding: "0.25rem 0.6rem",
+                        fontSize: "0.65rem",
+                        fontWeight: 700,
+                        borderRadius: "0.375rem",
+                        background: dailyView === btn.key ? "#4285f4" : "transparent",
+                        color: dailyView === btn.key ? "#fff" : "var(--text-dim)",
+                        border: dailyView === btn.key ? "1px solid #4285f4" : "1px solid var(--border)",
+                        cursor: "pointer",
+                        transition: "all 0.15s ease",
+                      }}
+                    >
+                      {btn.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
               <ResponsiveContainer width="100%" height={300}>
                 <LineChart data={data.daily}>
                   <CartesianGrid strokeDasharray="3 3" stroke="var(--chart-grid)" />
                   <XAxis dataKey="date" tick={{ fill: "var(--text-dim)", fontSize: 10 }} interval="preserveStartEnd" />
-                  <YAxis tick={{ fill: "var(--text-dim)", fontSize: 11 }} />
                   <Tooltip {...tooltipStyle} />
                   <Legend wrapperStyle={{ color: "var(--text-muted)", fontSize: 12 }} />
-                  <Line type="monotone" dataKey="users" name="Usuarios" stroke="#4285f4" strokeWidth={2} dot={false} />
-                  <Line type="monotone" dataKey="sessions" name="Sessoes" stroke="#10b981" strokeWidth={2} dot={false} />
-                  <Line type="monotone" dataKey="pageViews" name="Page Views" stroke="#f4a236" strokeWidth={2} dot={false} />
+
+                  {dailyView === "traffic" && (
+                    <>
+                      <YAxis tick={{ fill: "var(--text-dim)", fontSize: 11 }} />
+                      <Line type="monotone" dataKey="users" name="Usuarios" stroke="#4285f4" strokeWidth={2} dot={false} />
+                      <Line type="monotone" dataKey="sessions" name="Sessoes" stroke="#10b981" strokeWidth={2} dot={false} />
+                      <Line type="monotone" dataKey="pageViews" name="Page Views" stroke="#f4a236" strokeWidth={2} dot={false} />
+                    </>
+                  )}
+
+                  {dailyView === "engagement" && (
+                    <>
+                      <YAxis tick={{ fill: "var(--text-dim)", fontSize: 11 }} domain={[0, 100]} unit="%" />
+                      <Line type="monotone" dataKey="engagementRate" name="Engajamento %" stroke="#10b981" strokeWidth={2} dot={false} />
+                      <Line type="monotone" dataKey="bounceRate" name="Rejeicao %" stroke="#e94560" strokeWidth={2} dot={false} />
+                    </>
+                  )}
+
+                  {dailyView === "conversions" && (
+                    <>
+                      <YAxis tick={{ fill: "var(--text-dim)", fontSize: 11 }} />
+                      <Line type="monotone" dataKey="conversions" name="Conversoes" stroke="#e94560" strokeWidth={2.5} dot={{ r: 3, fill: "#e94560" }} />
+                      <Line type="monotone" dataKey="users" name="Usuarios" stroke="#4285f4" strokeWidth={1.5} dot={false} strokeDasharray="5 5" />
+                    </>
+                  )}
                 </LineChart>
               </ResponsiveContainer>
             </div>
