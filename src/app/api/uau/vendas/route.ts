@@ -133,7 +133,8 @@ export async function GET(request: NextRequest) {
 
       const dataVenda = parseDate(r.DataCad_unid as string || "");
       const lote = lotesMap.get(id);
-      const valor = (r.ValorTotal as unknown as number) || (r.ValPreco_unid as unknown as number) || lote?.valorTotal || 0;
+      const erpValor = Number(r.ValorTotal) || Number(r.ValPreco_unid) || 0;
+      const valor = erpValor > 0 ? erpValor : (lote?.valorTotal || 0);
       const numVen = (r.Num_Ven as number) || 0;
       const empresa = (r.Empresa_unid as unknown as number) || 2;
 
@@ -183,7 +184,7 @@ export async function GET(request: NextRequest) {
         chaveVenda: `${base.empresa}-${base.numVen || base.id}`,
         identificadorUnidade: base.id,
         dataVenda: dataFinal,
-        valorVenda: (resumo?.ValorVenda_ven as number) || base.valorVenda,
+        valorVenda: Number(resumo?.ValorVenda_ven) || base.valorVenda || 0,
         compradorNome: (resumo?.Nome_pes as string) || "",
         compradorCpfCnpj: (resumo?.CpfCnpj_pes as string) || "",
         corretor: (resumo?.NomeCorretor as string) || (resumo?.Nome_Corretor as string) || (resumo?.Corretor_ven as string) || "",
