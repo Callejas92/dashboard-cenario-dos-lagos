@@ -75,9 +75,9 @@ export async function GET() {
 
     const [chavesRaw, parcelasRaw] = await Promise.all([
       uauFetch(token, "Venda/RetornaChavesVendasPorPeriodo", {
-        empresa: 2,
-        dataInicial: formatDateUAU(startStr),
-        dataFinal: formatDateUAU(today),
+        Empresa: 2,
+        DataInicial: `${startStr}T00:00:00`,
+        DataFinal: `${today}T23:59:59`,
       }, 20000).catch(() => null),
       uauFetch(token, "Venda/BuscarParcelasAReceber", {
         empresa: 2,

@@ -1,27 +1,43 @@
 import { NextRequest, NextResponse } from "next/server";
 import { authenticate, isUauConfigured, uauFetch } from "@/lib/uau-auth";
+import lotesData from "@/data/lotes.json";
 
 export const maxDuration = 60;
 
-interface VendaChave {
-  Empresa_ven?: number;
-  Numero_ven?: number;
-  [key: string]: unknown;
+interface LoteStatic {
+  id: string;
+  quadra: number;
+  lote: number;
+  area: number;
+  rua: string;
+  valorTotal: number;
+  valorM2: number;
+  classificacao: string;
 }
 
-interface ResumoVenda {
-  Numero_ven?: number;
-  DataVenda_ven?: string;
-  ValorVenda_ven?: number;
+const lotesMap = new Map<string, LoteStatic>();
+for (const l of lotesData as LoteStatic[]) {
+  lotesMap.set(l.id, l);
+}
+
+interface UnitRow {
   Identificador_unid?: string;
+  Vendido_unid?: number;
+  Descr_status?: string;
+  DataCad_unid?: string;
+  DataVenda_unid?: string;
+  DataVenda?: string;
+  Numero_ven?: number;
+  Empresa_ven?: number;
   Nome_pes?: string;
-  CpfCnpj_pes?: string;
-  Corretor_ven?: string;
-  NomeCorretor?: string;
   Nome_Corretor?: string;
+  NomeCorretor?: string;
+  Corretor_ven?: string;
+  CpfCnpj_pes?: string;
   Descr_FormaPgto?: string;
   FormaPagamento?: string;
-  QtdParcelas?: number;
+  ValorVenda_ven?: number;
+  ValorTotal_unid?: number;
   [key: string]: unknown;
 }
 
@@ -37,20 +53,17 @@ function extractMyTable(raw: unknown): Record<string, unknown>[] {
   return [];
 }
 
-async function batchProcess<T, R>(
-  items: T[],
-  processor: (item: T) => Promise<R>,
-  concurrency: number
-): Promise<R[]> {
-  const results: R[] = [];
-  for (let i = 0; i < items.length; i += concurrency) {
-    const batch = items.slice(i, i + concurrency);
-    const batchResults = await Promise.allSettled(batch.map(processor));
-    for (const r of batchResults) {
-      if (r.status === "fulfilled") results.push(r.value);
+function parseDate(raw: string | undefined | null): string {
+  if (!raw) return "";
+  const s = String(raw);
+  if (s.includes("T")) return s.split("T")[0];
+  if (s.includes("/")) {
+    const parts = s.split("/");
+    if (parts.length === 3) {
+      return `${parts[2]}-${parts[1].padStart(2, "0")}-${parts[0].padStart(2, "0")}`;
     }
   }
-  return results;
+  return s;
 }
 
 // Simple in-memory cache
@@ -75,43 +88,22 @@ export async function GET(request: NextRequest) {
   try {
     const token = await authenticate();
 
-    // 1. Get sale keys by period
-    const chavesRaw = await uauFetch(token, "Venda/RetornaChavesVendasPorPeriodo", {
-      empresa: 2,
-      dataInicial: formatDateUAU(startDate),
-      dataFinal: formatDateUAU(endDate),
+    // Use the same endpoint that works for estoque, but filter sold units
+    const now = new Date();
+    const mm = String(now.getMonth() + 1).padStart(2, "0");
+    const dd = String(now.getDate()).padStart(2, "0");
+    const yyyy = now.getFullYear();
+    const todayFormatted = `${mm}-${dd}-${yyyy}`;
+
+    const raw = await uauFetch(token, "Espelho/BuscaUnidadesDeAcordoComWhereDetalhado", {
+      where: "WHERE Empresa_unid = 2 AND Vendido_unid = 1",
+      retorna_venda: true,
+      data_tabela_preco: todayFormatted,
     }, 20000);
 
-    const chavesRows = extractMyTable(chavesRaw);
+    const rows = extractMyTable(raw);
 
-    if (chavesRows.length === 0) {
-      const emptyResponse = {
-        vendas: [],
-        porDia: [],
-        total: 0,
-        valorTotal: 0,
-        periodo: { inicio: startDate, fim: endDate },
-      };
-      cache.set(cacheKey, { data: emptyResponse, timestamp: Date.now() });
-      return NextResponse.json(emptyResponse);
-    }
-
-    const chaves: VendaChave[] = chavesRows as VendaChave[];
-
-    // 2. Get details for each sale (batch of 5)
-    const resumos = await batchProcess(
-      chaves,
-      async (chave) => {
-        const raw = await uauFetch(token, "Venda/ConsultarResumoVenda", {
-          empresa: chave.Empresa_ven || 2,
-          numero: chave.Numero_ven,
-        }, 10000);
-        return { chave, raw };
-      },
-      5
-    );
-
-    // 3. Parse sales data
+    // Parse sold units and enrich with sale details
     const vendas: Array<{
       chaveVenda: string;
       identificadorUnidade: string;
@@ -124,21 +116,80 @@ export async function GET(request: NextRequest) {
       qtdParcelas: number;
     }> = [];
 
-    for (const { chave, raw } of resumos) {
-      const rows = extractMyTable(raw);
-      if (rows.length === 0) {
-        // Try direct object response
-        const directData = raw as ResumoVenda;
-        if (directData && directData.Numero_ven) {
-          vendas.push(parseSaleRecord(chave, directData));
-          continue;
+    // Build base vendas from espelho data
+    interface BaseVenda {
+      id: string;
+      numVen: number;
+      empresa: number;
+      dataVenda: string;
+      valorVenda: number;
+    }
+    const baseVendas: BaseVenda[] = [];
+
+    for (const row of rows) {
+      const r = row as UnitRow;
+      const id = r.Identificador_unid || "";
+      if (!id) continue;
+
+      const dataVenda = parseDate(r.DataCad_unid as string || "");
+      const lote = lotesMap.get(id);
+      const valor = (r.ValorTotal as unknown as number) || (r.ValPreco_unid as unknown as number) || lote?.valorTotal || 0;
+      const numVen = (r.Num_Ven as number) || 0;
+      const empresa = (r.Empresa_unid as unknown as number) || 2;
+
+      baseVendas.push({ id, numVen, empresa, dataVenda, valorVenda: valor });
+    }
+
+    // Enrich with ConsultarResumoVenda for each sale that has Num_Ven
+    const vendasComNumero = baseVendas.filter(v => v.numVen > 0);
+    const resumoMap = new Map<number, Record<string, unknown>>();
+
+    // Batch fetch resumos
+    const concurrency = 5;
+    for (let i = 0; i < vendasComNumero.length; i += concurrency) {
+      const batch = vendasComNumero.slice(i, i + concurrency);
+      const results = await Promise.allSettled(
+        batch.map(async (v) => {
+          const res = await uauFetch(token, "Venda/ConsultarResumoVenda", {
+            empresa: v.empresa,
+            numero: v.numVen,
+          }, 10000);
+          return { numVen: v.numVen, raw: res };
+        })
+      );
+      for (const r of results) {
+        if (r.status === "fulfilled") {
+          const resumoRows = extractMyTable(r.value.raw);
+          if (resumoRows.length > 0) {
+            resumoMap.set(r.value.numVen, resumoRows[0]);
+          } else if (r.value.raw && typeof r.value.raw === "object") {
+            resumoMap.set(r.value.numVen, r.value.raw as Record<string, unknown>);
+          }
         }
-        continue;
       }
-      for (const row of rows) {
-        const r = row as ResumoVenda;
-        vendas.push(parseSaleRecord(chave, r));
-      }
+    }
+
+    // Merge base data with resumo data
+    for (const base of baseVendas) {
+      const resumo = resumoMap.get(base.numVen);
+      const dataVendaResumo = resumo ? parseDate(resumo.DataVenda_ven as string || resumo.DataVenda as string || "") : "";
+      const dataFinal = dataVendaResumo || base.dataVenda;
+
+      // Filter by date range
+      if (dataFinal && dataFinal < startDate) continue;
+      if (dataFinal && dataFinal > endDate) continue;
+
+      vendas.push({
+        chaveVenda: `${base.empresa}-${base.numVen || base.id}`,
+        identificadorUnidade: base.id,
+        dataVenda: dataFinal,
+        valorVenda: (resumo?.ValorVenda_ven as number) || base.valorVenda,
+        compradorNome: (resumo?.Nome_pes as string) || "",
+        compradorCpfCnpj: (resumo?.CpfCnpj_pes as string) || "",
+        corretor: (resumo?.NomeCorretor as string) || (resumo?.Nome_Corretor as string) || (resumo?.Corretor_ven as string) || "",
+        formaPagamento: (resumo?.Descr_FormaPgto as string) || (resumo?.FormaPagamento as string) || "",
+        qtdParcelas: (resumo?.QtdParcelas as number) || 0,
+      });
     }
 
     // Sort by date
@@ -147,6 +198,7 @@ export async function GET(request: NextRequest) {
     // Aggregate by day
     const dayMap = new Map<string, { quantidade: number; valorTotal: number }>();
     for (const v of vendas) {
+      if (!v.dataVenda) continue;
       const day = v.dataVenda;
       if (!dayMap.has(day)) dayMap.set(day, { quantidade: 0, valorTotal: 0 });
       const d = dayMap.get(day)!;
@@ -166,6 +218,10 @@ export async function GET(request: NextRequest) {
       total: vendas.length,
       valorTotal,
       periodo: { inicio: startDate, fim: endDate },
+      _debug: {
+        totalRowsFromERP: rows.length,
+        sampleFields: rows.length > 0 ? Object.keys(rows[0]) : [],
+      },
     };
 
     cache.set(cacheKey, { data: response, timestamp: Date.now() });
@@ -175,38 +231,6 @@ export async function GET(request: NextRequest) {
     console.error("UAU Vendas API error:", errMsg);
     return NextResponse.json({ error: errMsg }, { status: 500 });
   }
-}
-
-function parseSaleRecord(chave: VendaChave, r: ResumoVenda) {
-  const dataRaw = r.DataVenda_ven || "";
-  let dataVenda = "";
-  if (dataRaw.includes("T")) {
-    dataVenda = dataRaw.split("T")[0];
-  } else if (dataRaw.includes("/")) {
-    const parts = dataRaw.split("/");
-    if (parts.length === 3) {
-      dataVenda = `${parts[2]}-${parts[1].padStart(2, "0")}-${parts[0].padStart(2, "0")}`;
-    }
-  } else {
-    dataVenda = dataRaw;
-  }
-
-  return {
-    chaveVenda: `${chave.Empresa_ven || 2}-${chave.Numero_ven}`,
-    identificadorUnidade: r.Identificador_unid || "",
-    dataVenda,
-    valorVenda: r.ValorVenda_ven || 0,
-    compradorNome: r.Nome_pes || "",
-    compradorCpfCnpj: r.CpfCnpj_pes || "",
-    corretor: r.NomeCorretor || r.Nome_Corretor || r.Corretor_ven || "",
-    formaPagamento: r.Descr_FormaPgto || r.FormaPagamento || "",
-    qtdParcelas: r.QtdParcelas || 0,
-  };
-}
-
-function formatDateUAU(isoDate: string): string {
-  const [y, m, d] = isoDate.split("-");
-  return `${m}-${d}-${y}`;
 }
 
 function getToday(): string {
