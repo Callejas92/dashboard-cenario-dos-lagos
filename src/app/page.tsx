@@ -1,18 +1,19 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { BarChart3, ShieldCheck, PlusCircle, RefreshCw, Plug, Globe, Sun, Moon, Home as HomeIcon } from "lucide-react";
+import { BarChart3, ShieldCheck, PlusCircle, RefreshCw, Plug, Globe, Sun, Moon, Home as HomeIcon, DollarSign } from "lucide-react";
 import TabVisaoGeral from "@/components/TabVisaoGeral";
 import TabCanais from "@/components/TabCanais";
 import TabQualidade from "@/components/TabQualidade";
 import TabIntegracoes from "@/components/TabIntegracoes";
 import TabAnalytics from "@/components/TabAnalytics";
 import TabEstoque from "@/components/TabEstoque";
+import TabFinanceiro from "@/components/TabFinanceiro";
 import FormSemanal from "@/components/FormSemanal";
 import LoginScreen from "@/components/LoginScreen";
-import { MetricsData } from "@/lib/types";
+import { MetricsData, FinanceiroResponse } from "@/lib/types";
 
-type Tab = "geral" | "canais" | "qualidade" | "analytics" | "estoque" | "integracoes" | "inserir";
+type Tab = "geral" | "canais" | "qualidade" | "analytics" | "estoque" | "financeiro" | "integracoes" | "inserir";
 
 const tabs: { id: Tab; label: string; icon: typeof BarChart3 }[] = [
   { id: "geral", label: "Visao Geral", icon: BarChart3 },
@@ -20,6 +21,7 @@ const tabs: { id: Tab; label: string; icon: typeof BarChart3 }[] = [
   { id: "qualidade", label: "Qualidade", icon: ShieldCheck },
   { id: "analytics", label: "Site", icon: Globe },
   { id: "estoque", label: "Estoque", icon: HomeIcon },
+  { id: "financeiro", label: "Financeiro", icon: DollarSign },
   { id: "integracoes", label: "APIs", icon: Plug },
   { id: "inserir", label: "Inserir Dados", icon: PlusCircle },
 ];
@@ -45,6 +47,12 @@ export default function Home() {
   const [estoqueLoading, setEstoqueLoading] = useState(false);
   const [estoqueError, setEstoqueError] = useState<string | null>(null);
   const [estoqueFetched, setEstoqueFetched] = useState(false);
+
+  // Financeiro state
+  const [financeiroData, setFinanceiroData] = useState<FinanceiroResponse | null>(null);
+  const [financeiroLoading, setFinanceiroLoading] = useState(false);
+  const [financeiroError, setFinanceiroError] = useState<string | null>(null);
+  const [financeiroFetched, setFinanceiroFetched] = useState(false);
 
   useEffect(() => {
     const saved = localStorage.getItem("theme");
@@ -95,6 +103,29 @@ export default function Home() {
         .finally(() => setEstoqueLoading(false));
     }
   }, [activeTab, estoqueFetched, estoqueLoading]);
+
+  // Fetch financeiro data when tab is selected
+  useEffect(() => {
+    if (activeTab === "financeiro" && !financeiroFetched && !financeiroLoading) {
+      setFinanceiroLoading(true);
+      setFinanceiroError(null);
+      fetch("/api/uau/financeiro")
+        .then((res) => res.json())
+        .then((json) => {
+          if (json.error) {
+            setFinanceiroError(json.error);
+          } else {
+            setFinanceiroData(json);
+          }
+          setFinanceiroFetched(true);
+        })
+        .catch((err) => {
+          setFinanceiroError(String(err));
+          setFinanceiroFetched(true);
+        })
+        .finally(() => setFinanceiroLoading(false));
+    }
+  }, [activeTab, financeiroFetched, financeiroLoading]);
 
   if (!authenticated) {
     return <LoginScreen onLogin={(pwd) => { setAuthToken(pwd); setAuthenticated(true); }} dark={dark} onToggleTheme={toggleTheme} />;
@@ -203,6 +234,27 @@ export default function Home() {
             </div>
           ) : estoqueData ? (
             <TabEstoque data={estoqueData} />
+          ) : null
+        )}
+        {activeTab === "financeiro" && (
+          financeiroLoading ? (
+            <div className="text-center py-12">
+              <RefreshCw size={24} className="animate-spin mx-auto mb-3" style={{ color: "#1a5c3a" }} />
+              <p className="text-sm" style={{ color: "var(--text-muted)" }}>Carregando dados financeiros...</p>
+            </div>
+          ) : financeiroError ? (
+            <div className="kpi-card text-center py-12">
+              <p className="text-sm" style={{ color: "#e94560" }}>{financeiroError}</p>
+              <button
+                onClick={() => { setFinanceiroFetched(false); }}
+                className="mt-3 px-4 py-2 rounded-lg text-sm"
+                style={{ background: "var(--surface)", color: "var(--text)", border: "1px solid var(--border)" }}
+              >
+                Tentar novamente
+              </button>
+            </div>
+          ) : financeiroData ? (
+            <TabFinanceiro data={financeiroData} />
           ) : null
         )}
         {activeTab === "integracoes" && <TabIntegracoes />}

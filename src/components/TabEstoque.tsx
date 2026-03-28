@@ -1,13 +1,15 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useCallback } from "react";
 import {
   PieChart, Pie, Cell, Tooltip, ResponsiveContainer,
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Legend,
+  AreaChart, Area, Line,
 } from "recharts";
 import KPICard from "./KPICard";
-import { Search, Home, BarChart3, DollarSign, TrendingUp, Layers } from "lucide-react";
-import { formatBRL } from "@/lib/types";
+import DateRangeFilter from "./DateRangeFilter";
+import { Search, Home, BarChart3, DollarSign, TrendingUp, Layers, RefreshCw, ShoppingCart, User, CreditCard, Calendar } from "lucide-react";
+import { formatBRL, VendasResponse, VendaRecord } from "@/lib/types";
 
 interface EstoqueData {
   status: string;
@@ -45,6 +47,249 @@ function formatCompact(value: number): string {
   if (value >= 1_000_000) return `R$ ${(value / 1_000_000).toFixed(1)}M`;
   if (value >= 1_000) return `R$ ${(value / 1_000).toFixed(0)}K`;
   return formatBRL(value);
+}
+
+type Aggregation = "day" | "week" | "month";
+
+function aggregateVendas(vendas: VendasResponse["porDia"], agg: Aggregation) {
+  if (agg === "day") return vendas;
+
+  const map = new Map<string, { data: string; quantidade: number; valorTotal: number }>();
+  for (const d of vendas) {
+    let key: string;
+    if (agg === "month") {
+      key = d.data.substring(0, 7);
+    } else {
+      const dt = new Date(d.data + "T00:00:00");
+      const jan1 = new Date(dt.getFullYear(), 0, 1);
+      const week = Math.ceil(((dt.getTime() - jan1.getTime()) / 86400000 + jan1.getDay() + 1) / 7);
+      key = `${dt.getFullYear()}-S${String(week).padStart(2, "0")}`;
+    }
+    if (!map.has(key)) map.set(key, { data: key, quantidade: 0, valorTotal: 0 });
+    const entry = map.get(key)!;
+    entry.quantidade += d.quantidade;
+    entry.valorTotal += d.valorTotal;
+  }
+  return Array.from(map.values()).sort((a, b) => a.data.localeCompare(b.data));
+}
+
+function formatLabel(key: string, agg: Aggregation): string {
+  if (agg === "day") {
+    const [, m, d] = key.split("-");
+    return `${d}/${m}`;
+  }
+  if (agg === "week") {
+    return key.replace(/^\d{4}-/, "");
+  }
+  const [y, m] = key.split("-");
+  const months = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
+  return `${months[parseInt(m) - 1]}/${y.slice(2)}`;
+}
+
+function SalesHistorySection() {
+  const [salesData, setSalesData] = useState<VendasResponse | null>(null);
+  const [salesLoading, setSalesLoading] = useState(false);
+  const [salesError, setSalesError] = useState<string | null>(null);
+  const [aggregation, setAggregation] = useState<Aggregation>("month");
+
+  const now = new Date();
+  const defaultEnd = now.toISOString().split("T")[0];
+  const defaultStart = new Date(now.getFullYear() - 1, now.getMonth(), now.getDate()).toISOString().split("T")[0];
+
+  const [startDate, setStartDate] = useState(defaultStart);
+  const [endDate, setEndDate] = useState(defaultEnd);
+  const [activeQuick, setActiveQuick] = useState<number | "total" | null>("total");
+
+  const fetchSales = useCallback(async (start: string, end: string) => {
+    setSalesLoading(true);
+    setSalesError(null);
+    try {
+      const res = await fetch(`/api/uau/vendas?startDate=${start}&endDate=${end}`);
+      if (!res.ok) throw new Error("Erro ao buscar vendas");
+      const json = await res.json();
+      setSalesData(json);
+    } catch (err) {
+      setSalesError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSalesLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchSales(startDate, endDate);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleStartChange = (d: string) => { setStartDate(d); setActiveQuick(null); fetchSales(d, endDate); };
+  const handleEndChange = (d: string) => { setEndDate(d); setActiveQuick(null); fetchSales(startDate, d); };
+  const handleQuickSelect = (days: number | "total") => {
+    setActiveQuick(days);
+    const end = new Date();
+    const endStr = end.toISOString().split("T")[0];
+    let startStr: string;
+    if (days === "total") {
+      startStr = new Date(end.getFullYear() - 2, end.getMonth(), end.getDate()).toISOString().split("T")[0];
+    } else {
+      const s = new Date(end);
+      s.setDate(s.getDate() - days);
+      startStr = s.toISOString().split("T")[0];
+    }
+    setStartDate(startStr);
+    setEndDate(endStr);
+    fetchSales(startStr, endStr);
+  };
+
+  const chartData = useMemo(() => {
+    if (!salesData) return [];
+    return aggregateVendas(salesData.porDia, aggregation).map((d) => ({
+      ...d,
+      label: formatLabel(d.data, aggregation),
+      valorK: Math.round(d.valorTotal / 1000),
+    }));
+  }, [salesData, aggregation]);
+
+  const aggBtnStyle = (active: boolean): React.CSSProperties => ({
+    padding: "0.2rem 0.5rem",
+    fontSize: "0.65rem",
+    fontWeight: 700,
+    borderRadius: "0.375rem",
+    background: active ? "#4285f4" : "transparent",
+    color: active ? "#fff" : "var(--text-dim)",
+    border: active ? "1px solid #4285f4" : "1px solid var(--border)",
+    cursor: "pointer",
+  });
+
+  const tooltipStyle = {
+    contentStyle: {
+      background: "var(--tooltip-bg)",
+      border: "1px solid var(--tooltip-border)",
+      borderRadius: "0.75rem",
+      color: "var(--tooltip-text)",
+    },
+    labelStyle: { color: "var(--tooltip-label)" },
+  };
+
+  return (
+    <div className="kpi-card">
+      <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
+        <div className="flex items-center gap-2">
+          <ShoppingCart size={14} style={{ color: "#8b5cf6" }} />
+          <h3 className="text-sm font-bold" style={{ color: "var(--text-muted)" }}>HISTORICO DE VENDAS</h3>
+        </div>
+        <div className="flex items-center gap-1">
+          {(["day", "week", "month"] as Aggregation[]).map((a) => (
+            <button key={a} onClick={() => setAggregation(a)} style={aggBtnStyle(aggregation === a)}>
+              {a === "day" ? "Dia" : a === "week" ? "Semana" : "Mes"}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <DateRangeFilter
+        startDate={startDate}
+        endDate={endDate}
+        onStartChange={handleStartChange}
+        onEndChange={handleEndChange}
+        onQuickSelect={handleQuickSelect}
+        activeQuick={activeQuick}
+        inline
+      />
+
+      {salesLoading ? (
+        <div className="text-center py-8">
+          <RefreshCw size={20} className="animate-spin mx-auto mb-2" style={{ color: "#1a5c3a" }} />
+          <p className="text-xs" style={{ color: "var(--text-muted)" }}>Carregando vendas...</p>
+        </div>
+      ) : salesError ? (
+        <div className="text-center py-8">
+          <p className="text-xs" style={{ color: "#e94560" }}>{salesError}</p>
+          <button onClick={() => fetchSales(startDate, endDate)} className="mt-2 text-xs underline" style={{ color: "var(--text-dim)" }}>Tentar novamente</button>
+        </div>
+      ) : salesData && salesData.total === 0 ? (
+        <div className="text-center py-8">
+          <p className="text-xs" style={{ color: "var(--text-dim)" }}>Nenhuma venda encontrada no periodo.</p>
+        </div>
+      ) : salesData ? (
+        <>
+          {/* Summary mini KPIs */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+            <div style={{ padding: "0.5rem 0.75rem", borderRadius: "0.5rem", background: "var(--surface)", border: "1px solid var(--border)" }}>
+              <p className="text-xs" style={{ color: "var(--text-dim)" }}>Total Vendas</p>
+              <p className="text-lg font-bold" style={{ color: "var(--text)" }}>{salesData.total}</p>
+            </div>
+            <div style={{ padding: "0.5rem 0.75rem", borderRadius: "0.5rem", background: "var(--surface)", border: "1px solid var(--border)" }}>
+              <p className="text-xs" style={{ color: "var(--text-dim)" }}>Valor Total</p>
+              <p className="text-lg font-bold" style={{ color: "#10b981" }}>{formatCompact(salesData.valorTotal)}</p>
+            </div>
+            <div style={{ padding: "0.5rem 0.75rem", borderRadius: "0.5rem", background: "var(--surface)", border: "1px solid var(--border)" }}>
+              <p className="text-xs" style={{ color: "var(--text-dim)" }}>Ticket Medio</p>
+              <p className="text-lg font-bold" style={{ color: "#4285f4" }}>{formatCompact(salesData.total > 0 ? salesData.valorTotal / salesData.total : 0)}</p>
+            </div>
+            <div style={{ padding: "0.5rem 0.75rem", borderRadius: "0.5rem", background: "var(--surface)", border: "1px solid var(--border)" }}>
+              <p className="text-xs" style={{ color: "var(--text-dim)" }}>Periodo</p>
+              <p className="text-sm font-bold" style={{ color: "var(--text)" }}>{salesData.porDia.length} {aggregation === "day" ? "dias" : aggregation === "week" ? "semanas" : "meses"}</p>
+            </div>
+          </div>
+
+          {/* Chart */}
+          {chartData.length > 0 && (
+            <div style={{ marginBottom: "1rem" }}>
+              <ResponsiveContainer width="100%" height={240}>
+                <AreaChart data={chartData}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+                  <XAxis dataKey="label" tick={{ fill: "var(--text-dim)", fontSize: 10 }} />
+                  <YAxis yAxisId="left" tick={{ fill: "var(--text-dim)", fontSize: 10 }} />
+                  <YAxis yAxisId="right" orientation="right" tick={{ fill: "var(--text-dim)", fontSize: 10 }} tickFormatter={(v) => `${v}K`} />
+                  <Tooltip {...tooltipStyle} formatter={(value, name) => [name === "valorK" ? `R$ ${value}K` : value, name === "valorK" ? "Valor (R$ mil)" : "Qtd Vendas"]} />
+                  <Area yAxisId="left" type="monotone" dataKey="quantidade" fill="#8b5cf6" fillOpacity={0.15} stroke="#8b5cf6" strokeWidth={2} name="Qtd Vendas" />
+                  <Line yAxisId="right" type="monotone" dataKey="valorK" stroke="#10b981" strokeWidth={2} dot={false} name="Valor (R$ mil)" />
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+
+          {/* Sales table */}
+          {salesData.vendas.length > 0 && (
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr style={{ borderBottom: "2px solid var(--border)" }}>
+                    <th className="text-left py-2 px-2 font-semibold" style={{ color: "var(--text-dim)" }}>
+                      <Calendar size={10} className="inline mr-1" />Data
+                    </th>
+                    <th className="text-left py-2 px-2 font-semibold" style={{ color: "var(--text-dim)" }}>Unidade</th>
+                    <th className="text-left py-2 px-2 font-semibold" style={{ color: "var(--text-dim)" }}>
+                      <User size={10} className="inline mr-1" />Corretor
+                    </th>
+                    <th className="text-right py-2 px-2 font-semibold" style={{ color: "var(--text-dim)" }}>
+                      <DollarSign size={10} className="inline mr-1" />Valor
+                    </th>
+                    <th className="text-left py-2 px-2 font-semibold" style={{ color: "var(--text-dim)" }}>
+                      <CreditCard size={10} className="inline mr-1" />Forma Pgto
+                    </th>
+                    <th className="text-left py-2 px-2 font-semibold" style={{ color: "var(--text-dim)" }}>Comprador</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {salesData.vendas.map((v: VendaRecord, i: number) => (
+                    <tr key={`${v.chaveVenda}-${i}`} style={{ borderBottom: "1px solid var(--border)" }}>
+                      <td className="py-1.5 px-2" style={{ color: "var(--text)" }}>
+                        {v.dataVenda ? new Date(v.dataVenda + "T00:00:00").toLocaleDateString("pt-BR") : "-"}
+                      </td>
+                      <td className="py-1.5 px-2" style={{ color: "var(--text)", fontWeight: 600 }}>{v.identificadorUnidade || "-"}</td>
+                      <td className="py-1.5 px-2" style={{ color: "var(--text-muted)" }}>{v.corretor || "-"}</td>
+                      <td className="text-right py-1.5 px-2" style={{ color: "#10b981", fontWeight: 600 }}>{formatBRL(v.valorVenda)}</td>
+                      <td className="py-1.5 px-2" style={{ color: "var(--text-muted)" }}>{v.formaPagamento || "-"}</td>
+                      <td className="py-1.5 px-2" style={{ color: "var(--text-muted)" }}>{v.compradorNome || "-"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </>
+      ) : null}
+    </div>
+  );
 }
 
 type SortField = "quadra" | "lote" | "area" | "valorTotal" | "valorM2" | "classificacao" | "rua" | "status";
@@ -295,6 +540,9 @@ export default function TabEstoque({ data }: { data: EstoqueData }) {
           </ResponsiveContainer>
         </div>
       </div>
+
+      {/* Sales History Section */}
+      <SalesHistorySection />
 
       {/* Visual Grid by Quadra */}
       <div className="kpi-card">

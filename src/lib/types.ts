@@ -151,3 +151,71 @@ export function formatPercent(value: number): string {
 export function formatNumber(value: number): string {
   return value.toLocaleString("pt-BR");
 }
+
+// --- Sales History Types ---
+export interface VendaRecord {
+  chaveVenda: string;
+  identificadorUnidade: string;
+  dataVenda: string;
+  valorVenda: number;
+  compradorNome: string;
+  compradorCpfCnpj: string;
+  corretor: string;
+  formaPagamento: string;
+  qtdParcelas: number;
+  leadSource?: string;
+}
+
+export interface VendasDiarias {
+  data: string;
+  quantidade: number;
+  valorTotal: number;
+}
+
+export interface VendasResponse {
+  vendas: VendaRecord[];
+  porDia: VendasDiarias[];
+  total: number;
+  valorTotal: number;
+  periodo: { inicio: string; fim: string };
+}
+
+// --- Financeiro Types ---
+export interface ParcelaReceber {
+  chaveVenda: string;
+  identificadorUnidade: string;
+  numeroParcela: number;
+  dataVencimento: string;
+  valor: number;
+  valorPago: number;
+  status: "em_dia" | "vencida" | "paga";
+  diasAtraso: number;
+  clienteNome: string;
+}
+
+export interface InadimplenciaResumo {
+  totalVencido: number;
+  totalEmDia: number;
+  totalPago: number;
+  qtdParcelasVencidas: number;
+  qtdClientesInadimplentes: number;
+  percentualInadimplencia: number;
+}
+
+export interface ProjecaoItem {
+  periodo: string;
+  meses: number;
+  vendasProjetadasValor: number;
+  lotesProjetados: number;
+  inadimplenciaProjetada: number;
+}
+
+export interface FinanceiroResponse {
+  valorVendidoTotal: number;
+  ticketMedio: number;
+  qtdVendas: number;
+  inadimplencia: InadimplenciaResumo;
+  parcelasAReceber: ParcelaReceber[];
+  projecoes: ProjecaoItem[];
+  vendasMensais: { mes: string; vendas: number; valor: number }[];
+}

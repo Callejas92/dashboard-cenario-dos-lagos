@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import lotesData from "@/data/lotes.json";
-
-const UAU_API = process.env.UAU_API_URL || "https://gamma-api.seniorcloud.com.br:51928/uauAPI";
+import { authenticate, UAU_API, isUauConfigured, uauHeaders } from "@/lib/uau-auth";
 
 interface LoteStatic {
   id: string;
@@ -12,41 +11,6 @@ interface LoteStatic {
   valorTotal: number;
   valorM2: number;
   classificacao: string;
-}
-
-async function authenticate(): Promise<string> {
-  const login = process.env.UAU_LOGIN;
-  const senha = process.env.UAU_PASSWORD;
-  const integrationToken = process.env.UAU_INTEGRATION_TOKEN;
-
-  if (!login || !senha || !integrationToken) {
-    throw new Error("Credenciais UAU não configuradas");
-  }
-
-  const res = await fetch(
-    `${UAU_API}/api/v1/Autenticador/AutenticarUsuario`,
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-INTEGRATION-Authorization": integrationToken,
-      },
-      body: JSON.stringify({ login, senha }),
-    }
-  );
-
-  if (!res.ok) {
-    const err = await res.text();
-    throw new Error(`Autenticação falhou: ${res.status} — ${err}`);
-  }
-
-  const text = await res.text();
-  const token = text.replace(/^"|"$/g, "");
-  if (!token) {
-    throw new Error("Token vazio na resposta de autenticação");
-  }
-
-  return token;
 }
 
 interface UnitRow {
@@ -202,14 +166,13 @@ function buildEnrichedResponse(
 export const maxDuration = 30;
 
 export async function GET() {
-  const integrationToken = process.env.UAU_INTEGRATION_TOKEN;
-
-  if (!process.env.UAU_LOGIN || !process.env.UAU_PASSWORD || !integrationToken) {
+  if (!isUauConfigured()) {
     return NextResponse.json(buildEnrichedResponse(null, "not_configured"));
   }
 
   try {
     const token = await authenticate();
+    const integrationToken = process.env.UAU_INTEGRATION_TOKEN!;
 
     const now = new Date();
     const mm = String(now.getMonth() + 1).padStart(2, "0");
