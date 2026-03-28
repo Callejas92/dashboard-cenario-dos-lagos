@@ -76,8 +76,8 @@ export async function GET() {
     const [chavesRaw, parcelasRaw] = await Promise.all([
       uauFetch(token, "Venda/RetornaChavesVendasPorPeriodo", {
         empresa: 2,
-        dataInicial: formatDateBR(startStr),
-        dataFinal: formatDateBR(today),
+        dataInicial: formatDateUAU(startStr),
+        dataFinal: formatDateUAU(today),
       }, 20000).catch(() => null),
       uauFetch(token, "Venda/BuscarParcelasAReceber", {
         empresa: 2,
@@ -255,7 +255,7 @@ function calcProjecoes(vendasMensais: { mes: string; vendas: number; valor: numb
   }));
 }
 
-function formatDateBR(isoDate: string): string {
+function formatDateUAU(isoDate: string): string {
   const [y, m, d] = isoDate.split("-");
-  return `${d}/${m}/${y}`;
+  return `${m}-${d}-${y}`;
 }

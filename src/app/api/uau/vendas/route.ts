@@ -78,8 +78,8 @@ export async function GET(request: NextRequest) {
     // 1. Get sale keys by period
     const chavesRaw = await uauFetch(token, "Venda/RetornaChavesVendasPorPeriodo", {
       empresa: 2,
-      dataInicial: formatDateBR(startDate),
-      dataFinal: formatDateBR(endDate),
+      dataInicial: formatDateUAU(startDate),
+      dataFinal: formatDateUAU(endDate),
     }, 20000);
 
     const chavesRows = extractMyTable(chavesRaw);
@@ -204,9 +204,9 @@ function parseSaleRecord(chave: VendaChave, r: ResumoVenda) {
   };
 }
 
-function formatDateBR(isoDate: string): string {
+function formatDateUAU(isoDate: string): string {
   const [y, m, d] = isoDate.split("-");
-  return `${d}/${m}/${y}`;
+  return `${m}-${d}-${y}`;
 }
 
 function getToday(): string {
