@@ -12,37 +12,71 @@ export function isUauConfigured(): boolean {
   return !!(login && senha && integrationToken);
 }
 
-export async function authenticate(): Promise<string> {
+// Cache do token JWT (válido por ~2h, renovamos a cada 90min)
+let cachedToken: { token: string; expiresAt: number } | null = null;
+
+async function authenticateOnce(): Promise<string> {
   const { login, senha, integrationToken } = getUauCredentials();
 
   if (!login || !senha || !integrationToken) {
     throw new Error("Credenciais UAU não configuradas");
   }
 
-  const res = await fetch(
-    `${UAU_API}/api/v1/Autenticador/AutenticarUsuario`,
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-INTEGRATION-Authorization": integrationToken,
-      },
-      body: JSON.stringify({ login, senha }),
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 10000);
+
+  try {
+    const res = await fetch(
+      `${UAU_API}/api/v1/Autenticador/AutenticarUsuario`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-INTEGRATION-Authorization": integrationToken,
+        },
+        body: JSON.stringify({ login, senha }),
+        signal: controller.signal,
+      }
+    );
+
+    if (!res.ok) {
+      const err = await res.text();
+      throw new Error(`Autenticação falhou: ${res.status} — ${err}`);
     }
-  );
 
-  if (!res.ok) {
-    const err = await res.text();
-    throw new Error(`Autenticação falhou: ${res.status} — ${err}`);
+    const text = await res.text();
+    const token = text.replace(/^"|"$/g, "");
+    if (!token) {
+      throw new Error("Token vazio na resposta de autenticação");
+    }
+
+    return token;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+export async function authenticate(): Promise<string> {
+  // Retorna token cacheado se ainda válido (90min)
+  if (cachedToken && Date.now() < cachedToken.expiresAt) {
+    return cachedToken.token;
   }
 
-  const text = await res.text();
-  const token = text.replace(/^"|"$/g, "");
-  if (!token) {
-    throw new Error("Token vazio na resposta de autenticação");
+  // Retry com backoff: até 3 tentativas
+  let lastError: Error | null = null;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const token = await authenticateOnce();
+      cachedToken = { token, expiresAt: Date.now() + 90 * 60 * 1000 };
+      return token;
+    } catch (err) {
+      lastError = err instanceof Error ? err : new Error(String(err));
+      if (attempt < 2) {
+        await new Promise((r) => setTimeout(r, 1000 * (attempt + 1)));
+      }
+    }
   }
-
-  return token;
+  throw lastError!;
 }
 
 export function uauHeaders(token: string): Record<string, string> {
@@ -55,24 +89,35 @@ export function uauHeaders(token: string): Record<string, string> {
 }
 
 export async function uauFetch(token: string, endpoint: string, body: unknown, timeoutMs = 15000): Promise<unknown> {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  let lastError: Error | null = null;
 
-  try {
-    const res = await fetch(`${UAU_API}/api/v1/${endpoint}`, {
-      method: "POST",
-      headers: uauHeaders(token),
-      body: JSON.stringify(body),
-      signal: controller.signal,
-    });
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
-    if (!res.ok) {
-      const err = await res.text();
-      throw new Error(`${endpoint} falhou: ${res.status} — ${err}`);
+    try {
+      const res = await fetch(`${UAU_API}/api/v1/${endpoint}`, {
+        method: "POST",
+        headers: uauHeaders(token),
+        body: JSON.stringify(body),
+        signal: controller.signal,
+      });
+
+      if (!res.ok) {
+        const err = await res.text();
+        throw new Error(`${endpoint} falhou: ${res.status} — ${err}`);
+      }
+
+      return await res.json();
+    } catch (err) {
+      lastError = err instanceof Error ? err : new Error(String(err));
+      if (attempt === 0) {
+        await new Promise((r) => setTimeout(r, 1500));
+      }
+    } finally {
+      clearTimeout(timeout);
     }
-
-    return await res.json();
-  } finally {
-    clearTimeout(timeout);
   }
+
+  throw lastError!;
 }
