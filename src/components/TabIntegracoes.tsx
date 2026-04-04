@@ -230,13 +230,69 @@ function UauCard({ data, loading, onRefresh }: { data: UauResponse | null; loadi
   );
 }
 
+interface SimpleStatus {
+  configured: boolean;
+  message?: string;
+  error?: string;
+  fetchedAt?: string;
+  [key: string]: unknown;
+}
+
+function SimpleCard({ name, color, data, loading, onRefresh }: { name: string; color: string; data: SimpleStatus | null; loading: boolean; onRefresh: () => void }) {
+  return (
+    <div className="kpi-card">
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-3">
+          <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: `${color}20` }}>
+            <TrendingUp size={16} style={{ color }} />
+          </div>
+          <div>
+            <h3 className="text-sm font-bold" style={{ color: "var(--text)" }}>{name}</h3>
+            {data?.fetchedAt && (
+              <p className="text-xs" style={{ color: "var(--text-dim)" }}>
+                Atualizado: {new Date(data.fetchedAt).toLocaleString("pt-BR")}
+              </p>
+            )}
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <StatusBadge configured={data?.configured ?? false} error={data?.error} />
+          <button onClick={onRefresh} disabled={loading} className="p-1.5 rounded-lg hover:bg-white/5 transition-colors">
+            <RefreshCw size={14} className={loading ? "animate-spin" : ""} style={{ color: "var(--text-dim)" }} />
+          </button>
+        </div>
+      </div>
+      {!data?.configured && (
+        <div className="p-4 rounded-xl text-center" style={{ background: "var(--surface)", border: "1px solid var(--border)" }}>
+          <XCircle size={24} className="mx-auto mb-2" style={{ color: "var(--text-dim)" }} />
+          <p className="text-sm" style={{ color: "var(--text-muted)" }}>{data?.message || "Aguardando configuração das credenciais."}</p>
+        </div>
+      )}
+      {data?.error && (
+        <div className="p-3 rounded-xl" style={{ background: "rgba(233,69,96,0.08)", border: "1px solid rgba(233,69,96,0.15)" }}>
+          <p className="text-xs" style={{ color: "#f87171" }}>{data.error}</p>
+        </div>
+      )}
+      {data?.configured && !data?.error && (
+        <div className="p-3 rounded-xl" style={{ background: "var(--surface)" }}>
+          <p className="text-xs" style={{ color: "#10b981" }}>Integração ativa e funcionando.</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function TabIntegracoes() {
   const [googleData, setGoogleData] = useState<APIResponse | null>(null);
   const [metaData, setMetaData] = useState<APIResponse | null>(null);
   const [uauData, setUauData] = useState<UauResponse | null>(null);
+  const [crmData, setCrmData] = useState<SimpleStatus | null>(null);
+  const [igData, setIgData] = useState<SimpleStatus | null>(null);
   const [loadingGoogle, setLoadingGoogle] = useState(false);
   const [loadingMeta, setLoadingMeta] = useState(false);
   const [loadingUau, setLoadingUau] = useState(false);
+  const [loadingCrm, setLoadingCrm] = useState(false);
+  const [loadingIg, setLoadingIg] = useState(false);
 
   async function fetchGoogle() {
     setLoadingGoogle(true);
@@ -265,7 +321,6 @@ export default function TabIntegracoes() {
     try {
       const res = await fetch("/api/uau");
       const json = await res.json();
-      // Map new API format to expected format
       if (json.status === "connected") {
         setUauData({
           configured: true,
@@ -285,10 +340,36 @@ export default function TabIntegracoes() {
     setLoadingUau(false);
   }
 
+  async function fetchCrm() {
+    setLoadingCrm(true);
+    try {
+      const res = await fetch("/api/crm");
+      const json = await res.json();
+      setCrmData({ ...json, fetchedAt: json.fetchedAt || new Date().toISOString() });
+    } catch {
+      setCrmData({ configured: false, message: "Erro de conexão" });
+    }
+    setLoadingCrm(false);
+  }
+
+  async function fetchIg() {
+    setLoadingIg(true);
+    try {
+      const res = await fetch("/api/instagram");
+      const json = await res.json();
+      setIgData({ ...json, fetchedAt: json.fetchedAt || new Date().toISOString() });
+    } catch {
+      setIgData({ configured: false, message: "Erro de conexão" });
+    }
+    setLoadingIg(false);
+  }
+
   useEffect(() => {
     fetchGoogle();
     fetchMeta();
     fetchUau();
+    fetchCrm();
+    fetchIg();
   }, []);
 
   return (
@@ -299,46 +380,28 @@ export default function TabIntegracoes() {
         <p className="text-xs mb-4" style={{ color: "var(--text-dim)" }}>
           As APIs puxam dados em tempo real das plataformas. Configure as credenciais nas variaveis de ambiente da Vercel.
         </p>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-          <div className="flex items-center gap-3 p-3 rounded-xl" style={{ background: "var(--surface)" }}>
-            {googleData?.configured && !googleData.error ? (
-              <CheckCircle size={16} style={{ color: "#10b981" }} />
-            ) : (
-              <XCircle size={16} style={{ color: "var(--text-dim)" }} />
-            )}
-            <div>
-              <p className="text-sm font-semibold" style={{ color: "var(--text)" }}>Google Ads</p>
-              <p className="text-xs" style={{ color: "var(--text-dim)" }}>
-                {googleData?.configured ? (googleData.error ? "Erro na conexão" : "Conectado") : "Aguardando credenciais"}
-              </p>
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+          {[
+            { name: "Google Ads", data: googleData },
+            { name: "Meta Ads", data: metaData },
+            { name: "ERP UAU", data: uauData },
+            { name: "CRM Eggs", data: crmData },
+            { name: "Instagram", data: igData },
+          ].map(({ name, data: d }) => (
+            <div key={name} className="flex items-center gap-3 p-3 rounded-xl" style={{ background: "var(--surface)" }}>
+              {d?.configured && !d.error ? (
+                <CheckCircle size={16} style={{ color: "#10b981" }} />
+              ) : (
+                <XCircle size={16} style={{ color: "var(--text-dim)" }} />
+              )}
+              <div>
+                <p className="text-sm font-semibold" style={{ color: "var(--text)" }}>{name}</p>
+                <p className="text-xs" style={{ color: "var(--text-dim)" }}>
+                  {d?.configured ? (d.error ? "Erro" : "Conectado") : "Aguardando"}
+                </p>
+              </div>
             </div>
-          </div>
-          <div className="flex items-center gap-3 p-3 rounded-xl" style={{ background: "var(--surface)" }}>
-            {metaData?.configured && !metaData.error ? (
-              <CheckCircle size={16} style={{ color: "#10b981" }} />
-            ) : (
-              <XCircle size={16} style={{ color: "var(--text-dim)" }} />
-            )}
-            <div>
-              <p className="text-sm font-semibold" style={{ color: "var(--text)" }}>Meta Ads</p>
-              <p className="text-xs" style={{ color: "var(--text-dim)" }}>
-                {metaData?.configured ? (metaData.error ? "Erro na conexão" : "Conectado") : "Aguardando credenciais"}
-              </p>
-            </div>
-          </div>
-          <div className="flex items-center gap-3 p-3 rounded-xl" style={{ background: "var(--surface)" }}>
-            {uauData?.configured && !uauData.error ? (
-              <CheckCircle size={16} style={{ color: "#10b981" }} />
-            ) : (
-              <XCircle size={16} style={{ color: "var(--text-dim)" }} />
-            )}
-            <div>
-              <p className="text-sm font-semibold" style={{ color: "var(--text)" }}>ERP UAU</p>
-              <p className="text-xs" style={{ color: "var(--text-dim)" }}>
-                {uauData?.configured ? (uauData.error ? "Erro na conexão" : "Conectado") : "Aguardando credenciais"}
-              </p>
-            </div>
-          </div>
+          ))}
         </div>
       </div>
 
@@ -346,6 +409,8 @@ export default function TabIntegracoes() {
       <PlatformCard name="Google Ads" color="#4285f4" data={googleData} loading={loadingGoogle} onRefresh={fetchGoogle} />
       <PlatformCard name="Meta Ads" color="#e94560" data={metaData} loading={loadingMeta} onRefresh={fetchMeta} />
       <UauCard data={uauData} loading={loadingUau} onRefresh={fetchUau} />
+      <SimpleCard name="CRM Eggs" color="#8b5cf6" data={crmData} loading={loadingCrm} onRefresh={fetchCrm} />
+      <SimpleCard name="Instagram" color="#ec4899" data={igData} loading={loadingIg} onRefresh={fetchIg} />
     </div>
   );
 }

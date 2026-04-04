@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { BarChart3, ShieldCheck, PlusCircle, RefreshCw, Plug, Globe, Sun, Moon, Home as HomeIcon, DollarSign } from "lucide-react";
+import { BarChart3, ShieldCheck, PlusCircle, RefreshCw, Plug, Globe, Sun, Moon, Home as HomeIcon, DollarSign, Users } from "lucide-react";
 import TabVisaoGeral from "@/components/TabVisaoGeral";
 import TabCanais from "@/components/TabCanais";
 import TabQualidade from "@/components/TabQualidade";
@@ -9,11 +9,12 @@ import TabIntegracoes from "@/components/TabIntegracoes";
 import TabAnalytics from "@/components/TabAnalytics";
 import TabEstoque from "@/components/TabEstoque";
 import TabFinanceiro from "@/components/TabFinanceiro";
+import TabCRM from "@/components/TabCRM";
 import FormSemanal from "@/components/FormSemanal";
 import LoginScreen from "@/components/LoginScreen";
 import { MetricsData, FinanceiroResponse } from "@/lib/types";
 
-type Tab = "geral" | "canais" | "qualidade" | "analytics" | "estoque" | "financeiro" | "integracoes" | "inserir";
+type Tab = "geral" | "canais" | "qualidade" | "analytics" | "estoque" | "financeiro" | "crm" | "integracoes" | "inserir";
 
 const tabs: { id: Tab; label: string; icon: typeof BarChart3 }[] = [
   { id: "geral", label: "Visao Geral", icon: BarChart3 },
@@ -22,6 +23,7 @@ const tabs: { id: Tab; label: string; icon: typeof BarChart3 }[] = [
   { id: "analytics", label: "Site", icon: Globe },
   { id: "estoque", label: "Estoque", icon: HomeIcon },
   { id: "financeiro", label: "Financeiro", icon: DollarSign },
+  { id: "crm", label: "CRM", icon: Users },
   { id: "integracoes", label: "APIs", icon: Plug },
   { id: "inserir", label: "Inserir Dados", icon: PlusCircle },
 ];
@@ -257,6 +259,7 @@ export default function Home() {
             <TabFinanceiro data={financeiroData} />
           ) : null
         )}
+        {activeTab === "crm" && <TabCRM />}
         {activeTab === "integracoes" && <TabIntegracoes />}
         {activeTab === "inserir" && <FormSemanal data={data} onSaved={loadData} authToken={authToken} />}
       </main>
