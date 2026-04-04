@@ -1,7 +1,24 @@
 import { NextResponse } from "next/server";
 import { authenticate, isUauConfigured, uauFetch } from "@/lib/uau-auth";
+import lotesData from "@/data/lotes.json";
 
 export const maxDuration = 60;
+
+interface LoteStatic {
+  id: string;
+  quadra: number;
+  lote: number;
+  area: number;
+  rua: string;
+  valorTotal: number;
+  valorM2: number;
+  classificacao: string;
+}
+
+const lotesMap = new Map<string, LoteStatic>();
+for (const l of lotesData as LoteStatic[]) {
+  lotesMap.set(l.id, l);
+}
 
 interface ParcelaRow {
   Numero_ven?: number;
@@ -19,12 +36,12 @@ interface ParcelaRow {
   [key: string]: unknown;
 }
 
-interface VendaResumoRow {
-  Numero_ven?: number;
-  DataVenda_ven?: string;
-  ValorVenda_ven?: number;
-  Identificador_unid?: string;
-  [key: string]: unknown;
+interface VendaInfo {
+  identificador: string;
+  dataVenda: string;
+  valorVenda: number;
+  numVen: number;
+  empresa: number;
 }
 
 function extractMyTable(raw: unknown): Record<string, unknown>[] {
@@ -39,14 +56,15 @@ function extractMyTable(raw: unknown): Record<string, unknown>[] {
   return [];
 }
 
-function parseDate(raw: string): string {
+function parseDate(raw: string | undefined | null): string {
   if (!raw) return "";
-  if (raw.includes("T")) return raw.split("T")[0];
-  if (raw.includes("/")) {
-    const parts = raw.split("/");
+  const s = String(raw);
+  if (s.includes("T")) return s.split("T")[0];
+  if (s.includes("/")) {
+    const parts = s.split("/");
     if (parts.length === 3) return `${parts[2]}-${parts[1].padStart(2, "0")}-${parts[0].padStart(2, "0")}`;
   }
-  return raw;
+  return s;
 }
 
 // Simple in-memory cache
@@ -68,32 +86,83 @@ export async function GET() {
     const token = await authenticate();
     const today = new Date().toISOString().split("T")[0];
 
-    // Fetch sales keys for last 24 months to build history
-    const startDate = new Date();
-    startDate.setMonth(startDate.getMonth() - 24);
-    const startStr = startDate.toISOString().split("T")[0];
+    const now = new Date();
+    const mm = String(now.getMonth() + 1).padStart(2, "0");
+    const dd = String(now.getDate()).padStart(2, "0");
+    const yyyy = now.getFullYear();
+    const todayFormatted = `${mm}-${dd}-${yyyy}`;
 
-    const [chavesRaw, parcelasRaw] = await Promise.all([
-      uauFetch(token, "Venda/RetornaChavesVendasPorPeriodo", {
-        Empresa: 2,
-        DataInicial: `${startStr}T00:00:00`,
-        DataFinal: `${today}T23:59:59`,
-      }, 20000).catch(() => null),
+    // Use the working endpoint (same as /api/uau/vendas)
+    const [espelhoRaw, parcelasRaw] = await Promise.all([
+      uauFetch(token, "Espelho/BuscaUnidadesDeAcordoComWhereDetalhado", {
+        where: "WHERE Empresa_unid = 2 AND Vendido_unid = 1",
+        retorna_venda: true,
+        data_tabela_preco: todayFormatted,
+      }, 20000),
       uauFetch(token, "Venda/BuscarParcelasAReceber", {
         empresa: 2,
       }, 20000).catch(() => null),
     ]);
 
-    // --- Process Sales for projections ---
-    let vendas: VendaResumoRow[] = [];
-    if (chavesRaw) {
-      const chaveRows = extractMyTable(chavesRaw);
-      // Get resumos in batches
-      const resumos = await batchFetchResumos(token, chaveRows);
-      vendas = resumos;
+    // --- Extract sold units ---
+    const rows = extractMyTable(espelhoRaw);
+    const baseVendas: VendaInfo[] = [];
+
+    for (const row of rows) {
+      const r = row as Record<string, unknown>;
+      const id = (r.Identificador_unid as string) || "";
+      if (!id) continue;
+
+      const dataVenda = parseDate(r.DataCad_unid as string || "");
+      const lote = lotesMap.get(id);
+      const erpValor = Number(r.ValorTotal) || Number(r.ValPreco_unid) || 0;
+      const valor = erpValor > 0 ? erpValor : (lote?.valorTotal || 0);
+      const numVen = (r.Num_Ven as number) || 0;
+      const empresa = (r.Empresa_unid as number) || 2;
+
+      baseVendas.push({ identificador: id, numVen, empresa, dataVenda, valorVenda: valor });
     }
 
-    const valorVendidoTotal = vendas.reduce((s, v) => s + (v.ValorVenda_ven || 0), 0);
+    // Enrich with ConsultarResumoVenda in batches
+    const vendasComNumero = baseVendas.filter(v => v.numVen > 0);
+    const resumoMap = new Map<number, Record<string, unknown>>();
+    const concurrency = 5;
+
+    for (let i = 0; i < vendasComNumero.length; i += concurrency) {
+      const batch = vendasComNumero.slice(i, i + concurrency);
+      const results = await Promise.allSettled(
+        batch.map(async (v) => {
+          const res = await uauFetch(token, "Venda/ConsultarResumoVenda", {
+            empresa: v.empresa,
+            numero: v.numVen,
+          }, 10000);
+          return { numVen: v.numVen, raw: res };
+        })
+      );
+      for (const r of results) {
+        if (r.status === "fulfilled") {
+          const resumoRows = extractMyTable(r.value.raw);
+          if (resumoRows.length > 0) {
+            resumoMap.set(r.value.numVen, resumoRows[0]);
+          } else if (r.value.raw && typeof r.value.raw === "object") {
+            resumoMap.set(r.value.numVen, r.value.raw as Record<string, unknown>);
+          }
+        }
+      }
+    }
+
+    // Build final vendas with enriched data
+    const vendas: { dataVenda: string; valorVenda: number }[] = [];
+    for (const base of baseVendas) {
+      const resumo = resumoMap.get(base.numVen);
+      const dataVendaResumo = resumo ? parseDate(resumo.DataVenda_ven as string || resumo.DataVenda as string || "") : "";
+      const dataFinal = dataVendaResumo || base.dataVenda;
+      const valorFinal = Number(resumo?.ValorVenda_ven) || base.valorVenda || 0;
+
+      vendas.push({ dataVenda: dataFinal, valorVenda: valorFinal });
+    }
+
+    const valorVendidoTotal = vendas.reduce((s, v) => s + v.valorVenda, 0);
     const qtdVendas = vendas.length;
     const ticketMedio = qtdVendas > 0 ? valorVendidoTotal / qtdVendas : 0;
 
@@ -146,9 +215,8 @@ export async function GET() {
     const percentualInadimplencia = totalRecebiveis > 0 ? (totalVencido / totalRecebiveis) * 100 : 0;
 
     // Add inadimplência projection to projecoes
-    const inadimRate = percentualInadimplencia;
     for (const p of projecoes) {
-      p.inadimplenciaProjetada = inadimRate;
+      p.inadimplenciaProjetada = percentualInadimplencia;
     }
 
     const response = {
@@ -177,50 +245,16 @@ export async function GET() {
   }
 }
 
-async function batchFetchResumos(token: string, chaveRows: Record<string, unknown>[]): Promise<VendaResumoRow[]> {
-  const results: VendaResumoRow[] = [];
-  const concurrency = 5;
-
-  for (let i = 0; i < chaveRows.length; i += concurrency) {
-    const batch = chaveRows.slice(i, i + concurrency);
-    const batchResults = await Promise.allSettled(
-      batch.map(async (chave) => {
-        const raw = await uauFetch(token, "Venda/ConsultarResumoVenda", {
-          empresa: (chave as Record<string, unknown>).Empresa_ven || 2,
-          numero: (chave as Record<string, unknown>).Numero_ven,
-        }, 10000);
-        return { raw };
-      })
-    );
-
-    for (const r of batchResults) {
-      if (r.status === "fulfilled") {
-        const rows = extractMyTable(r.value.raw);
-        if (rows.length > 0) {
-          for (const row of rows) results.push(row as VendaResumoRow);
-        } else {
-          const direct = r.value.raw as VendaResumoRow;
-          if (direct?.Numero_ven) results.push(direct);
-        }
-      }
-    }
-  }
-
-  return results;
-}
-
-function groupByMonth(vendas: VendaResumoRow[]): { mes: string; vendas: number; valor: number }[] {
+function groupByMonth(vendas: { dataVenda: string; valorVenda: number }[]): { mes: string; vendas: number; valor: number }[] {
   const map = new Map<string, { vendas: number; valor: number }>();
 
   for (const v of vendas) {
-    const dataRaw = v.DataVenda_ven || "";
-    const data = parseDate(dataRaw);
-    if (!data) continue;
-    const mes = data.substring(0, 7); // YYYY-MM
+    if (!v.dataVenda) continue;
+    const mes = v.dataVenda.substring(0, 7);
     if (!map.has(mes)) map.set(mes, { vendas: 0, valor: 0 });
     const m = map.get(mes)!;
     m.vendas++;
-    m.valor += v.ValorVenda_ven || 0;
+    m.valor += v.valorVenda;
   }
 
   return Array.from(map.entries())
@@ -253,9 +287,4 @@ function calcProjecoes(vendasMensais: { mes: string; vendas: number; valor: numb
     lotesProjetados: Math.round(avgVendas * months),
     inadimplenciaProjetada: 0,
   }));
-}
-
-function formatDateUAU(isoDate: string): string {
-  const [y, m, d] = isoDate.split("-");
-  return `${m}-${d}-${y}`;
 }
