@@ -65,6 +65,8 @@ export default function TabMetaAds() {
   });
   const [endDate, setEndDate] = useState(() => new Date().toISOString().split("T")[0]);
   const [activeQuick, setActiveQuick] = useState<number | "total" | null>(30);
+  const [expandedKPI, setExpandedKPI] = useState<MetaMetricKey | null>(null);
+  const [detailView, setDetailView] = useState<"tabela" | "grafico">("tabela");
 
   const tooltipStyle = {
     contentStyle: { background: "var(--tooltip-bg)", border: "1px solid var(--border)", borderRadius: "0.75rem", color: "var(--text)" },
@@ -116,9 +118,6 @@ export default function TabMetaAds() {
   }
 
   if (!data) return null;
-
-  const [expandedKPI, setExpandedKPI] = useState<MetaMetricKey | null>(null);
-  const [detailView, setDetailView] = useState<"tabela" | "grafico">("tabela");
 
   const cpl = data.totals.leads > 0 ? data.totals.spend / data.totals.leads : 0;
   const ctr = data.totals.impressions > 0 ? (data.totals.clicks / data.totals.impressions) * 100 : 0;

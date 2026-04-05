@@ -69,6 +69,8 @@ export default function TabWhatsApp() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [days, setDays] = useState(30);
+  const [expandedKPI, setExpandedKPI] = useState<WppMetricKey | null>(null);
+  const [detailView, setDetailView] = useState<"tabela" | "grafico">("tabela");
 
   const tooltipStyle = {
     contentStyle: { background: "var(--tooltip-bg)", border: "1px solid var(--border)", borderRadius: "0.75rem", color: "var(--text)" },
@@ -111,9 +113,6 @@ export default function TabWhatsApp() {
       </div>
     );
   }
-
-  const [expandedKPI, setExpandedKPI] = useState<WppMetricKey | null>(null);
-  const [detailView, setDetailView] = useState<"tabela" | "grafico">("tabela");
 
   if (!data) return null;
 
