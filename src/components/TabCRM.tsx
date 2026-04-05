@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { RefreshCw, Users, UserCheck, UserPlus, TrendingUp, Phone, Mail, Globe } from "lucide-react";
+import { RefreshCw, Users, UserCheck, UserPlus, TrendingUp, Phone, Mail, Globe, ChevronDown, ChevronUp, X, Table, BarChart3 } from "lucide-react";
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
   PieChart, Pie, Cell, AreaChart, Area,
@@ -45,20 +45,7 @@ interface CRMData {
 
 const COLORS = ["#1a5c3a", "#10b981", "#f59e0b", "#e94560", "#6366f1", "#8b5cf6", "#06b6d4", "#ec4899"];
 
-function KPICard({ label, value, sub, icon: Icon, color }: { label: string; value: string | number; sub?: string; icon: typeof Users; color: string }) {
-  return (
-    <div className="kpi-card">
-      <div className="flex items-center gap-3 mb-2">
-        <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: `${color}20` }}>
-          <Icon size={16} style={{ color }} />
-        </div>
-        <p className="text-xs font-medium" style={{ color: "var(--text-dim)" }}>{label}</p>
-      </div>
-      <p className="text-2xl font-bold" style={{ color: "var(--text)" }}>{value}</p>
-      {sub && <p className="text-xs mt-1" style={{ color: "var(--text-dim)" }}>{sub}</p>}
-    </div>
-  );
-}
+type CrmMetricKey = "total" | "novos" | "convertidos" | "taxa";
 
 export default function TabCRM() {
   const [data, setData] = useState<CRMData | null>(null);
@@ -67,6 +54,8 @@ export default function TabCRM() {
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [activeQuick, setActiveQuick] = useState<number | "total" | null>("total");
+  const [expandedKPI, setExpandedKPI] = useState<CrmMetricKey | null>(null);
+  const [detailView, setDetailView] = useState<"tabela" | "grafico">("tabela");
 
   const tooltipStyle = {
     contentStyle: { background: "var(--tooltip-bg)", border: "1px solid var(--border)", borderRadius: "0.75rem", color: "var(--text)" },
@@ -151,6 +140,23 @@ export default function TabCRM() {
   const porStatus = Array.from(statusMap.entries()).map(([status, qtd]) => ({ status, qtd })).sort((a, b) => b.qtd - a.qtd);
   const porDia = Array.from(diaMap.entries()).map(([d, qtd]) => ({ data: d, qtd })).sort((a, b) => a.data.localeCompare(b.data));
 
+  // Daily breakdown for each KPI
+  const diaConvertidosMap = new Map<string, number>();
+  const diaNovosMap = new Map<string, number>();
+  for (const l of filteredLeads) {
+    if (!l.criadoEm) continue;
+    const dia = l.criadoEm.split("T")[0];
+    if (l.statusAlias === "new") diaNovosMap.set(dia, (diaNovosMap.get(dia) || 0) + 1);
+    if (l.convertido) diaConvertidosMap.set(dia, (diaConvertidosMap.get(dia) || 0) + 1);
+  }
+
+  const crmMetricConfig: Record<CrmMetricKey, { label: string; color: string; getDailyData: () => { date: string; value: number }[] }> = {
+    total:       { label: "Total Leads",    color: "#1a5c3a", getDailyData: () => porDia.map((d) => ({ date: d.data, value: d.qtd })) },
+    novos:       { label: "Novos",          color: "#10b981", getDailyData: () => Array.from(diaNovosMap.entries()).map(([d, v]) => ({ date: d, value: v })).sort((a, b) => a.date.localeCompare(b.date)) },
+    convertidos: { label: "Convertidos",    color: "#f59e0b", getDailyData: () => Array.from(diaConvertidosMap.entries()).map(([d, v]) => ({ date: d, value: v })).sort((a, b) => a.date.localeCompare(b.date)) },
+    taxa:        { label: "Taxa Conversão", color: "#6366f1", getDailyData: () => porDia.map((d) => { const conv = diaConvertidosMap.get(d.data) || 0; return { date: d.data, value: d.qtd > 0 ? (conv / d.qtd) * 100 : 0 }; }) },
+  };
+
   return (
     <div className="space-y-6">
       {/* Date Filter */}
@@ -175,12 +181,101 @@ export default function TabCRM() {
         activeQuick={activeQuick}
       />
 
-      {/* KPIs */}
+      {/* KPIs - Expandable */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-        <KPICard label="Total Leads" value={formatNumber(filteredTotal)} icon={Users} color="#1a5c3a" />
-        <KPICard label="Novos" value={formatNumber(filteredNovos)} icon={UserPlus} color="#10b981" />
-        <KPICard label="Convertidos" value={formatNumber(filteredConvertidos)} icon={UserCheck} color="#f59e0b" />
-        <KPICard label="Taxa Conversão" value={`${filteredTaxaConversao.toFixed(1)}%`} icon={TrendingUp} color="#6366f1" />
+        {([
+          { key: "total" as CrmMetricKey, label: "Total Leads", value: formatNumber(filteredTotal), icon: Users, color: "#1a5c3a" },
+          { key: "novos" as CrmMetricKey, label: "Novos", value: formatNumber(filteredNovos), icon: UserPlus, color: "#10b981" },
+          { key: "convertidos" as CrmMetricKey, label: "Convertidos", value: formatNumber(filteredConvertidos), icon: UserCheck, color: "#f59e0b" },
+          { key: "taxa" as CrmMetricKey, label: "Taxa Conversão", value: `${filteredTaxaConversao.toFixed(1)}%`, icon: TrendingUp, color: "#6366f1" },
+        ] as const).map(({ key, label, value, icon: Icon, color }) => (
+          <div key={key} onClick={() => { setExpandedKPI((prev) => (prev === key ? null : key)); setDetailView("tabela"); }} style={{ cursor: "pointer" }}>
+            <div className="kpi-card">
+              <div className="flex items-center gap-3 mb-2">
+                <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: `${color}20` }}>
+                  <Icon size={16} style={{ color }} />
+                </div>
+                <p className="text-xs font-medium" style={{ color: "var(--text-dim)" }}>{label}</p>
+                {expandedKPI === key ? <ChevronUp size={12} style={{ color: "var(--text-dim)", marginLeft: "auto" }} /> : <ChevronDown size={12} style={{ color: "var(--text-dim)", marginLeft: "auto" }} />}
+              </div>
+              <p className="text-2xl font-bold" style={{ color: "var(--text)" }}>{value}</p>
+            </div>
+          </div>
+        ))}
+
+        {expandedKPI && (() => {
+          const cfg = crmMetricConfig[expandedKPI];
+          const dailyValues = cfg.getDailyData().filter((d) => d.value > 0);
+          const isTaxa = expandedKPI === "taxa";
+          const total = isTaxa
+            ? (dailyValues.length > 0 ? dailyValues.reduce((s, d) => s + d.value, 0) / dailyValues.length : 0)
+            : dailyValues.reduce((s, d) => s + d.value, 0);
+          const fmtVal = isTaxa ? (v: number) => v.toFixed(1) + "%" : formatNumber;
+
+          return (
+            <div className="col-span-2 sm:col-span-4" style={{ background: "var(--card-bg)", border: "1px solid var(--border)", borderRadius: "1rem", padding: "1.25rem", animation: "fadeIn 0.2s ease" }}>
+              <div className="flex items-center justify-between mb-4">
+                <h4 className="text-sm font-bold" style={{ color: "var(--text-muted)" }}>{cfg.label.toUpperCase()} — POR DIA</h4>
+                <div className="flex items-center gap-2">
+                  {(["tabela", "grafico"] as const).map((v) => (
+                    <button key={v} onClick={() => setDetailView(v)} style={{ padding: "0.25rem 0.75rem", fontSize: "0.7rem", fontWeight: 600, borderRadius: "0.375rem", background: detailView === v ? cfg.color : "var(--surface)", color: detailView === v ? "#fff" : "var(--text-muted)", border: "1px solid var(--border)", cursor: "pointer" }}>
+                      <span className="flex items-center gap-1">{v === "tabela" ? <Table size={12} /> : <BarChart3 size={12} />}{v === "tabela" ? "Tabela" : "Gráfico"}</span>
+                    </button>
+                  ))}
+                  <button onClick={() => setExpandedKPI(null)} style={{ padding: "0.25rem", borderRadius: "0.375rem", background: "var(--surface)", border: "1px solid var(--border)", cursor: "pointer", color: "var(--text-dim)" }}>
+                    <X size={14} />
+                  </button>
+                </div>
+              </div>
+
+              {detailView === "tabela" ? (
+                dailyValues.length === 0 ? (
+                  <p className="text-sm text-center py-4" style={{ color: "var(--text-dim)" }}>Sem dados no período</p>
+                ) : (
+                  <div style={{ overflowX: "auto", maxHeight: "320px", overflowY: "auto" }}>
+                    <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.8rem" }}>
+                      <thead>
+                        <tr style={{ borderBottom: "2px solid var(--border)", position: "sticky", top: 0, background: "var(--card-bg)" }}>
+                          <th style={{ textAlign: "left", padding: "0.5rem 0.75rem", color: "var(--text-dim)", fontWeight: 600 }}>Data</th>
+                          <th style={{ textAlign: "right", padding: "0.5rem 0.75rem", color: "var(--text-dim)", fontWeight: 600 }}>{cfg.label}</th>
+                          {!isTaxa && <th style={{ textAlign: "right", padding: "0.5rem 0.75rem", color: "var(--text-dim)", fontWeight: 600 }}>%</th>}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {dailyValues.map((d) => (
+                          <tr key={d.date} style={{ borderBottom: "1px solid var(--border)" }}>
+                            <td style={{ padding: "0.5rem 0.75rem", color: "var(--text)", fontWeight: 500 }}>{new Date(d.date + "T00:00:00").toLocaleDateString("pt-BR")}</td>
+                            <td style={{ textAlign: "right", padding: "0.5rem 0.75rem", color: "var(--text)", fontWeight: 500 }}>{fmtVal(d.value)}</td>
+                            {!isTaxa && <td style={{ textAlign: "right", padding: "0.5rem 0.75rem", color: "var(--text-dim)" }}>{total > 0 ? ((d.value / total) * 100).toFixed(1) : "0"}%</td>}
+                          </tr>
+                        ))}
+                        <tr style={{ background: cfg.color + "15", fontWeight: 700, borderTop: "2px solid " + cfg.color }}>
+                          <td style={{ padding: "0.625rem 0.75rem", color: cfg.color }}>{isTaxa ? "MÉDIA" : "TOTAL"}</td>
+                          <td style={{ textAlign: "right", padding: "0.625rem 0.75rem", color: cfg.color, fontSize: "0.9rem" }}>{fmtVal(total)}</td>
+                          {!isTaxa && <td style={{ textAlign: "right", padding: "0.625rem 0.75rem", color: cfg.color }}>100%</td>}
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                )
+              ) : (
+                dailyValues.length === 0 ? (
+                  <p className="text-sm text-center py-4" style={{ color: "var(--text-dim)" }}>Sem dados no período</p>
+                ) : (
+                  <ResponsiveContainer width="100%" height={220}>
+                    <BarChart data={dailyValues.map((d) => ({ ...d, dateLabel: new Date(d.date + "T00:00:00").toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" }) }))}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+                      <XAxis dataKey="dateLabel" tick={{ fill: "var(--text-dim)", fontSize: 10 }} interval="preserveStartEnd" />
+                      <YAxis tick={{ fill: "var(--text-dim)", fontSize: 11 }} allowDecimals={false} />
+                      <Tooltip {...tooltipStyle} labelFormatter={(_, p) => p[0]?.payload?.date ? new Date(p[0].payload.date + "T00:00:00").toLocaleDateString("pt-BR") : ""} formatter={(v) => [fmtVal(Number(v)), cfg.label]} />
+                      <Bar dataKey="value" name={cfg.label} fill={cfg.color} radius={[4, 4, 0, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                )
+              )}
+            </div>
+          );
+        })()}
       </div>
 
       {/* Leads por dia */}

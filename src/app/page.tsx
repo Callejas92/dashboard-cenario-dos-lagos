@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { BarChart3, ShieldCheck, PlusCircle, RefreshCw, Plug, Globe, Sun, Moon, Home as HomeIcon, DollarSign, Users } from "lucide-react";
+import { BarChart3, ShieldCheck, PlusCircle, RefreshCw, Plug, Globe, Sun, Moon, Home as HomeIcon, DollarSign, Users, Instagram, Megaphone, MessageCircle } from "lucide-react";
 import TabVisaoGeral from "@/components/TabVisaoGeral";
 import TabCanais from "@/components/TabCanais";
 import TabQualidade from "@/components/TabQualidade";
@@ -10,11 +10,14 @@ import TabAnalytics from "@/components/TabAnalytics";
 import TabEstoque from "@/components/TabEstoque";
 import TabFinanceiro from "@/components/TabFinanceiro";
 import TabCRM from "@/components/TabCRM";
+import TabInstagram from "@/components/TabInstagram";
+import TabMetaAds from "@/components/TabMetaAds";
+import TabWhatsApp from "@/components/TabWhatsApp";
 import FormSemanal from "@/components/FormSemanal";
 import LoginScreen from "@/components/LoginScreen";
 import { MetricsData, FinanceiroResponse } from "@/lib/types";
 
-type Tab = "geral" | "canais" | "qualidade" | "analytics" | "estoque" | "financeiro" | "crm" | "integracoes" | "inserir";
+type Tab = "geral" | "canais" | "qualidade" | "analytics" | "estoque" | "financeiro" | "crm" | "instagram" | "metaads" | "whatsapp" | "integracoes" | "inserir";
 
 const tabs: { id: Tab; label: string; icon: typeof BarChart3 }[] = [
   { id: "geral", label: "Visao Geral", icon: BarChart3 },
@@ -24,6 +27,9 @@ const tabs: { id: Tab; label: string; icon: typeof BarChart3 }[] = [
   { id: "estoque", label: "Estoque", icon: HomeIcon },
   { id: "financeiro", label: "Financeiro", icon: DollarSign },
   { id: "crm", label: "CRM", icon: Users },
+  { id: "instagram", label: "Instagram", icon: Instagram },
+  { id: "metaads", label: "Meta Ads", icon: Megaphone },
+  { id: "whatsapp", label: "WhatsApp", icon: MessageCircle },
   { id: "integracoes", label: "APIs", icon: Plug },
   { id: "inserir", label: "Inserir Dados", icon: PlusCircle },
 ];
@@ -260,6 +266,9 @@ export default function Home() {
           ) : null
         )}
         {activeTab === "crm" && <TabCRM />}
+        {activeTab === "instagram" && <TabInstagram />}
+        {activeTab === "metaads" && <TabMetaAds />}
+        {activeTab === "whatsapp" && <TabWhatsApp />}
         {activeTab === "integracoes" && <TabIntegracoes />}
         {activeTab === "inserir" && <FormSemanal data={data} onSaved={loadData} authToken={authToken} />}
       </main>

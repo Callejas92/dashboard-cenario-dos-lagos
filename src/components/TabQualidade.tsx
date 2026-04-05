@@ -195,8 +195,7 @@ export default function TabQualidade({ data }: Props) {
         />
       </div>
 
-      {hasData ? (
-        <>
+      <>
           {/* 2. Conversion Funnel */}
           <div className="kpi-card">
             <h3 className="text-sm font-bold mb-4" style={{ color: "var(--text-muted)" }}>
@@ -407,17 +406,7 @@ export default function TabQualidade({ data }: Props) {
               </div>
             </div>
           )}
-        </>
-      ) : (
-        <div className="kpi-card text-center py-12">
-          <p className="text-lg font-bold" style={{ color: "var(--text-dim)" }}>
-            Nenhum dado de qualidade ainda
-          </p>
-          <p className="text-sm mt-2" style={{ color: "var(--text-dim)" }}>
-            Insira dados semanais incluindo leads qualificados, comparecimentos e SLA.
-          </p>
-        </div>
-      )}
+      </>
     </div>
   );
 }

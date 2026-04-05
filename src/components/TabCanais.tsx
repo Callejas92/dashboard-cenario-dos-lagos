@@ -1,16 +1,47 @@
 "use client";
 
-import { useState, useMemo, useCallback, Fragment } from "react";
+import { useState, useMemo, useCallback, useEffect } from "react";
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
-  CartesianGrid, Legend, PieChart, Pie, Cell, LineChart, Line,
+  CartesianGrid, PieChart, Pie, Cell,
 } from "recharts";
-import { TrendingUp, TrendingDown, Minus, ChevronDown, ChevronRight } from "lucide-react";
-import { MetricsData, calcKPIsPorCanal, formatBRL, formatNumber } from "@/lib/types";
+import { RefreshCw } from "lucide-react";
+import { MetricsData, formatBRL, formatNumber } from "@/lib/types";
 import DateRangeFilter from "./DateRangeFilter";
 
 interface Props {
   data: MetricsData;
+}
+
+interface CanalData {
+  investimento: number;
+  leads: number;
+  leadsQualificados: number;
+  vendas: number;
+  valorVendas: number;
+  source: "api" | "manual";
+}
+
+interface CanaisAPIData {
+  dateFrom: string;
+  dateTo: string;
+  canais: Record<string, CanalData>;
+  kpis: {
+    totalLeads: number;
+    totalInvestimento: number;
+    totalVendas: number;
+    totalValorVendas: number;
+    cpl: number;
+    cac: number;
+    roi: number;
+  };
+  metaExtras: {
+    reach: number;
+    impressions: number;
+    clicks: number;
+    ctr: number;
+    cpc: number;
+  };
 }
 
 const COLORS = ["#e94560", "#4285f4", "#10b981", "#f4a236", "#8b5cf6", "#ec4899", "#06b6d4", "#84cc16", "#f97316"];
@@ -37,47 +68,53 @@ function daysAgo(n: number) { const d = new Date(); d.setDate(d.getDate() - n); 
 export default function TabCanais({ data }: Props) {
   const [sortKey, setSortKey] = useState<SortKey>("investimento");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
-  const [expandedCanal, setExpandedCanal] = useState<string | null>(null);
+  const [startDate, setStartDate] = useState(() => daysAgo(30));
+  const [endDate, setEndDate] = useState(today);
+  const [activeQuick, setActiveQuick] = useState<number | "total" | null>(30);
+  const [apiData, setApiData] = useState<CanaisAPIData | null>(null);
+  const [loading, setLoading] = useState(true);
 
-  // Date bounds from data
-  const minDate = data.semanas.length > 0 ? data.semanas[0].inicio : "2020-01-01";
-  const maxDate = data.semanas.length > 0 ? data.semanas[data.semanas.length - 1].fim : today();
+  const fetchData = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/canais?from=${startDate}&to=${endDate}`);
+      const json = await res.json();
+      setApiData(json);
+    } catch { /* ignore */ }
+    setLoading(false);
+  }, [startDate, endDate]);
 
-  const [startDate, setStartDate] = useState(minDate);
-  const [endDate, setEndDate] = useState(maxDate);
-  const [activeQuick, setActiveQuick] = useState<number | "total" | null>("total");
+  useEffect(() => { fetchData(); }, [fetchData]);
 
   const handleQuickSelect = useCallback((value: number | "total") => {
     setActiveQuick(value);
     if (value === "total") {
-      setStartDate(minDate);
-      setEndDate(maxDate);
+      setStartDate(daysAgo(365));
+      setEndDate(today());
     } else {
       setStartDate(daysAgo(value));
       setEndDate(today());
     }
-  }, [minDate, maxDate]);
+  }, []);
 
-  // Filter semanas by date range
-  const filteredSemanas = useMemo(() => {
-    return data.semanas.filter((s) => {
-      if (!s.inicio || !s.fim) return true;
-      return s.fim >= startDate && s.inicio <= endDate;
-    });
-  }, [data.semanas, startDate, endDate]);
+  const metas = data.config.metas;
+  const canaisConfig = data.config.canais;
 
   const canalStats = useMemo(() => {
-    return data.config.canais.map((canal, i) => {
-      const stats = calcKPIsPorCanal(filteredSemanas, canal);
-      return { canal, ...stats, color: COLORS[i % COLORS.length] };
+    return canaisConfig.map((canal, i) => {
+      const d = apiData?.canais[canal] || { investimento: 0, leads: 0, leadsQualificados: 0, vendas: 0, valorVendas: 0, source: "api" as const };
+      const cpl = d.investimento > 0 && d.leads > 0 ? d.investimento / d.leads : 0;
+      const cac = d.investimento > 0 && d.vendas > 0 ? d.investimento / d.vendas : 0;
+      const roi = d.investimento > 0 && d.valorVendas > 0 ? d.valorVendas / d.investimento : 0;
+      return { canal, ...d, cpl, cac, roi, color: COLORS[i % COLORS.length] };
     });
-  }, [filteredSemanas, data.config.canais]);
+  }, [canaisConfig, apiData]);
 
   const sortedStats = useMemo(() => {
     const arr = [...canalStats];
     arr.sort((a, b) => {
-      const aVal = a[sortKey];
-      const bVal = b[sortKey];
+      const aVal = a[sortKey as keyof typeof a] as number | string;
+      const bVal = b[sortKey as keyof typeof b] as number | string;
       if (typeof aVal === "string" && typeof bVal === "string") {
         return sortDir === "asc" ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
       }
@@ -86,96 +123,27 @@ export default function TabCanais({ data }: Props) {
     return arr;
   }, [canalStats, sortKey, sortDir]);
 
-  const hasData = canalStats.some((c) => c.investimento > 0 || c.leads > 0);
-
   const pieLeads = useMemo(
     () => canalStats.filter((c) => c.leads > 0).map((c) => ({ name: c.canal, value: c.leads, color: c.color })),
     [canalStats],
   );
 
   const barInvestimento = useMemo(
-    () =>
-      [...canalStats]
-        .filter((c) => c.investimento > 0)
-        .sort((a, b) => b.investimento - a.investimento),
+    () => [...canalStats].filter((c) => c.investimento > 0).sort((a, b) => b.investimento - a.investimento),
     [canalStats],
   );
 
   const handleSort = (key: SortKey) => {
-    if (sortKey === key) {
-      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
-    } else {
-      setSortKey(key);
-      setSortDir("desc");
-    }
+    if (sortKey === key) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    else { setSortKey(key); setSortDir("desc"); }
   };
 
-  const sortArrow = (key: SortKey) => {
-    if (sortKey !== key) return "";
-    return sortDir === "asc" ? " \u25B2" : " \u25BC";
-  };
-
-  // Weekly detail data for expanded canal
-  const weeklyDetail = useMemo(() => {
-    if (!expandedCanal) return null;
-    const weekly = filteredSemanas.map((s) => {
-      const c = s.canais[expandedCanal];
-      const formatWeekName = () => {
-        if (!s.inicio || !s.fim) return `S${s.semana}`;
-        const di = new Date(s.inicio + "T00:00:00");
-        const df = new Date(s.fim + "T00:00:00");
-        const dayI = di.toLocaleDateString("pt-BR", { day: "2-digit" });
-        const dayF = df.toLocaleDateString("pt-BR", { day: "2-digit" });
-        const monthF = df.toLocaleDateString("pt-BR", { month: "short" }).replace(".", "");
-        return `${dayI}-${dayF} ${monthF.charAt(0).toUpperCase() + monthF.slice(1)}`;
-      };
-      return {
-        semana: formatWeekName(),
-        leads: c?.leads ?? 0,
-        vendas: c?.vendas ?? 0,
-        investimento: c?.investimento ?? 0,
-      };
-    });
-
-    if (weekly.length === 0) return null;
-
-    let bestWeek = weekly[0];
-    let worstWeek = weekly[0];
-    for (const w of weekly) {
-      if (w.leads > bestWeek.leads) bestWeek = w;
-      if (w.leads < worstWeek.leads) worstWeek = w;
-    }
-
-    const mid = Math.floor(weekly.length / 2) || 1;
-    const firstHalf = weekly.slice(0, mid).reduce((s, w) => s + w.leads, 0) / mid;
-    const secondHalf = weekly.slice(mid).reduce((s, w) => s + w.leads, 0) / (weekly.length - mid);
-    const trend = secondHalf > firstHalf * 1.05 ? "up" : secondHalf < firstHalf * 0.95 ? "down" : "stable";
-
-    return { weekly, bestWeek, worstWeek, trend };
-  }, [expandedCanal, filteredSemanas]);
+  const sortArrow = (key: SortKey) => sortKey !== key ? "" : sortDir === "asc" ? " ▲" : " ▼";
 
   const tooltipStyle = {
-    contentStyle: {
-      background: "var(--tooltip-bg)",
-      border: "1px solid var(--tooltip-border)",
-      borderRadius: "0.75rem",
-      color: "var(--tooltip-text)",
-    },
+    contentStyle: { background: "var(--tooltip-bg)", border: "1px solid var(--tooltip-border)", borderRadius: "0.75rem", color: "var(--tooltip-text)" },
     labelStyle: { color: "var(--tooltip-label)" },
   };
-
-  const metas = data.config.metas;
-
-  if (!hasData) {
-    return (
-      <div className="kpi-card text-center py-12">
-        <p className="text-lg font-bold" style={{ color: "var(--text-dim)" }}>Nenhum dado por canal ainda</p>
-        <p className="text-sm mt-2" style={{ color: "var(--text-dim)" }}>
-          Insira dados semanais para ver a performance por canal.
-        </p>
-      </div>
-    );
-  }
 
   const thStyle = (key: SortKey, align: "left" | "right" = "right"): React.CSSProperties => ({
     color: sortKey === key ? "var(--text)" : "var(--text-dim)",
@@ -196,194 +164,151 @@ export default function TabCanais({ data }: Props) {
         activeQuick={activeQuick}
       />
 
-      {/* Sortable summary table */}
+      {/* KPIs globais */}
+      {apiData && (
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+          <div className="kpi-card">
+            <p className="text-xs font-medium mb-1" style={{ color: "var(--text-dim)" }}>Investimento Total</p>
+            <p className="text-xl font-bold" style={{ color: "var(--text)" }}>{formatBRL(apiData.kpis.totalInvestimento)}</p>
+          </div>
+          <div className="kpi-card">
+            <p className="text-xs font-medium mb-1" style={{ color: "var(--text-dim)" }}>Total Leads</p>
+            <p className="text-xl font-bold" style={{ color: "var(--text)" }}>{formatNumber(apiData.kpis.totalLeads)}</p>
+            <p className="text-xs mt-1" style={{ color: "var(--text-dim)" }}>CPL {formatBRL(apiData.kpis.cpl)}</p>
+          </div>
+          <div className="kpi-card">
+            <p className="text-xs font-medium mb-1" style={{ color: "var(--text-dim)" }}>Vendas (UAU)</p>
+            <p className="text-xl font-bold" style={{ color: "var(--text)" }}>{apiData.kpis.totalVendas}</p>
+            <p className="text-xs mt-1" style={{ color: "var(--text-dim)" }}>{formatBRL(apiData.kpis.totalValorVendas)}</p>
+          </div>
+          <div className="kpi-card">
+            <p className="text-xs font-medium mb-1" style={{ color: "var(--text-dim)" }}>ROI Médio</p>
+            <p className="text-xl font-bold" style={{ color: apiData.kpis.roi > 0 ? roiColor(apiData.kpis.roi) : "var(--text)" }}>
+              {apiData.kpis.roi > 0 ? `${apiData.kpis.roi.toFixed(1)}x` : "—"}
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Meta Ads extras */}
+      {apiData && apiData.metaExtras.impressions > 0 && (
+        <div className="kpi-card">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-sm font-bold" style={{ color: "var(--text-muted)" }}>META ADS — DETALHES</h3>
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-5 gap-4 text-center">
+            <div>
+              <p className="text-lg font-bold" style={{ color: "var(--text)" }}>{formatNumber(apiData.metaExtras.reach)}</p>
+              <p className="text-xs" style={{ color: "var(--text-dim)" }}>Alcance</p>
+            </div>
+            <div>
+              <p className="text-lg font-bold" style={{ color: "var(--text)" }}>{formatNumber(apiData.metaExtras.impressions)}</p>
+              <p className="text-xs" style={{ color: "var(--text-dim)" }}>Impressões</p>
+            </div>
+            <div>
+              <p className="text-lg font-bold" style={{ color: "var(--text)" }}>{formatNumber(apiData.metaExtras.clicks)}</p>
+              <p className="text-xs" style={{ color: "var(--text-dim)" }}>Cliques</p>
+            </div>
+            <div>
+              <p className="text-lg font-bold" style={{ color: "var(--text)" }}>{apiData.metaExtras.ctr.toFixed(2)}%</p>
+              <p className="text-xs" style={{ color: "var(--text-dim)" }}>CTR</p>
+            </div>
+            <div>
+              <p className="text-lg font-bold" style={{ color: "var(--text)" }}>{formatBRL(apiData.metaExtras.cpc)}</p>
+              <p className="text-xs" style={{ color: "var(--text-dim)" }}>CPC</p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Table */}
       <div className="kpi-card overflow-x-auto">
-        <h3 className="text-sm font-bold mb-4" style={{ color: "var(--text-muted)" }}>
-          PERFORMANCE POR CANAL
-        </h3>
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-sm font-bold" style={{ color: "var(--text-muted)" }}>PERFORMANCE POR CANAL</h3>
+          <div className="flex items-center gap-2">
+            {loading && <RefreshCw size={14} className="animate-spin" style={{ color: "var(--text-dim)" }} />}
+            <button onClick={fetchData} className="p-1.5 rounded-lg hover:bg-white/5 transition-colors">
+              <RefreshCw size={14} style={{ color: "var(--text-dim)" }} />
+            </button>
+          </div>
+        </div>
         <table className="w-full text-sm">
           <thead>
             <tr style={{ borderBottom: "1px solid var(--border)" }}>
-              <th className="py-3 px-2 font-semibold" style={thStyle("canal", "left")} onClick={() => handleSort("canal")}>
-                Canal{sortArrow("canal")}
-              </th>
-              <th className="py-3 px-2 font-semibold" style={thStyle("investimento")} onClick={() => handleSort("investimento")}>
-                Investimento{sortArrow("investimento")}
-              </th>
-              <th className="py-3 px-2 font-semibold" style={thStyle("leads")} onClick={() => handleSort("leads")}>
-                Leads{sortArrow("leads")}
-              </th>
-              <th className="py-3 px-2 font-semibold" style={thStyle("vendas")} onClick={() => handleSort("vendas")}>
-                Vendas{sortArrow("vendas")}
-              </th>
-              <th className="py-3 px-2 font-semibold" style={thStyle("valorVendas")} onClick={() => handleSort("valorVendas")}>
-                Receita{sortArrow("valorVendas")}
-              </th>
-              <th className="py-3 px-2 font-semibold" style={thStyle("cpl")} onClick={() => handleSort("cpl")}>
-                CPL{sortArrow("cpl")}
-              </th>
-              <th className="py-3 px-2 font-semibold" style={thStyle("cac")} onClick={() => handleSort("cac")}>
-                CAC{sortArrow("cac")}
-              </th>
-              <th className="py-3 px-2 font-semibold" style={thStyle("roi")} onClick={() => handleSort("roi")}>
-                ROI{sortArrow("roi")}
-              </th>
+              <th className="py-3 px-2 font-semibold" style={thStyle("canal", "left")} onClick={() => handleSort("canal")}>Canal{sortArrow("canal")}</th>
+              <th className="py-3 px-2 font-semibold" style={thStyle("investimento")} onClick={() => handleSort("investimento")}>Investimento{sortArrow("investimento")}</th>
+              <th className="py-3 px-2 font-semibold" style={thStyle("leads")} onClick={() => handleSort("leads")}>Leads{sortArrow("leads")}</th>
+              <th className="py-3 px-2 font-semibold" style={thStyle("vendas")} onClick={() => handleSort("vendas")}>Vendas{sortArrow("vendas")}</th>
+              <th className="py-3 px-2 font-semibold" style={thStyle("valorVendas")} onClick={() => handleSort("valorVendas")}>Receita{sortArrow("valorVendas")}</th>
+              <th className="py-3 px-2 font-semibold" style={thStyle("cpl")} onClick={() => handleSort("cpl")}>CPL{sortArrow("cpl")}</th>
+              <th className="py-3 px-2 font-semibold" style={thStyle("cac")} onClick={() => handleSort("cac")}>CAC{sortArrow("cac")}</th>
+              <th className="py-3 px-2 font-semibold" style={thStyle("roi")} onClick={() => handleSort("roi")}>ROI{sortArrow("roi")}</th>
             </tr>
           </thead>
           <tbody>
-            {sortedStats.map((c) => {
-              const isExpanded = expandedCanal === c.canal;
-              return (
-                <Fragment key={c.canal}>
-                  <tr
-                    style={{ borderBottom: "1px solid var(--border)", cursor: "pointer" }}
-                    className="hover:bg-white/[0.02]"
-                    onClick={() => setExpandedCanal(isExpanded ? null : c.canal)}
-                  >
-                    <td className="py-3 px-2">
-                      <div className="flex items-center gap-2">
-                        {isExpanded ? (
-                          <ChevronDown size={14} style={{ color: "var(--text-dim)" }} />
-                        ) : (
-                          <ChevronRight size={14} style={{ color: "var(--text-dim)" }} />
-                        )}
-                        <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: c.color }} />
-                        <span style={{ color: "var(--text)" }}>{c.canal}</span>
-                      </div>
-                    </td>
-                    <td className="text-right py-3 px-2" style={{ color: "var(--text)" }}>{formatBRL(c.investimento)}</td>
-                    <td className="text-right py-3 px-2" style={{ color: "var(--text)" }}>{formatNumber(c.leads)}</td>
-                    <td className="text-right py-3 px-2" style={{ color: "var(--text)" }}>{formatNumber(c.vendas)}</td>
-                    <td className="text-right py-3 px-2" style={{ color: "var(--text)" }}>{formatBRL(c.valorVendas)}</td>
-                    <td className="text-right py-3 px-2" style={{ color: cplColor(c.cpl) }}>
-                      {c.cpl > 0 ? formatBRL(c.cpl) : "\u2014"}
-                    </td>
-                    <td className="text-right py-3 px-2" style={{ color: c.cac > 0 ? "var(--text)" : "var(--text-dim)" }}>
-                      {c.cac > 0 ? formatBRL(c.cac) : "\u2014"}
-                    </td>
-                    <td className="text-right py-3 px-2" style={{ color: c.roi > 0 ? roiColor(c.roi) : "var(--text-dim)" }}>
-                      {c.roi > 0 ? c.roi.toFixed(1) + "x" : "\u2014"}
-                    </td>
-                  </tr>
-                  {isExpanded && weeklyDetail && (
-                    <tr>
-                      <td colSpan={8} style={{ background: "var(--surface)", borderBottom: "1px solid var(--border)" }}>
-                        <div className="p-4 space-y-4">
-                          <div className="flex flex-wrap gap-6 text-sm">
-                            <div>
-                              <span style={{ color: "var(--text-dim)" }}>Melhor semana: </span>
-                              <span style={{ color: "#10b981" }}>
-                                {weeklyDetail.bestWeek.semana} ({weeklyDetail.bestWeek.leads} leads)
-                              </span>
-                            </div>
-                            <div>
-                              <span style={{ color: "var(--text-dim)" }}>Pior semana: </span>
-                              <span style={{ color: "#e94560" }}>
-                                {weeklyDetail.worstWeek.semana} ({weeklyDetail.worstWeek.leads} leads)
-                              </span>
-                            </div>
-                            <div className="flex items-center gap-1">
-                              <span style={{ color: "var(--text-dim)" }}>Tendência: </span>
-                              {weeklyDetail.trend === "up" && (
-                                <span className="flex items-center gap-1" style={{ color: "#10b981" }}>
-                                  <TrendingUp size={14} /> Em alta
-                                </span>
-                              )}
-                              {weeklyDetail.trend === "down" && (
-                                <span className="flex items-center gap-1" style={{ color: "#e94560" }}>
-                                  <TrendingDown size={14} /> Em queda
-                                </span>
-                              )}
-                              {weeklyDetail.trend === "stable" && (
-                                <span className="flex items-center gap-1" style={{ color: "#f4a236" }}>
-                                  <Minus size={14} /> Estável
-                                </span>
-                              )}
-                            </div>
-                          </div>
-                          {weeklyDetail.weekly.length > 1 && (
-                            <ResponsiveContainer width="100%" height={200}>
-                              <LineChart data={weeklyDetail.weekly}>
-                                <CartesianGrid strokeDasharray="3 3" stroke="var(--chart-grid)" />
-                                <XAxis dataKey="semana" tick={{ fill: "var(--text-dim)", fontSize: 11 }} />
-                                <YAxis tick={{ fill: "var(--text-dim)", fontSize: 11 }} />
-                                <Tooltip {...tooltipStyle} />
-                                <Legend wrapperStyle={{ color: "var(--text-muted)", fontSize: 11 }} />
-                                <Line type="monotone" dataKey="leads" name="Leads" stroke="#4285f4" strokeWidth={2} dot={{ r: 3 }} />
-                                <Line type="monotone" dataKey="vendas" name="Vendas" stroke="#10b981" strokeWidth={2} dot={{ r: 3 }} />
-                              </LineChart>
-                            </ResponsiveContainer>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  )}
-                </Fragment>
-              );
-            })}
+            {sortedStats.map((c) => (
+              <tr key={c.canal} style={{ borderBottom: "1px solid var(--border)" }} className="hover:bg-white/[0.02]">
+                <td className="py-3 px-2">
+                  <div className="flex items-center gap-2">
+                    <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: c.color }} />
+                    <span style={{ color: "var(--text)" }}>{c.canal}</span>
+                    {c.source === "api" && c.investimento > 0 && (
+                      <span className="text-xs px-1.5 py-0.5 rounded-full" style={{ background: "#10b98120", color: "#10b981", fontSize: "10px" }}>API</span>
+                    )}
+                  </div>
+                </td>
+                <td className="text-right py-3 px-2" style={{ color: "var(--text)" }}>{formatBRL(c.investimento)}</td>
+                <td className="text-right py-3 px-2" style={{ color: "var(--text)" }}>{formatNumber(c.leads)}</td>
+                <td className="text-right py-3 px-2" style={{ color: "var(--text)" }}>{formatNumber(c.vendas)}</td>
+                <td className="text-right py-3 px-2" style={{ color: "var(--text)" }}>{formatBRL(c.valorVendas)}</td>
+                <td className="text-right py-3 px-2" style={{ color: cplColor(c.cpl) }}>{c.cpl > 0 ? formatBRL(c.cpl) : "—"}</td>
+                <td className="text-right py-3 px-2" style={{ color: c.cac > 0 ? "var(--text)" : "var(--text-dim)" }}>{c.cac > 0 ? formatBRL(c.cac) : "—"}</td>
+                <td className="text-right py-3 px-2" style={{ color: c.roi > 0 ? roiColor(c.roi) : "var(--text-dim)" }}>{c.roi > 0 ? c.roi.toFixed(1) + "x" : "—"}</td>
+              </tr>
+            ))}
             <tr style={{ borderTop: "2px solid var(--border)" }}>
               <td className="py-3 px-2 font-semibold" style={{ color: "var(--text-muted)" }}>
-                <div className="flex items-center gap-2 pl-5">Meta</div>
+                <div className="flex items-center gap-2">Meta</div>
               </td>
-              <td className="text-right py-3 px-2" style={{ color: "var(--text-dim)" }}>{"\u2014"}</td>
-              <td className="text-right py-3 px-2" style={{ color: "var(--text-dim)" }}>{"\u2014"}</td>
-              <td className="text-right py-3 px-2" style={{ color: "var(--text-dim)" }}>{"\u2014"}</td>
-              <td className="text-right py-3 px-2" style={{ color: "var(--text-dim)" }}>{"\u2014"}</td>
-              <td className="text-right py-3 px-2 font-semibold" style={{ color: "var(--text-muted)" }}>
-                {formatBRL(metas.cpl)}
-              </td>
-              <td className="text-right py-3 px-2 font-semibold" style={{ color: "var(--text-muted)" }}>
-                {formatBRL(metas.cac)}
-              </td>
-              <td className="text-right py-3 px-2 font-semibold" style={{ color: "var(--text-muted)" }}>
-                {metas.roi.toFixed(1)}x
-              </td>
+              <td className="text-right py-3 px-2" style={{ color: "var(--text-dim)" }}>—</td>
+              <td className="text-right py-3 px-2" style={{ color: "var(--text-dim)" }}>—</td>
+              <td className="text-right py-3 px-2" style={{ color: "var(--text-dim)" }}>—</td>
+              <td className="text-right py-3 px-2" style={{ color: "var(--text-dim)" }}>—</td>
+              <td className="text-right py-3 px-2 font-semibold" style={{ color: "var(--text-muted)" }}>{formatBRL(metas.cpl)}</td>
+              <td className="text-right py-3 px-2 font-semibold" style={{ color: "var(--text-muted)" }}>{formatBRL(metas.cac)}</td>
+              <td className="text-right py-3 px-2 font-semibold" style={{ color: "var(--text-muted)" }}>{metas.roi.toFixed(1)}x</td>
             </tr>
           </tbody>
         </table>
       </div>
 
-      {/* Distribution charts */}
+      {/* Charts */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {pieLeads.length > 0 && (
           <div className="kpi-card">
             <h3 className="text-sm font-bold mb-4" style={{ color: "var(--text-muted)" }}>LEADS POR CANAL</h3>
-            <ResponsiveContainer width="100%" height={300}>
+            <ResponsiveContainer width="100%" height={280}>
               <PieChart>
-                <Pie
-                  data={pieLeads}
-                  dataKey="value"
-                  nameKey="name"
-                  cx="50%"
-                  cy="50%"
-                  outerRadius={100}
-                  label={({ name, percent }) => `${name} ${((percent ?? 0) * 100).toFixed(0)}%`}
-                  labelLine={false}
-                  fontSize={10}
-                >
-                  {pieLeads.map((entry, i) => (
-                    <Cell key={i} fill={entry.color} />
-                  ))}
+                <Pie data={pieLeads} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={100}
+                  label={({ name, percent }) => `${name} ${((percent ?? 0) * 100).toFixed(0)}%`} labelLine={false} fontSize={10}>
+                  {pieLeads.map((entry, i) => <Cell key={i} fill={entry.color} />)}
                 </Pie>
                 <Tooltip {...tooltipStyle} />
               </PieChart>
             </ResponsiveContainer>
           </div>
         )}
-
         {barInvestimento.length > 0 && (
           <div className="kpi-card">
             <h3 className="text-sm font-bold mb-4" style={{ color: "var(--text-muted)" }}>INVESTIMENTO POR CANAL</h3>
-            <ResponsiveContainer width="100%" height={300}>
+            <ResponsiveContainer width="100%" height={280}>
               <BarChart data={barInvestimento} layout="vertical">
                 <CartesianGrid strokeDasharray="3 3" stroke="var(--chart-grid)" />
-                <XAxis type="number" tick={{ fill: "var(--text-dim)", fontSize: 11 }} />
+                <XAxis type="number" tick={{ fill: "var(--text-dim)", fontSize: 11 }} tickFormatter={(v) => `R$${Number(v).toLocaleString("pt-BR")}`} />
                 <YAxis dataKey="canal" type="category" tick={{ fill: "var(--text-muted)", fontSize: 11 }} width={110} />
-                <Tooltip {...tooltipStyle} formatter={(value) => formatBRL(Number(value ?? 0))} />
-                <Bar dataKey="investimento" name="Investimento (R$)" radius={[0, 4, 4, 0]}>
-                  {barInvestimento.map((entry, i) => (
-                    <Cell key={i} fill={entry.color} />
-                  ))}
+                <Tooltip {...tooltipStyle} formatter={(v) => [formatBRL(Number(v)), "Investimento"]} />
+                <Bar dataKey="investimento" name="Investimento" radius={[0, 4, 4, 0]}>
+                  {barInvestimento.map((entry, i) => <Cell key={i} fill={entry.color} />)}
                 </Bar>
               </BarChart>
             </ResponsiveContainer>

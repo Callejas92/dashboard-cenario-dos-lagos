@@ -1,15 +1,19 @@
 "use client";
 
-import { useState, useMemo, useCallback } from "react";
+import { useState, useEffect, useCallback } from "react";
 import {
-  BarChart, Bar, AreaChart, Area,
+  BarChart, Bar,
   XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
-  Legend, ComposedChart, Line,
+  Cell,
 } from "recharts";
-import { DollarSign, Users, ShoppingCart, Target, ChevronDown, ChevronUp, Table, BarChart3, X } from "lucide-react";
+import {
+  DollarSign, Users, ShoppingCart, Target,
+  RefreshCw, X, Table, BarChart3,
+  ChevronDown, ChevronUp,
+} from "lucide-react";
 import KPICard from "./KPICard";
 import DateRangeFilter from "./DateRangeFilter";
-import { MetricsData, calcKPIs, formatBRL, formatPercent, formatNumber } from "@/lib/types";
+import { MetricsData, formatBRL, formatPercent, formatNumber } from "@/lib/types";
 
 interface Props {
   data: MetricsData;
@@ -17,184 +21,148 @@ interface Props {
 
 type MetricKey = "investimento" | "leads" | "vendas" | "valorVendas";
 
-// Helper: get month name from date string
-function getMonthFromDate(dateStr: string): string {
-  if (!dateStr) return "";
-  const date = new Date(dateStr + "T00:00:00");
-  return date.toLocaleDateString("pt-BR", { month: "short", year: "2-digit" });
-}
+const CANAL_COLORS: Record<string, string> = {
+  "Meta Ads": "#1877f2",
+  "Google Ads": "#ea4335",
+  "Site": "#10b981",
+  "Outdoor": "#f4a236",
+  "Rádio": "#8b5cf6",
+  "Jornal": "#e94560",
+  "Indicação": "#0ea5e9",
+  "Contato Corretor": "#f59e0b",
+  "Outros": "#6b7280",
+};
 
-// Helper: format date for display
-function formatDateBR(d: string) {
-  if (!d) return "";
-  return new Date(d + "T00:00:00").toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
-}
-
-// Helper: get today in yyyy-mm-dd
 function today() {
   return new Date().toISOString().split("T")[0];
 }
-
-// Helper: get date N days ago in yyyy-mm-dd
 function daysAgo(n: number) {
   const d = new Date();
   d.setDate(d.getDate() - n);
   return d.toISOString().split("T")[0];
 }
 
-export default function TabVisaoGeral({ data }: Props) {
-  const kpis = calcKPIs(data.semanas, data.config.metas, data.config.vgv);
+interface CanalApiData {
+  investimento: number;
+  leads: number;
+  leadsQualificados: number;
+  vendas: number;
+  valorVendas: number;
+  source: "api" | "manual";
+}
 
+interface DailyDataPoint {
+  date: string;
+  spend: number;
+  leads: number;
+}
+
+interface CanaisApiResponse {
+  canais: Record<string, CanalApiData>;
+  kpis: {
+    totalLeads: number;
+    totalInvestimento: number;
+    totalVendas: number;
+    totalValorVendas: number;
+    cpl: number;
+    cac: number;
+    roi: number;
+  };
+  daily: DailyDataPoint[];
+  crmTotal: {
+    total: number;
+    convertidos: number;
+  };
+}
+
+export default function TabVisaoGeral({ data }: Props) {
+  const metas = data.config.metas;
+  const vgv = data.config.vgv;
+
+  // ---- Date state ----
+  const [globalStart, setGlobalStart] = useState(daysAgo(30));
+  const [globalEnd, setGlobalEnd] = useState(today());
+  const [globalQuick, setGlobalQuick] = useState<number | "total" | null>(30);
+
+  // ---- API state ----
+  const [apiData, setApiData] = useState<CanaisApiResponse | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  // ---- Detail panel ----
   const [expandedKPI, setExpandedKPI] = useState<MetricKey | null>(null);
   const [detailView, setDetailView] = useState<"tabela" | "grafico">("tabela");
+  const [detailMode, setDetailMode] = useState<"canal" | "dia">("canal");
 
-  // ---------- All weekly data ----------
-  const allWeeklyData = useMemo(() => {
-    return data.semanas.map((s) => {
-      let inv = 0, leads = 0, vendas = 0, valor = 0;
-      let lq = 0, comp = 0;
-      for (const c of Object.values(s.canais)) {
-        inv += c.investimento;
-        leads += c.leads;
-        vendas += c.vendas;
-        valor += c.valorVendas;
-        lq += c.leadsQualificados;
-        comp += c.comparecimentos;
-      }
-      // Format: "01-07 Mar"
-      const formatWeekName = () => {
-        if (!s.inicio || !s.fim) return `S${s.semana}`;
-        const di = new Date(s.inicio + "T00:00:00");
-        const df = new Date(s.fim + "T00:00:00");
-        const dayI = di.toLocaleDateString("pt-BR", { day: "2-digit" });
-        const dayF = df.toLocaleDateString("pt-BR", { day: "2-digit" });
-        const monthF = df.toLocaleDateString("pt-BR", { month: "short" }).replace(".", "");
-        return `${dayI}-${dayF} ${monthF.charAt(0).toUpperCase() + monthF.slice(1)}`;
-      };
-      return {
-        semana: s.semana,
-        name: formatWeekName(),
-        inicio: s.inicio,
-        fim: s.fim,
-        investimento: inv,
-        leads,
-        vendas,
-        valorVendas: valor,
-        leadsQualificados: lq,
-        comparecimentos: comp,
-      };
-    });
-  }, [data.semanas]);
+  // ---- Fetch /api/canais ----
+  const fetchCanais = useCallback(async (from: string, to: string) => {
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/canais?from=${from}&to=${to}`);
+      const json = await res.json();
+      setApiData(json);
+    } catch (err) {
+      console.error("Erro ao buscar canais:", err);
+    }
+    setLoading(false);
+  }, []);
 
-  // ---------- Date bounds ----------
-  const minDate = allWeeklyData.length > 0 ? allWeeklyData[0].inicio : "2020-01-01";
-  const maxDate = allWeeklyData.length > 0 ? allWeeklyData[allWeeklyData.length - 1].fim : today();
+  useEffect(() => {
+    fetchCanais(globalStart, globalEnd);
+  }, [globalStart, globalEnd, fetchCanais]);
 
-  // ---------- Global filter (KPIs + Funnel) ----------
-  const [globalStart, setGlobalStart] = useState(minDate);
-  const [globalEnd, setGlobalEnd] = useState(maxDate);
-  const [globalQuick, setGlobalQuick] = useState<number | "total" | null>("total");
-
-  // ---------- Chart filters (independent) ----------
-  const [leadsStart, setLeadsStart] = useState(minDate);
-  const [leadsEnd, setLeadsEnd] = useState(maxDate);
-  const [leadsQuick, setLeadsQuick] = useState<number | "total" | null>("total");
-
-  const [receitaStart, setReceitaStart] = useState(minDate);
-  const [receitaEnd, setReceitaEnd] = useState(maxDate);
-  const [receitaQuick, setReceitaQuick] = useState<number | "total" | null>("total");
-
-  // ---------- Quick select handler factory ----------
-  const makeQuickHandler = useCallback((
-    setStart: (v: string) => void,
-    setEnd: (v: string) => void,
-    setQuick: (v: number | "total" | null) => void,
-  ) => (days: number | "total") => {
-    setQuick(days);
+  function handleQuickSelect(days: number | "total") {
+    setGlobalQuick(days);
     if (days === "total") {
-      setStart(minDate);
-      setEnd(maxDate);
+      setGlobalStart(daysAgo(730));
+      setGlobalEnd(today());
     } else {
-      setStart(daysAgo(days));
-      setEnd(today());
+      setGlobalStart(daysAgo(days));
+      setGlobalEnd(today());
     }
-  }, [minDate, maxDate]);
+  }
 
-  // ---------- Filter weekly data by date range ----------
-  const filterByDateRange = useCallback((start: string, end: string) => {
-    return allWeeklyData.filter((w) => {
-      if (!w.inicio || !w.fim) return true;
-      return w.fim >= start && w.inicio <= end;
-    });
-  }, [allWeeklyData]);
+  // ---- Derived values ----
+  const kpis = apiData?.kpis ?? {
+    totalLeads: 0,
+    totalInvestimento: 0,
+    totalVendas: 0,
+    totalValorVendas: 0,
+    cpl: 0,
+    cac: 0,
+    roi: 0,
+  };
 
-  // ---------- Filtered datasets ----------
-  const globalData = useMemo(() => filterByDateRange(globalStart, globalEnd), [filterByDateRange, globalStart, globalEnd]);
-  const leadsChartData = useMemo(() => filterByDateRange(leadsStart, leadsEnd), [filterByDateRange, leadsStart, leadsEnd]);
-  const receitaChartData = useMemo(() => filterByDateRange(receitaStart, receitaEnd), [filterByDateRange, receitaStart, receitaEnd]);
+  const crmConvertidos = apiData?.crmTotal.convertidos ?? 0;
 
-  // ---------- Monthly grouped data (for detail panel) ----------
-  const monthlyData = useMemo(() => {
-    const groups: Record<string, {
-      month: string;
-      investimento: number;
-      leads: number;
-      vendas: number;
-      valorVendas: number;
-      leadsQualificados: number;
-      comparecimentos: number;
-      weeks: number;
-    }> = {};
+  // VSO: vendas / totalUnidades * 100
+  const vso = vgv.totalUnidades > 0 ? (kpis.totalVendas / vgv.totalUnidades) * 100 : 0;
 
-    for (const w of globalData) {
-      const month = getMonthFromDate(w.inicio) || `S${w.semana}`;
-      if (!groups[month]) {
-        groups[month] = { month, investimento: 0, leads: 0, vendas: 0, valorVendas: 0, leadsQualificados: 0, comparecimentos: 0, weeks: 0 };
-      }
-      groups[month].investimento += w.investimento;
-      groups[month].leads += w.leads;
-      groups[month].vendas += w.vendas;
-      groups[month].valorVendas += w.valorVendas;
-      groups[month].leadsQualificados += w.leadsQualificados;
-      groups[month].comparecimentos += w.comparecimentos;
-      groups[month].weeks++;
-    }
+  // Canal data for charts
+  const allCanalData = apiData
+    ? Object.entries(apiData.canais).map(([nome, c]) => ({
+        nome: nome.length > 13 ? nome.slice(0, 11) + "…" : nome,
+        nomeCompleto: nome,
+        investimento: c.investimento,
+        leads: c.leads,
+        vendas: c.vendas,
+        color: CANAL_COLORS[nome] ?? "#6b7280",
+      }))
+    : [];
 
-    return Object.values(groups);
-  }, [globalData]);
+  const leadsChartData = allCanalData.filter((c) => c.leads > 0);
+  const investChartData = allCanalData.filter((c) => c.investimento > 0);
 
-  // ---------- Filtered totals (global) ----------
-  const filteredTotals = useMemo(() => {
-    return globalData.reduce(
-      (acc, w) => ({
-        investimento: acc.investimento + w.investimento,
-        leads: acc.leads + w.leads,
-        vendas: acc.vendas + w.vendas,
-        valorVendas: acc.valorVendas + w.valorVendas,
-        leadsQualificados: acc.leadsQualificados + w.leadsQualificados,
-        comparecimentos: acc.comparecimentos + w.comparecimentos,
-      }),
-      { investimento: 0, leads: 0, vendas: 0, valorVendas: 0, leadsQualificados: 0, comparecimentos: 0 }
-    );
-  }, [globalData]);
+  // ---- KPI statuses ----
+  const cplStatus =
+    kpis.cpl === 0 ? ("neutral" as const) : kpis.cpl <= metas.cpl ? ("good" as const) : ("bad" as const);
+  const cacStatus =
+    kpis.cac === 0 ? ("neutral" as const) : kpis.cac <= metas.cac ? ("good" as const) : ("bad" as const);
+  const roiStatus =
+    kpis.roi === 0 ? ("neutral" as const) : kpis.roi >= metas.roi ? ("good" as const) : ("bad" as const);
+  const vsoStatus =
+    vso === 0 ? ("neutral" as const) : vso >= metas.vso ? ("good" as const) : ("bad" as const);
 
-  // ---------- Funnel totals ----------
-  const funnelTotals = useMemo(() => {
-    return {
-      leads: filteredTotals.leads,
-      lq: filteredTotals.leadsQualificados,
-      comp: filteredTotals.comparecimentos,
-      vendas: filteredTotals.vendas,
-    };
-  }, [filteredTotals]);
-
-  // ---------- KPI statuses ----------
-  const cplStatus = kpis.cpl === 0 ? "neutral" as const : kpis.cpl <= kpis.metaCpl ? "good" as const : "bad" as const;
-  const cacStatus = kpis.cac === 0 ? "neutral" as const : kpis.cac <= kpis.metaCac ? "good" as const : "bad" as const;
-  const roiStatus = kpis.roi === 0 ? "neutral" as const : kpis.roi >= kpis.metaRoi ? "good" as const : "bad" as const;
-  const vsoStatus = kpis.vso === 0 ? "neutral" as const : kpis.vso >= kpis.metaVso ? "good" as const : "bad" as const;
-
-  // ---------- Tooltip shared style ----------
+  // ---- Tooltip / axis shared styles ----
   const tooltipStyle = {
     contentStyle: {
       background: "var(--tooltip-bg)",
@@ -204,437 +172,469 @@ export default function TabVisaoGeral({ data }: Props) {
     },
     labelStyle: { color: "var(--tooltip-label)" },
   };
-
   const axisTick = { fill: "var(--text-dim)", fontSize: 11 };
 
-  // ---------- Toggle detail panel ----------
+  // ---- Metric config ----
+  const metricConfig: Record<
+    MetricKey,
+    { label: string; color: string; format: (v: number) => string; dataKey: keyof CanalApiData }
+  > = {
+    investimento: { label: "Investimento", color: "#f4a236", format: formatBRL, dataKey: "investimento" },
+    leads:        { label: "Leads",        color: "#4285f4", format: formatNumber, dataKey: "leads" },
+    vendas:       { label: "Vendas",       color: "#10b981", format: formatNumber, dataKey: "vendas" },
+    valorVendas:  { label: "Receita",      color: "#e94560", format: formatBRL,   dataKey: "valorVendas" },
+  };
+
   function toggleDetail(key: MetricKey) {
     setExpandedKPI((prev) => (prev === key ? null : key));
     setDetailView("tabela");
+    setDetailMode("canal");
   }
 
-  // ---------- Metric config ----------
-  const metricConfig: Record<MetricKey, { label: string; color: string; format: (v: number) => string }> = {
-    investimento: { label: "Investimento", color: "#f4a236", format: formatBRL },
-    leads: { label: "Leads", color: "#4285f4", format: formatNumber },
-    vendas: { label: "Vendas", color: "#10b981", format: formatNumber },
-    valorVendas: { label: "Receita", color: "#e94560", format: formatBRL },
-  };
+  const daily = apiData?.daily || [];
 
-  // ---------- Render detail panel (table + chart) ----------
+  // ---- Detail panel: per-canal or per-day breakdown ----
   function renderDetailPanel(key: MetricKey) {
-    if (expandedKPI !== key) return null;
-    const config = metricConfig[key];
+    if (expandedKPI !== key || !apiData) return null;
+    const cfg = metricConfig[key];
+
+    // Daily data mapping per metric
+    const getDailyValues = (): { date: string; value: number }[] => {
+      if (key === "investimento") return daily.filter((d) => d.spend > 0).map((d) => ({ date: d.date, value: d.spend }));
+      if (key === "leads") return daily.filter((d) => d.leads > 0).map((d) => ({ date: d.date, value: d.leads }));
+      // vendas/valorVendas don't have daily from API yet
+      return [];
+    };
+
+    const canaisDetail = Object.entries(apiData.canais)
+      .map(([nome, c]) => ({ nome, value: c[cfg.dataKey] as number }))
+      .filter((c) => c.value > 0)
+      .sort((a, b) => b.value - a.value);
+
+    const dailyValues = getDailyValues();
+    const hasDailyData = dailyValues.length > 0;
+    const currentData = detailMode === "dia" ? dailyValues : canaisDetail;
+    const total = currentData.reduce((s, d) => s + d.value, 0);
 
     return (
       <div
         className="col-span-2 lg:col-span-4"
-        style={{
-          background: "var(--card-bg)",
-          border: "1px solid var(--border)",
-          borderRadius: "1rem",
-          padding: "1.25rem",
-          animation: "fadeIn 0.2s ease",
-        }}
+        style={{ background: "var(--card-bg)", border: "1px solid var(--border)", borderRadius: "1rem", padding: "1.25rem", animation: "fadeIn 0.2s ease" }}
       >
-        {/* Header */}
-        <div className="flex items-center justify-between mb-4">
-          <h4 className="text-sm font-bold" style={{ color: "var(--text-muted)" }}>
-            {config.label.toUpperCase()} - DETALHAMENTO
-          </h4>
+        {/* Panel header */}
+        <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
           <div className="flex items-center gap-2">
-            <button
-              onClick={() => setDetailView("tabela")}
-              style={{
-                padding: "0.25rem 0.75rem",
-                fontSize: "0.7rem",
-                fontWeight: 600,
-                borderRadius: "0.375rem",
-                background: detailView === "tabela" ? config.color : "var(--surface)",
-                color: detailView === "tabela" ? "#fff" : "var(--text-muted)",
-                border: "1px solid var(--border)",
-                cursor: "pointer",
-              }}
-            >
-              <span className="flex items-center gap-1"><Table size={12} /> Tabela</span>
-            </button>
-            <button
-              onClick={() => setDetailView("grafico")}
-              style={{
-                padding: "0.25rem 0.75rem",
-                fontSize: "0.7rem",
-                fontWeight: 600,
-                borderRadius: "0.375rem",
-                background: detailView === "grafico" ? config.color : "var(--surface)",
-                color: detailView === "grafico" ? "#fff" : "var(--text-muted)",
-                border: "1px solid var(--border)",
-                cursor: "pointer",
-              }}
-            >
-              <span className="flex items-center gap-1"><BarChart3 size={12} /> Grafico</span>
-            </button>
+            <h4 className="text-sm font-bold" style={{ color: "var(--text-muted)" }}>
+              {cfg.label.toUpperCase()} — {detailMode === "canal" ? "POR CANAL" : "POR DIA"}
+            </h4>
+          </div>
+          <div className="flex items-center gap-2 flex-wrap">
+            {/* Mode toggle: Canal / Dia */}
+            {(["canal", "dia"] as const).map((m) => (
+              <button
+                key={m}
+                onClick={() => { setDetailMode(m); setDetailView("tabela"); }}
+                disabled={m === "dia" && !hasDailyData}
+                style={{
+                  padding: "0.25rem 0.75rem", fontSize: "0.7rem", fontWeight: 600, borderRadius: "0.375rem",
+                  background: detailMode === m ? cfg.color : "var(--surface)",
+                  color: detailMode === m ? "#fff" : "var(--text-muted)",
+                  border: "1px solid var(--border)", cursor: m === "dia" && !hasDailyData ? "not-allowed" : "pointer",
+                  opacity: m === "dia" && !hasDailyData ? 0.4 : 1,
+                }}
+              >
+                {m === "canal" ? "Por Canal" : "Por Dia"}
+              </button>
+            ))}
+            <span style={{ width: 1, height: 16, background: "var(--border)", display: "inline-block" }} />
+            {(["tabela", "grafico"] as const).map((v) => (
+              <button
+                key={v}
+                onClick={() => setDetailView(v)}
+                style={{
+                  padding: "0.25rem 0.75rem", fontSize: "0.7rem", fontWeight: 600, borderRadius: "0.375rem",
+                  background: detailView === v ? cfg.color : "var(--surface)",
+                  color: detailView === v ? "#fff" : "var(--text-muted)",
+                  border: "1px solid var(--border)", cursor: "pointer",
+                }}
+              >
+                <span className="flex items-center gap-1">
+                  {v === "tabela" ? <Table size={12} /> : <BarChart3 size={12} />}
+                  {v === "tabela" ? "Tabela" : "Gráfico"}
+                </span>
+              </button>
+            ))}
             <button
               onClick={() => setExpandedKPI(null)}
-              style={{
-                padding: "0.25rem",
-                borderRadius: "0.375rem",
-                background: "var(--surface)",
-                border: "1px solid var(--border)",
-                cursor: "pointer",
-                color: "var(--text-dim)",
-              }}
+              style={{ padding: "0.25rem", borderRadius: "0.375rem", background: "var(--surface)", border: "1px solid var(--border)", cursor: "pointer", color: "var(--text-dim)" }}
             >
               <X size={14} />
             </button>
           </div>
         </div>
 
-        {detailView === "tabela" ? (
-          <div style={{ overflowX: "auto" }}>
-            {/* Weekly Table */}
-            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.8rem" }}>
-              <thead>
-                <tr style={{ borderBottom: "2px solid var(--border)" }}>
-                  <th style={{ textAlign: "left", padding: "0.5rem 0.75rem", color: "var(--text-dim)", fontWeight: 600 }}>Semana</th>
-                  <th style={{ textAlign: "left", padding: "0.5rem 0.75rem", color: "var(--text-dim)", fontWeight: 600 }}>Periodo</th>
-                  <th style={{ textAlign: "right", padding: "0.5rem 0.75rem", color: "var(--text-dim)", fontWeight: 600 }}>{config.label}</th>
-                  <th style={{ textAlign: "right", padding: "0.5rem 0.75rem", color: "var(--text-dim)", fontWeight: 600 }}>Acumulado</th>
-                  <th style={{ textAlign: "right", padding: "0.5rem 0.75rem", color: "var(--text-dim)", fontWeight: 600 }}>Var. %</th>
-                </tr>
-              </thead>
-              <tbody>
-                {(() => {
-                  let accumulated = 0;
-                  let lastMonth = "";
-                  let monthAcc = 0;
-                  const rows: React.ReactNode[] = [];
-
-                  globalData.forEach((w, i) => {
-                    const currentMonth = getMonthFromDate(w.inicio);
-                    const val = w[key] as number;
-                    const prevVal = i > 0 ? (globalData[i - 1][key] as number) : 0;
-                    const variation = i > 0 && prevVal > 0 ? ((val - prevVal) / prevVal) * 100 : 0;
-                    accumulated += val;
-
-                    // Insert month subtotal row when month changes
-                    if (lastMonth && currentMonth !== lastMonth) {
-                      rows.push(
-                        <tr key={`month-${lastMonth}`} style={{ background: "var(--surface)", fontWeight: 700 }}>
-                          <td colSpan={2} style={{ padding: "0.5rem 0.75rem", color: config.color, fontSize: "0.75rem" }}>
-                            Total {lastMonth.toUpperCase()}
-                          </td>
-                          <td style={{ textAlign: "right", padding: "0.5rem 0.75rem", color: config.color }}>
-                            {config.format(monthAcc)}
-                          </td>
-                          <td colSpan={2} />
-                        </tr>
-                      );
-                      monthAcc = 0;
-                    }
-
-                    monthAcc += val;
-                    lastMonth = currentMonth;
-
-                    const periodo = w.inicio && w.fim
-                      ? `${formatDateBR(w.inicio)} - ${formatDateBR(w.fim)}`
-                      : "\u2014";
-
-                    rows.push(
-                      <tr key={w.name} style={{ borderBottom: "1px solid var(--border)" }}>
-                        <td style={{ padding: "0.5rem 0.75rem", color: "var(--text)", fontWeight: 600 }}>{w.name}</td>
-                        <td style={{ padding: "0.5rem 0.75rem", color: "var(--text-dim)", fontSize: "0.75rem" }}>{periodo}</td>
-                        <td style={{ textAlign: "right", padding: "0.5rem 0.75rem", color: "var(--text)", fontWeight: 500 }}>{config.format(val)}</td>
-                        <td style={{ textAlign: "right", padding: "0.5rem 0.75rem", color: "var(--text-dim)" }}>{config.format(accumulated)}</td>
-                        <td style={{
-                          textAlign: "right",
-                          padding: "0.5rem 0.75rem",
-                          color: i === 0 ? "var(--text-dim)" : variation >= 0 ? "#10b981" : "#e94560",
-                          fontWeight: 600,
-                        }}>
-                          {i === 0 ? "\u2014" : `${variation >= 0 ? "+" : ""}${variation.toFixed(1)}%`}
-                        </td>
-                      </tr>
-                    );
-                  });
-
-                  // Last month subtotal
-                  if (lastMonth) {
-                    rows.push(
-                      <tr key={`month-${lastMonth}-last`} style={{ background: "var(--surface)", fontWeight: 700 }}>
-                        <td colSpan={2} style={{ padding: "0.5rem 0.75rem", color: config.color, fontSize: "0.75rem" }}>
-                          Total {lastMonth.toUpperCase()}
-                        </td>
-                        <td style={{ textAlign: "right", padding: "0.5rem 0.75rem", color: config.color }}>
-                          {config.format(monthAcc)}
-                        </td>
-                        <td colSpan={2} />
-                      </tr>
-                    );
-                  }
-
-                  // Grand total
-                  rows.push(
-                    <tr key="grand-total" style={{ background: config.color + "15", fontWeight: 700, borderTop: "2px solid " + config.color }}>
-                      <td colSpan={2} style={{ padding: "0.625rem 0.75rem", color: config.color }}>
-                        TOTAL GERAL
-                      </td>
-                      <td style={{ textAlign: "right", padding: "0.625rem 0.75rem", color: config.color, fontSize: "0.9rem" }}>
-                        {config.format(accumulated)}
-                      </td>
-                      <td colSpan={2} />
+        {detailMode === "dia" ? (
+          /* ---- POR DIA ---- */
+          detailView === "tabela" ? (
+            dailyValues.length === 0 ? (
+              <p className="text-sm text-center py-4" style={{ color: "var(--text-dim)" }}>Sem dados diários no período</p>
+            ) : (
+              <div style={{ overflowX: "auto", maxHeight: "320px", overflowY: "auto" }}>
+                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.8rem" }}>
+                  <thead>
+                    <tr style={{ borderBottom: "2px solid var(--border)", position: "sticky", top: 0, background: "var(--card-bg)" }}>
+                      <th style={{ textAlign: "left", padding: "0.5rem 0.75rem", color: "var(--text-dim)", fontWeight: 600 }}>Data</th>
+                      <th style={{ textAlign: "right", padding: "0.5rem 0.75rem", color: "var(--text-dim)", fontWeight: 600 }}>{cfg.label}</th>
+                      <th style={{ textAlign: "right", padding: "0.5rem 0.75rem", color: "var(--text-dim)", fontWeight: 600 }}>%</th>
                     </tr>
-                  );
-
-                  return rows;
-                })()}
-              </tbody>
-            </table>
-
-            {/* Monthly summary cards */}
-            {monthlyData.length > 1 && (
-              <div className="mt-4">
-                <h5 className="text-xs font-bold mb-2" style={{ color: "var(--text-dim)" }}>RESUMO MENSAL</h5>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                  {monthlyData.map((m) => (
-                    <div key={m.month} className="p-3 rounded-lg" style={{ background: "var(--surface)", border: "1px solid var(--border)" }}>
-                      <p className="text-xs font-semibold" style={{ color: "var(--text-dim)" }}>{m.month.toUpperCase()}</p>
-                      <p className="text-base font-bold" style={{ color: config.color }}>{config.format(m[key] as number)}</p>
-                      <p className="text-xs" style={{ color: "var(--text-dim)" }}>{m.weeks} semana{m.weeks > 1 ? "s" : ""}</p>
-                    </div>
-                  ))}
-                </div>
+                  </thead>
+                  <tbody>
+                    {dailyValues.map((d) => (
+                      <tr key={d.date} style={{ borderBottom: "1px solid var(--border)" }}>
+                        <td style={{ padding: "0.5rem 0.75rem", color: "var(--text)", fontWeight: 500 }}>
+                          {new Date(d.date + "T00:00:00").toLocaleDateString("pt-BR")}
+                        </td>
+                        <td style={{ textAlign: "right", padding: "0.5rem 0.75rem", color: "var(--text)", fontWeight: 500 }}>{cfg.format(d.value)}</td>
+                        <td style={{ textAlign: "right", padding: "0.5rem 0.75rem", color: "var(--text-dim)" }}>{total > 0 ? ((d.value / total) * 100).toFixed(1) : "0"}%</td>
+                      </tr>
+                    ))}
+                    <tr style={{ background: cfg.color + "15", fontWeight: 700, borderTop: "2px solid " + cfg.color }}>
+                      <td style={{ padding: "0.625rem 0.75rem", color: cfg.color }}>TOTAL</td>
+                      <td style={{ textAlign: "right", padding: "0.625rem 0.75rem", color: cfg.color, fontSize: "0.9rem" }}>{cfg.format(total)}</td>
+                      <td style={{ textAlign: "right", padding: "0.625rem 0.75rem", color: cfg.color }}>100%</td>
+                    </tr>
+                  </tbody>
+                </table>
               </div>
-            )}
-          </div>
+            )
+          ) : (
+            dailyValues.length === 0 ? (
+              <p className="text-sm text-center py-4" style={{ color: "var(--text-dim)" }}>Sem dados diários no período</p>
+            ) : (
+              <ResponsiveContainer width="100%" height={220}>
+                <BarChart data={dailyValues.map((d) => ({ ...d, dateLabel: new Date(d.date + "T00:00:00").toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" }) }))}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="var(--chart-grid)" />
+                  <XAxis dataKey="dateLabel" tick={axisTick} interval="preserveStartEnd" />
+                  <YAxis tick={axisTick} tickFormatter={(v) => cfg.format(Number(v))} />
+                  <Tooltip
+                    {...tooltipStyle}
+                    labelFormatter={(_, p) => {
+                      const payload = p[0]?.payload as { date?: string } | undefined;
+                      return payload?.date ? new Date(payload.date + "T00:00:00").toLocaleDateString("pt-BR") : "";
+                    }}
+                    formatter={(v) => [cfg.format(Number(v)), cfg.label]}
+                  />
+                  <Bar dataKey="value" name={cfg.label} fill={cfg.color} radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            )
+          )
         ) : (
-          /* Evolution Chart */
-          <ResponsiveContainer width="100%" height={280}>
-            <ComposedChart data={globalData}>
-              <CartesianGrid strokeDasharray="3 3" stroke="var(--chart-grid)" />
-              <XAxis dataKey="name" tick={axisTick} />
-              <YAxis
-                tick={axisTick}
-                tickFormatter={(v: number) =>
-                  key === "leads" || key === "vendas"
-                    ? formatNumber(v)
-                    : v >= 1000000 ? (v / 1000000).toFixed(1) + "M" : v >= 1000 ? (v / 1000).toFixed(0) + "K" : String(v)
-                }
-              />
-              <Tooltip {...tooltipStyle} formatter={(v) => config.format(Number(v ?? 0))} />
-              <Bar dataKey={key} name={config.label} fill={config.color} radius={[4, 4, 0, 0]} opacity={0.7} />
-              <Line type="monotone" dataKey={key} name="Tendencia" stroke={config.color} strokeWidth={2.5} dot={{ r: 4, fill: config.color }} />
-            </ComposedChart>
-          </ResponsiveContainer>
+          /* ---- POR CANAL ---- */
+          detailView === "tabela" ? (
+            canaisDetail.length === 0 ? (
+              <p className="text-sm text-center py-4" style={{ color: "var(--text-dim)" }}>Sem dados no período</p>
+            ) : (
+              <div style={{ overflowX: "auto" }}>
+                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.8rem" }}>
+                  <thead>
+                    <tr style={{ borderBottom: "2px solid var(--border)" }}>
+                      <th style={{ textAlign: "left", padding: "0.5rem 0.75rem", color: "var(--text-dim)", fontWeight: 600 }}>Canal</th>
+                      <th style={{ textAlign: "right", padding: "0.5rem 0.75rem", color: "var(--text-dim)", fontWeight: 600 }}>{cfg.label}</th>
+                      <th style={{ textAlign: "right", padding: "0.5rem 0.75rem", color: "var(--text-dim)", fontWeight: 600 }}>%</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {canaisDetail.map((c) => (
+                      <tr key={c.nome} style={{ borderBottom: "1px solid var(--border)" }}>
+                        <td style={{ padding: "0.5rem 0.75rem", color: "var(--text)", fontWeight: 600 }}>
+                          <span style={{ display: "inline-block", width: 8, height: 8, borderRadius: "50%", background: CANAL_COLORS[c.nome] ?? "#6b7280", marginRight: 6 }} />
+                          {c.nome}
+                        </td>
+                        <td style={{ textAlign: "right", padding: "0.5rem 0.75rem", color: "var(--text)", fontWeight: 500 }}>{cfg.format(c.value)}</td>
+                        <td style={{ textAlign: "right", padding: "0.5rem 0.75rem", color: "var(--text-dim)" }}>{total > 0 ? ((c.value / total) * 100).toFixed(1) : "0"}%</td>
+                      </tr>
+                    ))}
+                    <tr style={{ background: cfg.color + "15", fontWeight: 700, borderTop: "2px solid " + cfg.color }}>
+                      <td style={{ padding: "0.625rem 0.75rem", color: cfg.color }}>TOTAL</td>
+                      <td style={{ textAlign: "right", padding: "0.625rem 0.75rem", color: cfg.color, fontSize: "0.9rem" }}>{cfg.format(total)}</td>
+                      <td style={{ textAlign: "right", padding: "0.625rem 0.75rem", color: cfg.color }}>100%</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            )
+          ) : (
+            canaisDetail.length === 0 ? (
+              <p className="text-sm text-center py-4" style={{ color: "var(--text-dim)" }}>Sem dados no período</p>
+            ) : (
+              <ResponsiveContainer width="100%" height={Math.max(canaisDetail.length * 40 + 40, 180)}>
+                <BarChart data={canaisDetail} layout="vertical" margin={{ left: 8 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="var(--chart-grid)" horizontal={false} />
+                  <XAxis type="number" tick={axisTick} tickFormatter={(v) => cfg.format(Number(v))} />
+                  <YAxis type="category" dataKey="nome" tick={axisTick} width={120} />
+                  <Tooltip {...tooltipStyle} formatter={(v) => [cfg.format(Number(v)), cfg.label]} />
+                  <Bar dataKey="value" name={cfg.label} radius={[0, 4, 4, 0]}>
+                    {canaisDetail.map((c) => (
+                      <Cell key={c.nome} fill={CANAL_COLORS[c.nome] ?? "#6b7280"} />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            )
+          )
         )}
       </div>
     );
   }
 
-  // ---------- Funnel helpers ----------
-  function funnelRate(from: number, to: number) {
-    return from > 0 ? ((to / from) * 100).toFixed(1) + "%" : "--";
-  }
-
-  // ---------- Empty state ----------
-  if (allWeeklyData.length === 0) {
-    return (
-      <div className="kpi-card text-center py-12">
-        <p className="text-lg font-bold" style={{ color: "var(--text-dim)" }}>
-          Nenhum dado inserido ainda
-        </p>
-        <p className="text-sm mt-2" style={{ color: "var(--text-dim)" }}>
-          Use a aba &quot;Inserir Dados&quot; para adicionar as metricas semanais.
-        </p>
-      </div>
-    );
-  }
-
-  // ---------- Render ----------
+  // ---- Render ----
   return (
     <div className="space-y-6">
-      {/* ===== Global Date Range Filter ===== */}
-      <DateRangeFilter
-        startDate={globalStart}
-        endDate={globalEnd}
-        onStartChange={(d) => { setGlobalStart(d); setGlobalQuick(null); }}
-        onEndChange={(d) => { setGlobalEnd(d); setGlobalQuick(null); }}
-        onQuickSelect={makeQuickHandler(setGlobalStart, setGlobalEnd, setGlobalQuick)}
-        activeQuick={globalQuick}
-      />
+      {/* ===== Date filter ===== */}
+      <div className="flex items-center gap-3">
+        <div className="flex-1">
+          <DateRangeFilter
+            startDate={globalStart}
+            endDate={globalEnd}
+            onStartChange={(d) => { setGlobalStart(d); setGlobalQuick(null); }}
+            onEndChange={(d) => { setGlobalEnd(d); setGlobalQuick(null); }}
+            onQuickSelect={handleQuickSelect}
+            activeQuick={globalQuick}
+          />
+        </div>
+        {loading && (
+          <RefreshCw size={16} className="animate-spin flex-shrink-0" style={{ color: "#1a5c3a" }} />
+        )}
+      </div>
 
-      {/* ===== 1. KPI Cards - Main (clickable) ===== */}
+      {/* ===== KPI Cards (clicáveis) ===== */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <div onClick={() => toggleDetail("investimento")} style={{ cursor: "pointer" }}>
-          <KPICard
-            label="Investimento Total"
-            value={formatBRL(filteredTotals.investimento)}
-            icon={
-              <span className="flex items-center gap-1">
-                <DollarSign size={14} style={{ color: "#f4a236" }} />
-                {expandedKPI === "investimento" ? <ChevronUp size={12} style={{ color: "var(--text-dim)" }} /> : <ChevronDown size={12} style={{ color: "var(--text-dim)" }} />}
-              </span>
-            }
-          />
-        </div>
+        {(
+          [
+            {
+              key: "investimento" as MetricKey,
+              label: "Investimento Total",
+              value: formatBRL(kpis.totalInvestimento),
+              iconColor: "#f4a236",
+              Icon: DollarSign,
+            },
+            {
+              key: "leads" as MetricKey,
+              label: "Total de Leads",
+              value: formatNumber(kpis.totalLeads),
+              iconColor: "#4285f4",
+              Icon: Users,
+            },
+            {
+              key: "vendas" as MetricKey,
+              label: "Vendas Realizadas",
+              value: formatNumber(kpis.totalVendas),
+              iconColor: "#10b981",
+              Icon: ShoppingCart,
+            },
+            {
+              key: "valorVendas" as MetricKey,
+              label: "Receita Total",
+              value: formatBRL(kpis.totalValorVendas),
+              iconColor: "#e94560",
+              Icon: Target,
+            },
+          ] as const
+        ).map(({ key, label, value, iconColor, Icon }) => (
+          <div key={key} onClick={() => toggleDetail(key)} style={{ cursor: "pointer" }}>
+            <KPICard
+              label={label}
+              value={value}
+              icon={
+                <span className="flex items-center gap-1">
+                  <Icon size={14} style={{ color: iconColor }} />
+                  {expandedKPI === key ? (
+                    <ChevronUp size={12} style={{ color: "var(--text-dim)" }} />
+                  ) : (
+                    <ChevronDown size={12} style={{ color: "var(--text-dim)" }} />
+                  )}
+                </span>
+              }
+            />
+          </div>
+        ))}
 
-        <div onClick={() => toggleDetail("leads")} style={{ cursor: "pointer" }}>
-          <KPICard
-            label="Total de Leads"
-            value={formatNumber(filteredTotals.leads)}
-            icon={
-              <span className="flex items-center gap-1">
-                <Users size={14} style={{ color: "#4285f4" }} />
-                {expandedKPI === "leads" ? <ChevronUp size={12} style={{ color: "var(--text-dim)" }} /> : <ChevronDown size={12} style={{ color: "var(--text-dim)" }} />}
-              </span>
-            }
-          />
-        </div>
-
-        <div onClick={() => toggleDetail("vendas")} style={{ cursor: "pointer" }}>
-          <KPICard
-            label="Vendas Realizadas"
-            value={formatNumber(filteredTotals.vendas)}
-            icon={
-              <span className="flex items-center gap-1">
-                <ShoppingCart size={14} style={{ color: "#10b981" }} />
-                {expandedKPI === "vendas" ? <ChevronUp size={12} style={{ color: "var(--text-dim)" }} /> : <ChevronDown size={12} style={{ color: "var(--text-dim)" }} />}
-              </span>
-            }
-          />
-        </div>
-
-        <div onClick={() => toggleDetail("valorVendas")} style={{ cursor: "pointer" }}>
-          <KPICard
-            label="Receita Total"
-            value={formatBRL(filteredTotals.valorVendas)}
-            icon={
-              <span className="flex items-center gap-1">
-                <Target size={14} style={{ color: "#e94560" }} />
-                {expandedKPI === "valorVendas" ? <ChevronUp size={12} style={{ color: "var(--text-dim)" }} /> : <ChevronDown size={12} style={{ color: "var(--text-dim)" }} />}
-              </span>
-            }
-          />
-        </div>
-
-        {/* Detail panel renders below the KPI row */}
+        {/* Detail panel spans full width below the cards */}
         {expandedKPI && renderDetailPanel(expandedKPI)}
       </div>
 
-      {/* ===== 2. Secondary KPIs with metas ===== */}
+      {/* ===== Secondary KPIs ===== */}
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
-        <KPICard label="CPL" value={kpis.cpl > 0 ? formatBRL(kpis.cpl) : "--"} meta={`\u2264 ${formatBRL(kpis.metaCpl)}`} status={cplStatus} />
-        <KPICard label="CAC" value={kpis.cac > 0 ? formatBRL(kpis.cac) : "--"} meta={`\u2264 ${formatBRL(kpis.metaCac)}`} status={cacStatus} />
-        <KPICard label="ROI" value={kpis.roi > 0 ? kpis.roi.toFixed(1) + "x" : "--"} meta={`\u2265 ${kpis.metaRoi}x`} status={roiStatus} />
-        <KPICard label="VSO" value={kpis.vso > 0 ? formatPercent(kpis.vso) : "--"} meta={`\u2265 ${kpis.metaVso}%`} status={vsoStatus} />
+        <KPICard
+          label="CPL"
+          value={kpis.cpl > 0 ? formatBRL(kpis.cpl) : "--"}
+          meta={metas.cpl > 0 ? `≤ ${formatBRL(metas.cpl)}` : undefined}
+          status={cplStatus}
+        />
+        <KPICard
+          label="CAC"
+          value={kpis.cac > 0 ? formatBRL(kpis.cac) : "--"}
+          meta={metas.cac > 0 ? `≤ ${formatBRL(metas.cac)}` : undefined}
+          status={cacStatus}
+        />
+        <KPICard
+          label="ROI"
+          value={kpis.roi > 0 ? kpis.roi.toFixed(1) + "x" : "--"}
+          meta={metas.roi > 0 ? `≥ ${metas.roi}x` : undefined}
+          status={roiStatus}
+        />
+        <KPICard
+          label="VSO"
+          value={vso > 0 ? formatPercent(vso) : "--"}
+          meta={metas.vso > 0 ? `≥ ${metas.vso}%` : undefined}
+          status={vsoStatus}
+        />
         <KPICard
           label="LTV"
-          value={filteredTotals.vendas > 0 ? formatBRL(filteredTotals.valorVendas / filteredTotals.vendas) : "--"}
-          meta="Valor medio/cliente"
+          value={
+            kpis.totalVendas > 0
+              ? formatBRL(kpis.totalValorVendas / kpis.totalVendas)
+              : "--"
+          }
+          meta="Valor médio/cliente"
         />
       </div>
 
-      {/* ===== 3. Chart: Leads x Vendas (independent filter) ===== */}
-      <div className="kpi-card">
-        <h3 className="text-sm font-bold" style={{ color: "var(--text-muted)" }}>
-          LEADS x VENDAS POR SEMANA
-        </h3>
-        <DateRangeFilter
-          startDate={leadsStart}
-          endDate={leadsEnd}
-          onStartChange={(d) => { setLeadsStart(d); setLeadsQuick(null); }}
-          onEndChange={(d) => { setLeadsEnd(d); setLeadsQuick(null); }}
-          onQuickSelect={makeQuickHandler(setLeadsStart, setLeadsEnd, setLeadsQuick)}
-          activeQuick={leadsQuick}
-          inline
-        />
-          <ResponsiveContainer width="100%" height={320}>
-            <BarChart data={leadsChartData} barCategoryGap="20%">
-              <CartesianGrid strokeDasharray="3 3" stroke="var(--chart-grid)" />
-              <XAxis dataKey="name" tick={axisTick} />
-              <YAxis yAxisId="left" tick={axisTick} />
-              <YAxis yAxisId="right" orientation="right" tick={axisTick} />
-              <Tooltip
-                {...tooltipStyle}
-                formatter={(value, name) => {
-                  if (name === "Taxa Conv.") return Number(value ?? 0).toFixed(1) + "%";
-                  return formatNumber(Number(value ?? 0));
-                }}
-              />
-              <Legend wrapperStyle={{ color: "var(--text-muted)", fontSize: 12 }} />
-              <Bar yAxisId="left" dataKey="leads" name="Leads" fill="#4285f4" radius={[4, 4, 0, 0]} />
-              <Bar yAxisId="left" dataKey="vendas" name="Vendas" fill="#10b981" radius={[4, 4, 0, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
+      {/* ===== Charts: Leads por Canal + Investimento por Canal ===== */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        {/* Leads por Canal */}
+        <div className="kpi-card">
+          <h3 className="text-sm font-bold mb-4" style={{ color: "var(--text-muted)" }}>
+            LEADS POR CANAL
+          </h3>
+          {leadsChartData.length > 0 ? (
+            <ResponsiveContainer width="100%" height={250}>
+              <BarChart data={leadsChartData} margin={{ left: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--chart-grid)" />
+                <XAxis dataKey="nome" tick={axisTick} />
+                <YAxis tick={axisTick} allowDecimals={false} />
+                <Tooltip
+                  {...tooltipStyle}
+                  labelFormatter={(_, p) => (p[0]?.payload as { nomeCompleto?: string })?.nomeCompleto ?? ""}
+                  formatter={(v) => [formatNumber(Number(v)), "Leads"]}
+                />
+                <Bar dataKey="leads" name="Leads" radius={[4, 4, 0, 0]}>
+                  {leadsChartData.map((c) => (
+                    <Cell key={c.nome} fill={c.color} />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          ) : (
+            <div
+              className="flex items-center justify-center"
+              style={{ height: 250, color: "var(--text-dim)", fontSize: "0.875rem" }}
+            >
+              {loading ? (
+                <span className="flex items-center gap-2">
+                  <RefreshCw size={14} className="animate-spin" /> Carregando...
+                </span>
+              ) : (
+                "Sem leads no período"
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Investimento por Canal */}
+        <div className="kpi-card">
+          <h3 className="text-sm font-bold mb-4" style={{ color: "var(--text-muted)" }}>
+            INVESTIMENTO POR CANAL
+          </h3>
+          {investChartData.length > 0 ? (
+            <ResponsiveContainer width="100%" height={250}>
+              <BarChart data={investChartData} margin={{ left: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--chart-grid)" />
+                <XAxis dataKey="nome" tick={axisTick} />
+                <YAxis
+                  tick={axisTick}
+                  tickFormatter={(v: number) =>
+                    v >= 1000000
+                      ? (v / 1000000).toFixed(1) + "M"
+                      : v >= 1000
+                      ? (v / 1000).toFixed(0) + "K"
+                      : String(v)
+                  }
+                />
+                <Tooltip
+                  {...tooltipStyle}
+                  labelFormatter={(_, p) => (p[0]?.payload as { nomeCompleto?: string })?.nomeCompleto ?? ""}
+                  formatter={(v) => [formatBRL(Number(v)), "Investimento"]}
+                />
+                <Bar dataKey="investimento" name="Investimento" radius={[4, 4, 0, 0]}>
+                  {investChartData.map((c) => (
+                    <Cell key={c.nome} fill={c.color} />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          ) : (
+            <div
+              className="flex items-center justify-center"
+              style={{ height: 250, color: "var(--text-dim)", fontSize: "0.875rem" }}
+            >
+              {loading ? (
+                <span className="flex items-center gap-2">
+                  <RefreshCw size={14} className="animate-spin" /> Carregando...
+                </span>
+              ) : (
+                "Sem investimento registrado"
+              )}
+            </div>
+          )}
+        </div>
       </div>
 
-      {/* ===== 4. Chart: Receita x Investimento (independent filter) ===== */}
-      <div className="kpi-card">
-        <h3 className="text-sm font-bold" style={{ color: "var(--text-muted)" }}>
-          RECEITA x INVESTIMENTO
-        </h3>
-        <DateRangeFilter
-          startDate={receitaStart}
-          endDate={receitaEnd}
-          onStartChange={(d) => { setReceitaStart(d); setReceitaQuick(null); }}
-          onEndChange={(d) => { setReceitaEnd(d); setReceitaQuick(null); }}
-          onQuickSelect={makeQuickHandler(setReceitaStart, setReceitaEnd, setReceitaQuick)}
-          activeQuick={receitaQuick}
-          inline
-        />
-          <ResponsiveContainer width="100%" height={320}>
-            <AreaChart data={receitaChartData}>
-              <defs>
-                <linearGradient id="gradReceita" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#10b981" stopOpacity={0.4} />
-                  <stop offset="95%" stopColor="#10b981" stopOpacity={0.05} />
-                </linearGradient>
-                <linearGradient id="gradInvestimento" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#e94560" stopOpacity={0.4} />
-                  <stop offset="95%" stopColor="#e94560" stopOpacity={0.05} />
-                </linearGradient>
-              </defs>
-              <CartesianGrid strokeDasharray="3 3" stroke="var(--chart-grid)" />
-              <XAxis dataKey="name" tick={axisTick} />
-              <YAxis
-                tick={axisTick}
-                tickFormatter={(v: number) =>
-                  v >= 1000000 ? (v / 1000000).toFixed(1) + "M" : v >= 1000 ? (v / 1000).toFixed(0) + "K" : String(v)
-                }
-              />
-              <Tooltip {...tooltipStyle} formatter={(v) => formatBRL(Number(v ?? 0))} />
-              <Legend wrapperStyle={{ color: "var(--text-muted)", fontSize: 12 }} />
-              <Area type="monotone" dataKey="valorVendas" name="Receita (R$)" stroke="#10b981" strokeWidth={2} fill="url(#gradReceita)" />
-              <Area type="monotone" dataKey="investimento" name="Investimento (R$)" stroke="#e94560" strokeWidth={2} fill="url(#gradInvestimento)" />
-            </AreaChart>
-          </ResponsiveContainer>
-      </div>
-
-      {/* ===== 5. Sales Funnel ===== */}
+      {/* ===== Funil de Vendas ===== */}
       <div className="kpi-card">
         <h3 className="text-sm font-bold mb-6" style={{ color: "var(--text-muted)" }}>
           FUNIL DE VENDAS
         </h3>
-        <div style={{ display: "flex", flexDirection: "column", gap: "0" }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
           {(() => {
             const stages = [
-              { label: "Total Leads", value: funnelTotals.leads, color: "#4285f4" },
-              { label: "Leads Qualificados", value: funnelTotals.lq, color: "#8b5cf6" },
-              { label: "Comparecimentos", value: funnelTotals.comp, color: "#f4a236" },
-              { label: "Vendas", value: funnelTotals.vendas, color: "#10b981" },
+              { label: "Total Leads", value: kpis.totalLeads, color: "#4285f4" },
+              { label: "Leads Convertidos", value: crmConvertidos, color: "#8b5cf6" },
+              { label: "Vendas Realizadas", value: kpis.totalVendas, color: "#10b981" },
             ];
-            const maxValue = Math.max(funnelTotals.leads, 1);
+            const maxValue = Math.max(kpis.totalLeads, 1);
+
+            function funnelRate(from: number, to: number) {
+              return from > 0 ? ((to / from) * 100).toFixed(1) + "%" : "--";
+            }
 
             return stages.map((stage, i) => {
               const widthPct = Math.max((stage.value / maxValue) * 100, 8);
               const nextStage = stages[i + 1];
-
               return (
                 <div key={stage.label}>
-                  <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", marginBottom: nextStage ? "0.25rem" : 0 }}>
-                    <div style={{ width: "140px", flexShrink: 0, textAlign: "right", fontSize: "0.75rem", fontWeight: 600, color: "var(--text-muted)" }}>
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "0.75rem",
+                      marginBottom: nextStage ? "0.25rem" : 0,
+                    }}
+                  >
+                    <div
+                      style={{
+                        width: "160px",
+                        flexShrink: 0,
+                        textAlign: "right",
+                        fontSize: "0.75rem",
+                        fontWeight: 600,
+                        color: "var(--text-muted)",
+                      }}
+                    >
                       {stage.label}
                     </div>
-                    <div style={{ flex: 1, position: "relative" }}>
+                    <div style={{ flex: 1 }}>
                       <div
                         style={{
                           width: `${widthPct}%`,
@@ -654,12 +654,25 @@ export default function TabVisaoGeral({ data }: Props) {
                       </div>
                     </div>
                   </div>
-
                   {nextStage && (
-                    <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", marginBottom: "0.25rem" }}>
-                      <div style={{ width: "140px", flexShrink: 0 }} />
-                      <div style={{ fontSize: "0.7rem", fontWeight: 600, color: "var(--text-dim)", paddingLeft: "0.5rem" }}>
-                        {"\u2193"} {funnelRate(stage.value, nextStage.value)}
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "0.75rem",
+                        marginBottom: "0.25rem",
+                      }}
+                    >
+                      <div style={{ width: "160px", flexShrink: 0 }} />
+                      <div
+                        style={{
+                          fontSize: "0.7rem",
+                          fontWeight: 600,
+                          color: "var(--text-dim)",
+                          paddingLeft: "0.5rem",
+                        }}
+                      >
+                        ↓ {funnelRate(stage.value, nextStage.value)}
                       </div>
                     </div>
                   )}
