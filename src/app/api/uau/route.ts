@@ -172,26 +172,37 @@ function buildEnrichedResponse(
 
   const unidades = Array.from(unidadesMap.values());
 
+  function classifyStatus(s: string): "vendido" | "emVenda" | "foraDeVenda" | "disponivel" {
+    const sl = s.toLowerCase();
+    if (sl.includes("vendid")) return "vendido";
+    if (sl.includes("em venda") || sl.includes("em_venda")) return "emVenda";
+    if (sl.includes("fora de venda") || sl.includes("fora_de_venda") || sl.includes("bloqueado")) return "foraDeVenda";
+    return "disponivel";
+  }
+
   // Summary counters
   const total = unidades.length;
   let disponivel = 0;
   let vendido = 0;
   let emVenda = 0;
+  let foraDeVenda = 0;
   let vgvTotal = 0;
   let vgvVendido = 0;
   let areaTotal = 0;
   let areaVendida = 0;
 
   for (const u of unidades) {
-    const s = u.status.toLowerCase();
+    const cat = classifyStatus(u.status);
     vgvTotal += u.valorTotal;
     areaTotal += u.area;
-    if (s.includes("vendid")) {
+    if (cat === "vendido") {
       vendido++;
       vgvVendido += u.valorTotal;
       areaVendida += u.area;
-    } else if (s.includes("em venda") || s.includes("em_venda")) {
+    } else if (cat === "emVenda") {
       emVenda++;
+    } else if (cat === "foraDeVenda") {
+      foraDeVenda++;
     } else {
       disponivel++;
     }
@@ -199,22 +210,24 @@ function buildEnrichedResponse(
 
   // Per-quadra breakdown
   const quadrasMap = new Map<string, {
-    total: number; disponivel: number; vendido: number; emVenda: number;
+    total: number; disponivel: number; vendido: number; emVenda: number; foraDeVenda: number;
     vgvTotal: number; vgvVendido: number;
   }>();
   for (const u of unidades) {
     if (!quadrasMap.has(u.quadra)) {
-      quadrasMap.set(u.quadra, { total: 0, disponivel: 0, vendido: 0, emVenda: 0, vgvTotal: 0, vgvVendido: 0 });
+      quadrasMap.set(u.quadra, { total: 0, disponivel: 0, vendido: 0, emVenda: 0, foraDeVenda: 0, vgvTotal: 0, vgvVendido: 0 });
     }
     const q = quadrasMap.get(u.quadra)!;
     q.total++;
     q.vgvTotal += u.valorTotal;
-    const s = u.status.toLowerCase();
-    if (s.includes("vendid")) {
+    const cat = classifyStatus(u.status);
+    if (cat === "vendido") {
       q.vendido++;
       q.vgvVendido += u.valorTotal;
-    } else if (s.includes("em venda") || s.includes("em_venda")) {
+    } else if (cat === "emVenda") {
       q.emVenda++;
+    } else if (cat === "foraDeVenda") {
+      q.foraDeVenda++;
     } else {
       q.disponivel++;
     }
@@ -229,17 +242,19 @@ function buildEnrichedResponse(
     });
 
   // Per-classificacao breakdown
-  const classMap = new Map<string, { total: number; disponivel: number; vendido: number }>();
+  const classMap = new Map<string, { total: number; disponivel: number; vendido: number; foraDeVenda: number }>();
   for (const u of unidades) {
     const key = u.classificacao || "Sem classificação";
     if (!classMap.has(key)) {
-      classMap.set(key, { total: 0, disponivel: 0, vendido: 0 });
+      classMap.set(key, { total: 0, disponivel: 0, vendido: 0, foraDeVenda: 0 });
     }
     const c = classMap.get(key)!;
     c.total++;
-    const s = u.status.toLowerCase();
-    if (s.includes("vendid")) {
+    const cat = classifyStatus(u.status);
+    if (cat === "vendido") {
       c.vendido++;
+    } else if (cat === "foraDeVenda") {
+      c.foraDeVenda++;
     } else {
       c.disponivel++;
     }
@@ -256,7 +271,7 @@ function buildEnrichedResponse(
 
   const result: Record<string, unknown> = {
     status: "connected",
-    summary: { total, disponivel, vendido, emVenda, vgvTotal, vgvVendido, areaTotal, areaVendida },
+    summary: { total, disponivel, vendido, emVenda, foraDeVenda, vgvTotal, vgvVendido, areaTotal, areaVendida },
     quadras,
     unidades,
     classificacoes,

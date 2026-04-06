@@ -14,10 +14,10 @@ import { formatBRL, VendasResponse, VendaRecord } from "@/lib/types";
 interface EstoqueData {
   status: string;
   uauStatus?: string;
-  summary: { total: number; disponivel: number; vendido: number; emVenda: number; vgvTotal: number; vgvVendido: number; areaTotal: number; areaVendida: number };
-  quadras: Array<{ quadra: string; total: number; disponivel: number; vendido: number; emVenda: number; vgvTotal: number; vgvVendido: number }>;
+  summary: { total: number; disponivel: number; vendido: number; emVenda: number; foraDeVenda: number; vgvTotal: number; vgvVendido: number; areaTotal: number; areaVendida: number };
+  quadras: Array<{ quadra: string; total: number; disponivel: number; vendido: number; emVenda: number; foraDeVenda: number; vgvTotal: number; vgvVendido: number }>;
   unidades: Array<{ identificador: string; quadra: string; lote: string; loteNum: number; status: string; area: number; valorTotal: number; valorM2: number; classificacao: string; rua: string }>;
-  classificacoes: Array<{ nome: string; total: number; disponivel: number; vendido: number }>;
+  classificacoes: Array<{ nome: string; total: number; disponivel: number; vendido: number; foraDeVenda: number }>;
 }
 
 const STATUS_COLORS: Record<string, string> = {
@@ -26,6 +26,8 @@ const STATUS_COLORS: Record<string, string> = {
   vendido: "#e94560",
   "em venda": "#f4a236",
   em_venda: "#f4a236",
+  "fora de venda": "#6b7280",
+  bloqueado: "#6b7280",
 };
 
 function getStatusColor(status: string): string {
@@ -40,6 +42,7 @@ function getStatusKey(status: string): string {
   const s = status.toLowerCase();
   if (s.includes("vendid")) return "vendido";
   if (s.includes("em venda") || s.includes("em_venda")) return "emVenda";
+  if (s.includes("fora de venda") || s.includes("bloqueado")) return "foraDeVenda";
   return "disponivel";
 }
 
@@ -313,9 +316,10 @@ export default function TabEstoque({ data }: { data: EstoqueData }) {
     { name: "Disponivel", value: summary.disponivel },
     { name: "Vendido", value: summary.vendido },
     { name: "Em Venda", value: summary.emVenda },
+    { name: "Fora de Venda", value: summary.foraDeVenda ?? 0 },
   ].filter((d) => d.value > 0);
 
-  const donutColors = ["#10b981", "#e94560", "#f4a236"];
+  const donutColors = ["#10b981", "#e94560", "#f4a236", "#6b7280"];
 
   // Classification bar chart data
   const classChartData = classificacoes.map((c) => ({
@@ -456,6 +460,11 @@ export default function TabEstoque({ data }: { data: EstoqueData }) {
           label="Em Venda"
           value={String(summary.emVenda)}
           icon={<BarChart3 size={14} style={{ color: "#f4a236" }} />}
+        />
+        <KPICard
+          label="Fora de Venda"
+          value={String(summary.foraDeVenda ?? 0)}
+          icon={<BarChart3 size={14} style={{ color: "#6b7280" }} />}
         />
         <KPICard
           label="VSO"
@@ -655,6 +664,7 @@ export default function TabEstoque({ data }: { data: EstoqueData }) {
             <option value="disponivel">Disponivel</option>
             <option value="vendido">Vendido</option>
             <option value="emVenda">Em Venda</option>
+            <option value="foraDeVenda">Fora de Venda</option>
           </select>
           <select
             value={filterClassificacao}

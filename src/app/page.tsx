@@ -46,10 +46,10 @@ export default function Home() {
   interface EstoqueData {
     status: string;
     uauStatus?: string;
-    summary: { total: number; disponivel: number; vendido: number; emVenda: number; vgvTotal: number; vgvVendido: number; areaTotal: number; areaVendida: number };
-    quadras: Array<{ quadra: string; total: number; disponivel: number; vendido: number; emVenda: number; vgvTotal: number; vgvVendido: number }>;
+    summary: { total: number; disponivel: number; vendido: number; emVenda: number; foraDeVenda: number; vgvTotal: number; vgvVendido: number; areaTotal: number; areaVendida: number };
+    quadras: Array<{ quadra: string; total: number; disponivel: number; vendido: number; emVenda: number; foraDeVenda: number; vgvTotal: number; vgvVendido: number }>;
     unidades: Array<{ identificador: string; quadra: string; lote: string; loteNum: number; status: string; area: number; valorTotal: number; valorM2: number; classificacao: string; rua: string }>;
-    classificacoes: Array<{ nome: string; total: number; disponivel: number; vendido: number }>;
+    classificacoes: Array<{ nome: string; total: number; disponivel: number; vendido: number; foraDeVenda: number }>;
   }
   const [estoqueData, setEstoqueData] = useState<EstoqueData | null>(null);
   const [estoqueLoading, setEstoqueLoading] = useState(false);
