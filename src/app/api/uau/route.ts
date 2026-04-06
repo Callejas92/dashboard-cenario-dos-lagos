@@ -289,59 +289,50 @@ export async function GET(request: Request) {
     const yyyy = now.getFullYear();
     const todayFormatted = `${mm}-${dd}-${yyyy}`;
 
-    // Fetch available (0), sold (1), and blocked (2) in parallel
-    // Also try "all" with no Vendido filter (retorna_venda:false) in debug mode
-    const [availableRows, soldRows, blockedRows] = await Promise.allSettled([
-      fetchUnits(token, integrationToken, todayFormatted, "WHERE Empresa_unid = 2 AND Vendido_unid = 0", false, 25000),
+    // Strategy: "no Vendido filter" returns all 213 lots (incl. lots with null Vendido_unid)
+    // "Vendido=1 with retorna_venda:true" returns sold lots with sale-price enrichment
+    const [allLotsResult, soldEnrichResult] = await Promise.allSettled([
+      fetchUnits(token, integrationToken, todayFormatted, "WHERE Empresa_unid = 2", false, 25000),
       fetchUnits(token, integrationToken, todayFormatted, "WHERE Empresa_unid = 2 AND Vendido_unid = 1", true, 25000),
-      fetchUnits(token, integrationToken, todayFormatted, "WHERE Empresa_unid = 2 AND Vendido_unid = 2", false, 25000),
     ]);
 
-    // Debug mode: return raw info about what came back
+    // Debug mode
     if (debug) {
-      const avail = availableRows.status === "fulfilled" ? availableRows.value : [];
-      const sold = soldRows.status === "fulfilled" ? soldRows.value : [];
-      const blocked = blockedRows.status === "fulfilled" ? blockedRows.value : [];
-
-      // Also try without Vendido filter to find any hidden lots
-      const allFilterResult = await fetchUnits(
-        token, integrationToken, todayFormatted,
-        "WHERE Empresa_unid = 2", false, 25000
-      ).catch((e: unknown) => ({ error: String(e) }));
-
-      const allRows = [...avail, ...sold, ...blocked];
-      const allFilterRows = Array.isArray(allFilterResult) ? allFilterResult : [];
-
+      const allLots = allLotsResult.status === "fulfilled" ? allLotsResult.value : [];
+      const sold = soldEnrichResult.status === "fulfilled" ? soldEnrichResult.value : [];
       return NextResponse.json({
-        availableCount: avail.length,
+        totalCount: allLots.length,
         soldCount: sold.length,
-        blockedCount: blocked.length,
-        totalCount: allRows.length,
-        noFilterCount: allFilterRows.length,
-        noFilterError: !Array.isArray(allFilterResult) ? (allFilterResult as {error:string}).error : null,
-        availableError: availableRows.status === "rejected" ? String(availableRows.reason) : null,
-        soldError: soldRows.status === "rejected" ? String(soldRows.reason) : null,
-        blockedError: blockedRows.status === "rejected" ? String(blockedRows.reason) : null,
-        colunas: allRows.length > 0 ? Object.keys(allRows[0]) : [],
-        distinctStatuses: [...new Set([...avail, ...sold, ...blocked].map(r => r.Descr_status))],
-        amostraDisponivel: avail.slice(0, 1),
+        allLotsError: allLotsResult.status === "rejected" ? String(allLotsResult.reason) : null,
+        soldError: soldEnrichResult.status === "rejected" ? String(soldEnrichResult.reason) : null,
+        colunas: allLots.length > 0 ? Object.keys(allLots[0]) : [],
+        distinctStatuses: [...new Set(allLots.map(r => r.Descr_status))],
+        distinctVendido: [...new Set(allLots.map(r => r.Vendido_unid))],
+        amostra: allLots.slice(0, 2),
         amostraVendida: sold.slice(0, 1),
-        amostraBloqueada: blocked.slice(0, 1),
-        amostraSemFiltro: allFilterRows.slice(0, 1),
       });
     }
 
-    const avail = availableRows.status === "fulfilled" ? availableRows.value : [];
-    const sold = soldRows.status === "fulfilled" ? soldRows.value : [];
-    const blocked = blockedRows.status === "fulfilled" ? blockedRows.value : [];
-    const allRows = [...avail, ...sold, ...blocked];
+    const allLots = allLotsResult.status === "fulfilled" ? allLotsResult.value : [];
+    const soldEnrich = soldEnrichResult.status === "fulfilled" ? soldEnrichResult.value : [];
+
+    // Build a status-override map from sold enrichment (has more accurate price/status data)
+    const soldOverride = new Map<string, UnitRow>();
+    for (const row of soldEnrich) {
+      if (row.Identificador_unid) soldOverride.set(row.Identificador_unid, row);
+    }
+
+    // Merge: use all-lots as base, overlay sold rows for enrichment
+    const mergedRows = allLots.map(row => {
+      const id = row.Identificador_unid || "";
+      return soldOverride.has(id) ? { ...row, ...soldOverride.get(id) } : row;
+    });
 
     // If all queries failed, fall back to static data
-    if (allRows.length === 0) {
+    if (mergedRows.length === 0) {
       const errMsgs = [
-        availableRows.status === "rejected" ? String(availableRows.reason) : null,
-        soldRows.status === "rejected" ? String(soldRows.reason) : null,
-        blockedRows.status === "rejected" ? String(blockedRows.reason) : null,
+        allLotsResult.status === "rejected" ? String(allLotsResult.reason) : null,
+        soldEnrichResult.status === "rejected" ? String(soldEnrichResult.reason) : null,
       ].filter(Boolean).join("; ");
 
       const response = buildEnrichedResponse(null, "offline");
@@ -349,7 +340,7 @@ export async function GET(request: Request) {
       return NextResponse.json(response);
     }
 
-    return NextResponse.json(buildEnrichedResponse(allRows));
+    return NextResponse.json(buildEnrichedResponse(mergedRows));
   } catch (error) {
     const errMsg = error instanceof Error ? error.message : String(error);
     console.error("UAU API error:", errMsg);
