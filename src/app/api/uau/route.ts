@@ -43,11 +43,12 @@ function parseIdentifier(id: string): { quadra: string; lote: string; loteNum: n
   return { quadra: "Q?", lote: "L?", loteNum: 0 };
 }
 
-async function fetchUnitsByStatus(
+async function fetchUnits(
   token: string,
   integrationToken: string,
   todayFormatted: string,
-  vendidoFilter: number,
+  whereClause: string,
+  retornaVenda: boolean,
   timeoutMs: number
 ): Promise<UnitRow[]> {
   const controller = new AbortController();
@@ -64,8 +65,8 @@ async function fetchUnitsByStatus(
           "X-INTEGRATION-Authorization": integrationToken,
         },
         body: JSON.stringify({
-          where: `WHERE Empresa_unid = 2 AND Vendido_unid = ${vendidoFilter}`,
-          retorna_venda: vendidoFilter === 1,
+          where: whereClause,
+          retorna_venda: retornaVenda,
           data_tabela_preco: todayFormatted,
         }),
         signal: controller.signal,
@@ -76,7 +77,7 @@ async function fetchUnitsByStatus(
 
     if (!res.ok) {
       const err = await res.text();
-      throw new Error(`BuscaUnidades(Vendido=${vendidoFilter}) falhou: ${res.status} — ${err}`);
+      throw new Error(`BuscaUnidades falhou: ${res.status} — ${err}`);
     }
 
     const raw = await res.json();
@@ -288,37 +289,46 @@ export async function GET(request: Request) {
     const yyyy = now.getFullYear();
     const todayFormatted = `${mm}-${dd}-${yyyy}`;
 
-    // Fetch available (0) and sold (1) in parallel
-    const [availableRows, soldRows] = await Promise.allSettled([
-      fetchUnitsByStatus(token, integrationToken, todayFormatted, 0, 25000),
-      fetchUnitsByStatus(token, integrationToken, todayFormatted, 1, 25000),
+    // Fetch available (0), sold (1), and blocked (2) in parallel
+    // Also try "all" with no Vendido filter (retorna_venda:false) in debug mode
+    const [availableRows, soldRows, blockedRows] = await Promise.allSettled([
+      fetchUnits(token, integrationToken, todayFormatted, "WHERE Empresa_unid = 2 AND Vendido_unid = 0", false, 25000),
+      fetchUnits(token, integrationToken, todayFormatted, "WHERE Empresa_unid = 2 AND Vendido_unid = 1", true, 25000),
+      fetchUnits(token, integrationToken, todayFormatted, "WHERE Empresa_unid = 2 AND Vendido_unid = 2", false, 25000),
     ]);
 
     // Debug mode: return raw info about what came back
     if (debug) {
       const avail = availableRows.status === "fulfilled" ? availableRows.value : [];
       const sold = soldRows.status === "fulfilled" ? soldRows.value : [];
-      const allRows = [...avail, ...sold];
+      const blocked = blockedRows.status === "fulfilled" ? blockedRows.value : [];
+      const allRows = [...avail, ...sold, ...blocked];
       return NextResponse.json({
         availableCount: avail.length,
         soldCount: sold.length,
+        blockedCount: blocked.length,
+        totalCount: allRows.length,
         availableError: availableRows.status === "rejected" ? String(availableRows.reason) : null,
         soldError: soldRows.status === "rejected" ? String(soldRows.reason) : null,
+        blockedError: blockedRows.status === "rejected" ? String(blockedRows.reason) : null,
         colunas: allRows.length > 0 ? Object.keys(allRows[0]) : [],
         amostraDisponivel: avail.slice(0, 2),
         amostraVendida: sold.slice(0, 2),
+        amostraBloqueada: blocked.slice(0, 2),
       });
     }
 
     const avail = availableRows.status === "fulfilled" ? availableRows.value : [];
     const sold = soldRows.status === "fulfilled" ? soldRows.value : [];
-    const allRows = [...avail, ...sold];
+    const blocked = blockedRows.status === "fulfilled" ? blockedRows.value : [];
+    const allRows = [...avail, ...sold, ...blocked];
 
-    // If both queries failed, fall back to static data
+    // If all queries failed, fall back to static data
     if (allRows.length === 0) {
       const errMsgs = [
         availableRows.status === "rejected" ? String(availableRows.reason) : null,
         soldRows.status === "rejected" ? String(soldRows.reason) : null,
+        blockedRows.status === "rejected" ? String(blockedRows.reason) : null,
       ].filter(Boolean).join("; ");
 
       const response = buildEnrichedResponse(null, "offline");
