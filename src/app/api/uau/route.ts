@@ -302,19 +302,32 @@ export async function GET(request: Request) {
       const avail = availableRows.status === "fulfilled" ? availableRows.value : [];
       const sold = soldRows.status === "fulfilled" ? soldRows.value : [];
       const blocked = blockedRows.status === "fulfilled" ? blockedRows.value : [];
+
+      // Also try without Vendido filter to find any hidden lots
+      const allFilterResult = await fetchUnits(
+        token, integrationToken, todayFormatted,
+        "WHERE Empresa_unid = 2", false, 25000
+      ).catch((e: unknown) => ({ error: String(e) }));
+
       const allRows = [...avail, ...sold, ...blocked];
+      const allFilterRows = Array.isArray(allFilterResult) ? allFilterResult : [];
+
       return NextResponse.json({
         availableCount: avail.length,
         soldCount: sold.length,
         blockedCount: blocked.length,
         totalCount: allRows.length,
+        noFilterCount: allFilterRows.length,
+        noFilterError: !Array.isArray(allFilterResult) ? (allFilterResult as {error:string}).error : null,
         availableError: availableRows.status === "rejected" ? String(availableRows.reason) : null,
         soldError: soldRows.status === "rejected" ? String(soldRows.reason) : null,
         blockedError: blockedRows.status === "rejected" ? String(blockedRows.reason) : null,
         colunas: allRows.length > 0 ? Object.keys(allRows[0]) : [],
-        amostraDisponivel: avail.slice(0, 2),
-        amostraVendida: sold.slice(0, 2),
-        amostraBloqueada: blocked.slice(0, 2),
+        distinctStatuses: [...new Set([...avail, ...sold, ...blocked].map(r => r.Descr_status))],
+        amostraDisponivel: avail.slice(0, 1),
+        amostraVendida: sold.slice(0, 1),
+        amostraBloqueada: blocked.slice(0, 1),
+        amostraSemFiltro: allFilterRows.slice(0, 1),
       });
     }
 
