@@ -19,26 +19,84 @@ interface UnitRow {
   Descr_status?: string;
   FracaoIdeal_unid?: number;
   DataCad_unid?: string;
+  ValPreco_unid?: number;
+  ValorTotal?: number;
+  [key: string]: unknown;
 }
 
-// Build a lookup map from static data
+// Build a lookup map from static data (fallback for rua, classificacao, area, prices)
 const lotesMap = new Map<string, LoteStatic>();
 for (const l of lotesData as LoteStatic[]) {
   lotesMap.set(l.id, l);
 }
 
+function parseIdentifier(id: string): { quadra: string; lote: string; loteNum: number } {
+  // Format: Q1-L15 or similar
+  const match = id.match(/Q(\d+)-L(\d+)/i);
+  if (match) {
+    return {
+      quadra: `Q${match[1]}`,
+      lote: `L${match[2]}`,
+      loteNum: parseInt(match[2]),
+    };
+  }
+  return { quadra: "Q?", lote: "L?", loteNum: 0 };
+}
+
+async function fetchUnitsByStatus(
+  token: string,
+  integrationToken: string,
+  todayFormatted: string,
+  vendidoFilter: number,
+  timeoutMs: number
+): Promise<UnitRow[]> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    const res = await fetch(
+      `${UAU_API}/api/v1/Espelho/BuscaUnidadesDeAcordoComWhereDetalhado`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: token,
+          "X-INTEGRATION-Authorization": integrationToken,
+        },
+        body: JSON.stringify({
+          where: `WHERE Empresa_unid = 2 AND Vendido_unid = ${vendidoFilter}`,
+          retorna_venda: vendidoFilter === 1,
+          data_tabela_preco: todayFormatted,
+        }),
+        signal: controller.signal,
+      }
+    );
+
+    clearTimeout(timeout);
+
+    if (!res.ok) {
+      const err = await res.text();
+      throw new Error(`BuscaUnidades(Vendido=${vendidoFilter}) falhou: ${res.status} — ${err}`);
+    }
+
+    const raw = await res.json();
+    const myTable: Record<string, unknown>[] =
+      Array.isArray(raw) && raw.length > 0 && raw[0]?.MyTable
+        ? raw[0].MyTable
+        : [];
+
+    return myTable.length > 1 ? (myTable.slice(1) as UnitRow[]) : [];
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 function buildEnrichedResponse(
-  uauUnits: Array<{ identificador: string; status: string }> | null,
+  uauRows: UnitRow[] | null,
   uauStatus?: string
 ) {
-  const statusMap = new Map<string, string>();
-  if (uauUnits) {
-    for (const u of uauUnits) {
-      statusMap.set(u.identificador, u.status);
-    }
-  }
-
-  const unidades: Array<{
+  // Build unified lot list from API rows + static JSON fallback
+  const unidadesMap = new Map<string, {
     identificador: string;
     quadra: string;
     lote: string;
@@ -49,32 +107,71 @@ function buildEnrichedResponse(
     valorM2: number;
     classificacao: string;
     rua: string;
-  }> = [];
+  }>();
 
-  for (const lote of lotesData as LoteStatic[]) {
-    const id = lote.id;
-    let status = "Disponível";
-    if (uauUnits) {
-      const uauSt = statusMap.get(id);
-      if (uauSt) {
-        status = uauSt;
+  if (uauRows && uauRows.length > 0) {
+    for (const row of uauRows) {
+      const id = row.Identificador_unid || "";
+      if (!id) continue;
+
+      const staticLote = lotesMap.get(id);
+      const { quadra, lote, loteNum } = parseIdentifier(id);
+
+      // Determine status
+      let status = row.Descr_status || "";
+      if (!status) {
+        status = row.Vendido_unid === 1 ? "Vendida" : "Disponível";
       }
-    }
 
-    unidades.push({
-      identificador: id,
-      quadra: `Q${lote.quadra}`,
-      lote: `L${lote.lote}`,
-      loteNum: lote.lote,
-      status,
-      area: lote.area,
-      valorTotal: lote.valorTotal,
-      valorM2: lote.valorM2,
-      classificacao: lote.classificacao,
-      rua: lote.rua,
-    });
+      // Area: prefer static JSON, fallback to FracaoIdeal_unid
+      const area = staticLote?.area ?? (Number(row.FracaoIdeal_unid) || 0);
+
+      // Price: prefer static JSON, fallback to UAU fields
+      const valorTotal =
+        staticLote?.valorTotal ??
+        (Number(row.ValorTotal) || Number(row.ValPreco_unid) || 0);
+
+      const valorM2 =
+        staticLote?.valorM2 ??
+        (area > 0 && valorTotal > 0 ? valorTotal / area : Number(row.ValPreco_unid) || 0);
+
+      unidadesMap.set(id, {
+        identificador: id,
+        quadra,
+        lote,
+        loteNum,
+        status,
+        area,
+        valorTotal,
+        valorM2,
+        classificacao: staticLote?.classificacao ?? "",
+        rua: staticLote?.rua ?? "",
+      });
+    }
   }
 
+  // If API returned nothing, fall back to static JSON with "Disponível" status
+  if (uauRows === null || unidadesMap.size === 0) {
+    for (const lote of lotesData as LoteStatic[]) {
+      const { quadra, lote: loteStr, loteNum } = parseIdentifier(lote.id);
+      unidadesMap.set(lote.id, {
+        identificador: lote.id,
+        quadra,
+        lote: loteStr,
+        loteNum,
+        status: "Disponível",
+        area: lote.area,
+        valorTotal: lote.valorTotal,
+        valorM2: lote.valorM2,
+        classificacao: lote.classificacao,
+        rua: lote.rua,
+      });
+    }
+  }
+
+  const unidades = Array.from(unidadesMap.values());
+
+  // Summary counters
   const total = unidades.length;
   let disponivel = 0;
   let vendido = 0;
@@ -99,7 +196,11 @@ function buildEnrichedResponse(
     }
   }
 
-  const quadrasMap = new Map<string, { total: number; disponivel: number; vendido: number; emVenda: number; vgvTotal: number; vgvVendido: number }>();
+  // Per-quadra breakdown
+  const quadrasMap = new Map<string, {
+    total: number; disponivel: number; vendido: number; emVenda: number;
+    vgvTotal: number; vgvVendido: number;
+  }>();
   for (const u of unidades) {
     if (!quadrasMap.has(u.quadra)) {
       quadrasMap.set(u.quadra, { total: 0, disponivel: 0, vendido: 0, emVenda: 0, vgvTotal: 0, vgvVendido: 0 });
@@ -126,12 +227,14 @@ function buildEnrichedResponse(
       return numA - numB;
     });
 
+  // Per-classificacao breakdown
   const classMap = new Map<string, { total: number; disponivel: number; vendido: number }>();
   for (const u of unidades) {
-    if (!classMap.has(u.classificacao)) {
-      classMap.set(u.classificacao, { total: 0, disponivel: 0, vendido: 0 });
+    const key = u.classificacao || "Sem classificação";
+    if (!classMap.has(key)) {
+      classMap.set(key, { total: 0, disponivel: 0, vendido: 0 });
     }
-    const c = classMap.get(u.classificacao)!;
+    const c = classMap.get(key)!;
     c.total++;
     const s = u.status.toLowerCase();
     if (s.includes("vendid")) {
@@ -144,8 +247,10 @@ function buildEnrichedResponse(
   const classificacoes = Array.from(classMap.entries())
     .map(([nome, counts]) => ({ nome, ...counts }))
     .sort((a, b) => {
-      const order = ["A", "B", "C", "D", "E", "F", "2A", "3A"];
-      return order.indexOf(a.nome) - order.indexOf(b.nome);
+      const order = ["A", "B", "C", "D", "E", "F", "2A", "3A", "Sem classificação"];
+      const ia = order.indexOf(a.nome);
+      const ib = order.indexOf(b.nome);
+      return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib);
     });
 
   const result: Record<string, unknown> = {
@@ -163,9 +268,12 @@ function buildEnrichedResponse(
   return result;
 }
 
-export const maxDuration = 30;
+export const maxDuration = 60;
 
-export async function GET() {
+export async function GET(request: Request) {
+  const { searchParams } = new URL(request.url);
+  const debug = searchParams.get("debug") === "1";
+
   if (!isUauConfigured()) {
     return NextResponse.json(buildEnrichedResponse(null, "not_configured"));
   }
@@ -180,55 +288,45 @@ export async function GET() {
     const yyyy = now.getFullYear();
     const todayFormatted = `${mm}-${dd}-${yyyy}`;
 
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 15000);
+    // Fetch available (0) and sold (1) in parallel
+    const [availableRows, soldRows] = await Promise.allSettled([
+      fetchUnitsByStatus(token, integrationToken, todayFormatted, 0, 25000),
+      fetchUnitsByStatus(token, integrationToken, todayFormatted, 1, 25000),
+    ]);
 
-    const res = await fetch(
-      `${UAU_API}/api/v1/Espelho/BuscaUnidadesDeAcordoComWhereDetalhado`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: token,
-          "X-INTEGRATION-Authorization": integrationToken,
-        },
-        body: JSON.stringify({
-          where: "WHERE Empresa_unid = 2",
-          retorna_venda: true,
-          data_tabela_preco: todayFormatted,
-        }),
-        signal: controller.signal,
-      }
-    );
-
-    clearTimeout(timeout);
-
-    if (!res.ok) {
-      const err = await res.text();
-      throw new Error(`BuscaUnidades falhou: ${res.status} — ${err}`);
+    // Debug mode: return raw info about what came back
+    if (debug) {
+      const avail = availableRows.status === "fulfilled" ? availableRows.value : [];
+      const sold = soldRows.status === "fulfilled" ? soldRows.value : [];
+      const allRows = [...avail, ...sold];
+      return NextResponse.json({
+        availableCount: avail.length,
+        soldCount: sold.length,
+        availableError: availableRows.status === "rejected" ? String(availableRows.reason) : null,
+        soldError: soldRows.status === "rejected" ? String(soldRows.reason) : null,
+        colunas: allRows.length > 0 ? Object.keys(allRows[0]) : [],
+        amostraDisponivel: avail.slice(0, 2),
+        amostraVendida: sold.slice(0, 2),
+      });
     }
 
-    const raw = await res.json();
+    const avail = availableRows.status === "fulfilled" ? availableRows.value : [];
+    const sold = soldRows.status === "fulfilled" ? soldRows.value : [];
+    const allRows = [...avail, ...sold];
 
-    const myTable: Record<string, unknown>[] = Array.isArray(raw) && raw.length > 0 && raw[0]?.MyTable
-      ? raw[0].MyTable
-      : [];
+    // If both queries failed, fall back to static data
+    if (allRows.length === 0) {
+      const errMsgs = [
+        availableRows.status === "rejected" ? String(availableRows.reason) : null,
+        soldRows.status === "rejected" ? String(soldRows.reason) : null,
+      ].filter(Boolean).join("; ");
 
-    const dataRows: UnitRow[] = myTable.length > 1 ? myTable.slice(1) as UnitRow[] : [];
+      const response = buildEnrichedResponse(null, "offline");
+      if (errMsgs) response.uauError = errMsgs;
+      return NextResponse.json(response);
+    }
 
-    const uauUnits = dataRows
-      .filter((row) => row.Identificador_unid)
-      .map((row) => {
-        const id = row.Identificador_unid || "";
-        let status = row.Descr_status || "Desconhecido";
-        if (!row.Descr_status) {
-          status = row.Vendido_unid === 1 ? "Vendida" : "Disponível";
-        }
-        return { identificador: id, status };
-      })
-      .filter((u) => lotesMap.has(u.identificador));
-
-    return NextResponse.json(buildEnrichedResponse(uauUnits));
+    return NextResponse.json(buildEnrichedResponse(allRows));
   } catch (error) {
     const errMsg = error instanceof Error ? error.message : String(error);
     console.error("UAU API error:", errMsg);
