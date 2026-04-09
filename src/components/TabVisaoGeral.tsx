@@ -113,7 +113,7 @@ export default function TabVisaoGeral({ data }: Props) {
   function handleQuickSelect(days: number | "total") {
     setGlobalQuick(days);
     if (days === "total") {
-      setGlobalStart(daysAgo(730));
+      setGlobalStart("2026-04-14");
       setGlobalEnd(today());
     } else {
       setGlobalStart(daysAgo(days));

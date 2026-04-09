@@ -168,8 +168,8 @@ export default function TabCRM() {
         onQuickSelect={(days) => {
           setActiveQuick(days);
           if (days === "total") {
-            setStartDate("");
-            setEndDate("");
+            setStartDate("2026-04-14");
+            setEndDate(new Date().toISOString().split("T")[0]);
           } else {
             const end = new Date();
             const start = new Date();

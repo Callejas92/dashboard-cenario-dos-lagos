@@ -235,11 +235,8 @@ export default function TabMetaAds() {
         onQuickSelect={(days) => {
           setActiveQuick(days);
           if (days === "total") {
-            const end = new Date();
-            const start = new Date();
-            start.setDate(start.getDate() - 90);
-            setStartDate(start.toISOString().split("T")[0]);
-            setEndDate(end.toISOString().split("T")[0]);
+            setStartDate("2026-04-14");
+            setEndDate(new Date().toISOString().split("T")[0]);
           } else {
             const end = new Date();
             const start = new Date();

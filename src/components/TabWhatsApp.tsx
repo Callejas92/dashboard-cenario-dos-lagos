@@ -57,7 +57,9 @@ const QUALIDADE_COLOR: Record<string, string> = {
 
 type WppMetricKey = "sent" | "delivered" | "read" | "received";
 
+const DAYS_SINCE_LAUNCH = Math.max(Math.ceil((Date.now() - new Date("2026-04-14").getTime()) / (24 * 60 * 60 * 1000)), 1);
 const PERIODS = [
+  { label: "Lançamento", days: DAYS_SINCE_LAUNCH },
   { label: "7 dias", days: 7 },
   { label: "30 dias", days: 30 },
   { label: "60 dias", days: 60 },

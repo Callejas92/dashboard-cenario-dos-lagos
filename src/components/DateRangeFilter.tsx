@@ -26,7 +26,7 @@ const inputStyle: React.CSSProperties = {
 };
 
 const quickButtons: { value: number | "total"; label: string }[] = [
-  { value: "total", label: "Total" },
+  { value: "total", label: "Lançamento" },
   { value: 7, label: "7d" },
   { value: 14, label: "14d" },
   { value: 30, label: "30d" },
