@@ -31,7 +31,7 @@ const tabs: { id: Tab; label: string; icon: typeof BarChart3 }[] = [
   { id: "metaads", label: "Meta Ads", icon: Megaphone },
   { id: "whatsapp", label: "WhatsApp", icon: MessageCircle },
   { id: "integracoes", label: "APIs", icon: Plug },
-  { id: "inserir", label: "Inserir Dados", icon: PlusCircle },
+  // { id: "inserir", label: "Inserir Dados", icon: PlusCircle }, // oculto por decisão do proprietário
 ];
 
 export default function Home() {

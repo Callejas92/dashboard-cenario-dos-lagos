@@ -199,7 +199,7 @@ export default function TabQualidade({ data }: Props) {
           {/* 2. Conversion Funnel */}
           <div className="kpi-card">
             <h3 className="text-sm font-bold mb-4" style={{ color: "var(--text-muted)" }}>
-              FUNIL DE CONVERS\u00c3O
+              FUNIL DE CONVERSÃO
             </h3>
             <div className="space-y-3">
               {funnelStages.map((stage, i) => {
@@ -283,7 +283,7 @@ export default function TabQualidade({ data }: Props) {
           {/* 4. Response Time Distribution */}
           <div className="kpi-card">
             <h3 className="text-sm font-bold mb-4" style={{ color: "var(--text-muted)" }}>
-              DISTRIBUI\u00c7\u00c3O TEMPO DE RESPOSTA
+              DISTRIBUIÇÃO TEMPO DE RESPOSTA
             </h3>
             {weeksWithSla.length > 0 ? (
               <ResponsiveContainer width="100%" height={250}>
@@ -314,7 +314,7 @@ export default function TabQualidade({ data }: Props) {
               </ResponsiveContainer>
             ) : (
               <p className="text-sm text-center py-8" style={{ color: "var(--text-dim)" }}>
-                Sem dados de SLA dispon\u00edveis
+                Sem dados de SLA disponíveis
               </p>
             )}
             {weeksWithSla.length > 0 && (

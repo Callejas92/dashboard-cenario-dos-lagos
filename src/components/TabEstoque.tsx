@@ -309,7 +309,7 @@ export default function TabEstoque({ data }: { data: EstoqueData }) {
   const { summary, quadras, unidades, classificacoes } = data;
 
   const vso = summary.total > 0 ? ((summary.vendido / summary.total) * 100).toFixed(1) : "0";
-  const ticketMedio = summary.total > 0 ? summary.vgvTotal / summary.total : 0;
+  const ticketMedio = summary.vendido > 0 ? summary.vgvVendido / summary.vendido : 0;
 
   // Donut chart data
   const donutData = [
