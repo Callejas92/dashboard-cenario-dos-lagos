@@ -58,13 +58,9 @@ export default function TabMetaAds() {
   const [data, setData] = useState<MetaAdsData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [startDate, setStartDate] = useState(() => {
-    const d = new Date();
-    d.setDate(d.getDate() - 30);
-    return d.toISOString().split("T")[0];
-  });
+  const [startDate, setStartDate] = useState("2026-04-14");
   const [endDate, setEndDate] = useState(() => new Date().toISOString().split("T")[0]);
-  const [activeQuick, setActiveQuick] = useState<number | "total" | null>(30);
+  const [activeQuick, setActiveQuick] = useState<number | "total" | null>("total");
   const [expandedKPI, setExpandedKPI] = useState<MetaMetricKey | null>(null);
   const [detailView, setDetailView] = useState<"tabela" | "grafico">("tabela");
 

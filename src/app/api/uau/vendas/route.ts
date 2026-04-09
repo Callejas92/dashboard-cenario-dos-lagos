@@ -240,7 +240,5 @@ function getToday(): string {
 }
 
 function getDefaultStartDate(): string {
-  const d = new Date();
-  d.setFullYear(d.getFullYear() - 1);
-  return d.toISOString().split("T")[0];
+  return "2026-04-14"; // data de lançamento do Cenário dos Lagos
 }

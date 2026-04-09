@@ -51,7 +51,7 @@ export default function TabCRM() {
   const [data, setData] = useState<CRMData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [startDate, setStartDate] = useState("");
+  const [startDate, setStartDate] = useState("2026-04-14");
   const [endDate, setEndDate] = useState("");
   const [activeQuick, setActiveQuick] = useState<number | "total" | null>("total");
   const [expandedKPI, setExpandedKPI] = useState<CrmMetricKey | null>(null);

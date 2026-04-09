@@ -126,16 +126,20 @@ export async function GET(request: NextRequest) {
       };
     });
 
-    // KPIs
-    const total = leads.length;
-    const novos = leads.filter((l) => l.statusAlias === "new").length;
-    const emAtendimento = leads.filter((l) => l.statusAlias === "attending" || l.funnelStatus?.toLowerCase().includes("progress")).length;
-    const convertidos = leads.filter((l) => l.convertido).length;
+    // Filtrar apenas leads a partir do lançamento (14/04/2026)
+    const DATA_LANCAMENTO = "2026-04-14";
+    const filteredLeads = leads.filter((l) => !l.criadoEm || l.criadoEm >= DATA_LANCAMENTO);
+
+    // KPIs (sobre leads do lançamento em diante)
+    const total = filteredLeads.length;
+    const novos = filteredLeads.filter((l) => l.statusAlias === "new").length;
+    const emAtendimento = filteredLeads.filter((l) => l.statusAlias === "attending" || l.funnelStatus?.toLowerCase().includes("progress")).length;
+    const convertidos = filteredLeads.filter((l) => l.convertido).length;
     const taxaConversao = total > 0 ? (convertidos / total) * 100 : 0;
 
     // Por fonte
     const fonteMap = new Map<string, number>();
-    for (const l of leads) {
+    for (const l of filteredLeads) {
       const fonte = l.fonte || "Não identificado";
       fonteMap.set(fonte, (fonteMap.get(fonte) || 0) + 1);
     }
@@ -145,7 +149,7 @@ export async function GET(request: NextRequest) {
 
     // Por corretor
     const corretorMap = new Map<string, number>();
-    for (const l of leads) {
+    for (const l of filteredLeads) {
       const corretor = l.corretor || "Não atribuído";
       corretorMap.set(corretor, (corretorMap.get(corretor) || 0) + 1);
     }
@@ -155,7 +159,7 @@ export async function GET(request: NextRequest) {
 
     // Por status
     const statusMap = new Map<string, number>();
-    for (const l of leads) {
+    for (const l of filteredLeads) {
       const status = l.status || "Desconhecido";
       statusMap.set(status, (statusMap.get(status) || 0) + 1);
     }
@@ -163,10 +167,10 @@ export async function GET(request: NextRequest) {
       .map(([status, qtd]) => ({ status, qtd }))
       .sort((a, b) => b.qtd - a.qtd);
 
-    // Por dia (últimos 30 dias)
+    // Por dia (desde o lançamento)
     const porDia: { data: string; qtd: number }[] = [];
     const diaMap = new Map<string, number>();
-    for (const l of leads) {
+    for (const l of filteredLeads) {
       if (!l.criadoEm) continue;
       const dia = l.criadoEm.split("T")[0];
       diaMap.set(dia, (diaMap.get(dia) || 0) + 1);
@@ -186,7 +190,7 @@ export async function GET(request: NextRequest) {
       porCorretor,
       porStatus,
       porDia,
-      leads,
+      leads: filteredLeads,
       fetchedAt: new Date().toISOString(),
     };
 

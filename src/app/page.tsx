@@ -174,7 +174,17 @@ export default function Home() {
 
             <div className="flex items-center gap-2">
               <span className="text-xs px-2.5 py-1 rounded-full" style={{ background: "rgba(16,185,129,0.1)", color: "#10b981", border: "1px solid rgba(16,185,129,0.2)" }}>
-                {data.semanas.length} semanas
+                {(() => {
+                  const launch = new Date("2026-04-14");
+                  const now = new Date();
+                  const diff = now.getTime() - launch.getTime();
+                  if (diff < 0) {
+                    const dias = Math.ceil(Math.abs(diff) / (24 * 60 * 60 * 1000));
+                    return `Lançamento em ${dias} dias`;
+                  }
+                  const semanas = Math.floor(diff / (7 * 24 * 60 * 60 * 1000));
+                  return semanas === 0 ? "Semana 1" : `${semanas} semana${semanas > 1 ? "s" : ""}`;
+                })()}
               </span>
               <button
                 onClick={toggleTheme}

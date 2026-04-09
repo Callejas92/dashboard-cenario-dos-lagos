@@ -80,9 +80,9 @@ export default function TabVisaoGeral({ data }: Props) {
   const vgv = data.config.vgv;
 
   // ---- Date state ----
-  const [globalStart, setGlobalStart] = useState(daysAgo(30));
+  const [globalStart, setGlobalStart] = useState("2026-04-14");
   const [globalEnd, setGlobalEnd] = useState(today());
-  const [globalQuick, setGlobalQuick] = useState<number | "total" | null>(30);
+  const [globalQuick, setGlobalQuick] = useState<number | "total" | null>("total");
 
   // ---- API state ----
   const [apiData, setApiData] = useState<CanaisApiResponse | null>(null);

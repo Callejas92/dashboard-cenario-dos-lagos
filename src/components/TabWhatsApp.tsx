@@ -68,7 +68,12 @@ export default function TabWhatsApp() {
   const [data, setData] = useState<WppData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [days, setDays] = useState(30);
+  // Default: days since launch (14/04/2026)
+  const [days, setDays] = useState(() => {
+    const launch = new Date("2026-04-14");
+    const diff = Math.ceil((Date.now() - launch.getTime()) / (24 * 60 * 60 * 1000));
+    return Math.max(diff, 1);
+  });
   const [expandedKPI, setExpandedKPI] = useState<WppMetricKey | null>(null);
   const [detailView, setDetailView] = useState<"tabela" | "grafico">("tabela");
 
