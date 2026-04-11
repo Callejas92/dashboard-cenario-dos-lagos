@@ -123,43 +123,46 @@ async function getAccessToken(): Promise<string> {
 }
 
 // ── Download do arquivo Excel do OneDrive via Graph API ──
+// Navega pasta a pasta pelo caminho configurado e baixa pelo item ID
 async function downloadFromOneDrive(): Promise<ArrayBuffer> {
   const accessToken = await getAccessToken();
-  const filePath = ONEDRIVE_FILE_PATH;
+  const segments = ONEDRIVE_FILE_PATH.split("/").filter(Boolean);
 
-  // Extrair nome do arquivo para busca
-  const fileName = filePath.split("/").pop() || filePath;
-
-  // Buscar arquivo pelo nome no OneDrive (evita problemas com acentos no path)
-  const searchUrl = `https://graph.microsoft.com/v1.0/me/drive/root/search(q='${encodeURIComponent(fileName.replace(/\.xlsx$/, ""))}')?$top=10&$select=name,id,size,parentReference`;
-  const searchRes = await fetch(searchUrl, {
-    headers: { Authorization: `Bearer ${accessToken}` },
-    cache: "no-store",
-  });
-
-  if (!searchRes.ok) {
-    throw new Error(`Erro ao buscar arquivo no OneDrive (${searchRes.status})`);
+  if (segments.length === 0) {
+    throw new Error("ONEDRIVE_CUSTOS_FILE_PATH vazio.");
   }
 
-  const searchData = await searchRes.json();
-  const files = (searchData.value || []).filter(
-    (f: { name: string }) => f.name.endsWith(".xlsx") || f.name.endsWith(".xls")
-  );
+  // Navegar pasta a pasta: root → Cenário dos Lagos → 90-100 Pessoal → arquivo
+  let currentId = "root";
+  for (const segment of segments) {
+    const listUrl = currentId === "root"
+      ? "https://graph.microsoft.com/v1.0/me/drive/root/children?$select=name,id&$top=200"
+      : `https://graph.microsoft.com/v1.0/me/drive/items/${currentId}/children?$select=name,id&$top=200`;
 
-  if (files.length === 0) {
-    throw new Error(`Arquivo "${fileName}" não encontrado no OneDrive. Verifique ONEDRIVE_CUSTOS_FILE_PATH.`);
+    const res = await fetch(listUrl, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+      cache: "no-store",
+    });
+
+    if (!res.ok) {
+      throw new Error(`Erro ao listar pasta no OneDrive (${res.status})`);
+    }
+
+    const data = await res.json();
+    const items: { name: string; id: string }[] = data.value || [];
+    const match = items.find((item) => item.name === segment);
+
+    if (!match) {
+      const available = items.slice(0, 15).map((i) => i.name).join(", ");
+      throw new Error(`"${segment}" não encontrado. Itens disponíveis: ${available}`);
+    }
+
+    currentId = match.id;
   }
 
-  // Se houver múltiplos resultados, priorizar o que está no caminho correto
-  const targetFile = files.length === 1
-    ? files[0]
-    : files.find((f: { name: string; parentReference?: { path?: string } }) =>
-        f.parentReference?.path?.includes("90-100 Pessoal")
-      ) || files[0];
-
-  // Download pelo ID (sempre funciona, sem problemas de encoding)
+  // Download pelo ID final
   const contentRes = await fetch(
-    `https://graph.microsoft.com/v1.0/me/drive/items/${targetFile.id}/content`,
+    `https://graph.microsoft.com/v1.0/me/drive/items/${currentId}/content`,
     {
       headers: { Authorization: `Bearer ${accessToken}` },
       redirect: "follow",
@@ -168,7 +171,7 @@ async function downloadFromOneDrive(): Promise<ArrayBuffer> {
   );
 
   if (!contentRes.ok) {
-    throw new Error(`Erro ao baixar arquivo (${contentRes.status}): ${await contentRes.text()}`);
+    throw new Error(`Erro ao baixar arquivo (${contentRes.status})`);
   }
 
   return contentRes.arrayBuffer();
