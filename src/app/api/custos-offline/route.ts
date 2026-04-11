@@ -22,38 +22,6 @@ interface CustoMensal {
   total_offline: number;
 }
 
-interface TimelineEntry {
-  data: string;
-  canal: string;
-  valor: number;
-  descricao: string;
-}
-
-function parseExcelDate(val: unknown): string {
-  if (!val) return "";
-  if (typeof val === "number") {
-    const d = XLSX.SSF.parse_date_code(val);
-    if (d) {
-      return `${d.y}-${String(d.m).padStart(2, "0")}-${String(d.d).padStart(2, "0")}`;
-    }
-  }
-  const s = String(val);
-  if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.split("T")[0];
-  if (/^\d{2}\/\d{2}\/\d{4}/.test(s)) {
-    const [dd, mm, yyyy] = s.split("/");
-    return `${yyyy}-${mm}-${dd}`;
-  }
-  return s;
-}
-
-const CANAIS_OFFLINE = ["Outdoor", "Radio", "Rádio", "Jornal", "Evento", "Outros"];
-
-function normalizeCanal(canal: string): string {
-  const c = canal.trim();
-  if (c.toLowerCase() === "radio" || c === "Rádio") return "Rádio";
-  return c;
-}
-
 function parseWorkbook(workbook: XLSX.WorkBook) {
   // ── 1. Dados mensais agregados (aba _DASHBOARD, A5:J23) ──
   const custosMensais: CustoMensal[] = [];
@@ -80,35 +48,9 @@ function parseWorkbook(workbook: XLSX.WorkBook) {
     }
   }
 
-  // ── 2. Dados individuais com data (aba GASTOS, a partir da linha 26) ──
-  const timeline: TimelineEntry[] = [];
-  const sheetGastos = workbook.Sheets["GASTOS"];
-  if (sheetGastos) {
-    const gastos = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheetGastos, {
-      range: "A26:J500",
-      header: ["mes", "canal", "descricao", "fornecedor", "data_pgto", "valor", "forma_pgto", "obs", "status", "recorrente"],
-    });
-    for (const r of gastos) {
-      const canal = String(r.canal || "").trim();
-      if (!canal) continue;
-      if (!CANAIS_OFFLINE.some((c) => c.toLowerCase() === canal.toLowerCase())) continue;
-      const data = parseExcelDate(r.data_pgto);
-      const valor = Number(r.valor) || 0;
-      if (!data || valor === 0) continue;
-
-      timeline.push({
-        data,
-        canal: normalizeCanal(canal),
-        valor,
-        descricao: String(r.descricao || ""),
-      });
-    }
-    timeline.sort((a, b) => a.data.localeCompare(b.data));
-  }
-
   const total_offline = custosMensais.reduce((s, r) => s + r.total_offline, 0);
 
-  return { custosMensais, timeline, total_offline };
+  return { custosMensais, total_offline };
 }
 
 // ── Obter access token do OneDrive via refresh token salvo no Blob ──
@@ -257,7 +199,7 @@ export async function GET() {
     const errMsg = error instanceof Error ? error.message : String(error);
     console.error("Custos offline GET error:", errMsg);
     return NextResponse.json(
-      { error: errMsg, custosMensais: [], timeline: [], total_offline: 0 },
+      { error: errMsg, custosMensais: [], total_offline: 0 },
       { status: 200 }
     );
   }
@@ -313,7 +255,6 @@ export async function POST(request: NextRequest) {
         success: true,
         sheets: workbook.SheetNames,
         custosMensais: parsed.custosMensais.length,
-        timeline: parsed.timeline.length,
         total_offline: parsed.total_offline,
       });
     }
