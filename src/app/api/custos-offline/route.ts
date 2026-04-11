@@ -127,52 +127,51 @@ async function downloadFromOneDrive(): Promise<ArrayBuffer> {
   const accessToken = await getAccessToken();
   const filePath = ONEDRIVE_FILE_PATH;
 
-  // Buscar arquivo pelo caminho no OneDrive
-  // Encode path segments for URL
-  const encodedPath = filePath.split("/").map(encodeURIComponent).join("/");
-  const url = `https://graph.microsoft.com/v1.0/me/drive/root:${encodedPath}:/content`;
+  // Extrair nome do arquivo para busca
+  const fileName = filePath.split("/").pop() || filePath;
 
-  const res = await fetch(url, {
+  // Buscar arquivo pelo nome no OneDrive (evita problemas com acentos no path)
+  const searchUrl = `https://graph.microsoft.com/v1.0/me/drive/root/search(q='${encodeURIComponent(fileName.replace(/\.xlsx$/, ""))}')?$top=10&$select=name,id,size,parentReference`;
+  const searchRes = await fetch(searchUrl, {
     headers: { Authorization: `Bearer ${accessToken}` },
-    redirect: "follow",
     cache: "no-store",
   });
 
-  if (res.status === 404) {
-    // Tentar buscar pelo nome em root
-    const searchUrl = `https://graph.microsoft.com/v1.0/me/drive/root/search(q='${encodeURIComponent(filePath.replace(/^\//, "").replace(/\.xlsx$/, ""))}')?$top=5&$select=name,id,size,lastModifiedDateTime`;
-    const searchRes = await fetch(searchUrl, {
+  if (!searchRes.ok) {
+    throw new Error(`Erro ao buscar arquivo no OneDrive (${searchRes.status})`);
+  }
+
+  const searchData = await searchRes.json();
+  const files = (searchData.value || []).filter(
+    (f: { name: string }) => f.name.endsWith(".xlsx") || f.name.endsWith(".xls")
+  );
+
+  if (files.length === 0) {
+    throw new Error(`Arquivo "${fileName}" não encontrado no OneDrive. Verifique ONEDRIVE_CUSTOS_FILE_PATH.`);
+  }
+
+  // Se houver múltiplos resultados, priorizar o que está no caminho correto
+  const targetFile = files.length === 1
+    ? files[0]
+    : files.find((f: { name: string; parentReference?: { path?: string } }) =>
+        f.parentReference?.path?.includes("90-100 Pessoal")
+      ) || files[0];
+
+  // Download pelo ID (sempre funciona, sem problemas de encoding)
+  const contentRes = await fetch(
+    `https://graph.microsoft.com/v1.0/me/drive/items/${targetFile.id}/content`,
+    {
       headers: { Authorization: `Bearer ${accessToken}` },
-    });
-
-    if (searchRes.ok) {
-      const searchData = await searchRes.json();
-      const files = searchData.value || [];
-
-      if (files.length > 0) {
-        // Pegar o primeiro resultado que é xlsx
-        const xlsxFile = files.find((f: { name: string }) => f.name.endsWith(".xlsx") || f.name.endsWith(".xls")) || files[0];
-        const contentUrl = `https://graph.microsoft.com/v1.0/me/drive/items/${xlsxFile.id}/content`;
-        const contentRes = await fetch(contentUrl, {
-          headers: { Authorization: `Bearer ${accessToken}` },
-          redirect: "follow",
-          cache: "no-store",
-        });
-
-        if (contentRes.ok) {
-          return contentRes.arrayBuffer();
-        }
-      }
+      redirect: "follow",
+      cache: "no-store",
     }
+  );
 
-    throw new Error(`Arquivo não encontrado no OneDrive: ${filePath}. Verifique o caminho na variável ONEDRIVE_CUSTOS_FILE_PATH.`);
+  if (!contentRes.ok) {
+    throw new Error(`Erro ao baixar arquivo (${contentRes.status}): ${await contentRes.text()}`);
   }
 
-  if (!res.ok) {
-    throw new Error(`Erro ao baixar arquivo do OneDrive (${res.status}): ${await res.text()}`);
-  }
-
-  return res.arrayBuffer();
+  return contentRes.arrayBuffer();
 }
 
 // ── GET: read Excel from OneDrive and parse ──
