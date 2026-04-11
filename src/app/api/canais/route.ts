@@ -142,6 +142,88 @@ async function fetchUAUVendas(from: string, to: string): Promise<{ qtdVendas: nu
   } catch { return { qtdVendas: 0, valorTotal: 0 }; }
 }
 
+// ── Custos offline do OneDrive Excel ──
+interface CustoMensal {
+  mes: string;
+  outdoor: number;
+  radio: number;
+  jornal: number;
+  evento: number;
+  outros: number;
+  total_offline: number;
+}
+
+async function fetchCustosOffline(): Promise<CustoMensal[]> {
+  try {
+    const baseUrl = process.env.VERCEL_URL
+      ? `https://${process.env.VERCEL_URL}`
+      : "http://localhost:3000";
+    const res = await fetch(`${baseUrl}/api/custos-offline`, {
+      signal: AbortSignal.timeout(15000),
+    });
+    const data = await res.json();
+    return data.custosMensais || [];
+  } catch { return []; }
+}
+
+// Mes format: "Abr/26" → { year: 2026, month: 4 }
+function parseMes(mes: string): { year: number; month: number } | null {
+  const meses: Record<string, number> = {
+    "jan": 1, "fev": 2, "mar": 3, "abr": 4, "mai": 5, "jun": 6,
+    "jul": 7, "ago": 8, "set": 9, "out": 10, "nov": 11, "dez": 12,
+  };
+  const parts = mes.split("/");
+  if (parts.length !== 2) return null;
+  const m = meses[parts[0].toLowerCase()];
+  if (!m) return null;
+  const y = parseInt(parts[1]);
+  return { year: y < 100 ? 2000 + y : y, month: m };
+}
+
+function daysInMonth(year: number, month: number): number {
+  return new Date(year, month, 0).getDate();
+}
+
+// Pro-rata offline costs for selected date range
+function calcOfflineForRange(custos: CustoMensal[], from: string, to: string): Record<string, number> {
+  const result: Record<string, number> = {};
+  const fromDate = new Date(from + "T00:00:00");
+  const toDate = new Date(to + "T23:59:59");
+
+  for (const row of custos) {
+    const parsed = parseMes(row.mes);
+    if (!parsed) continue;
+
+    const monthStart = new Date(parsed.year, parsed.month - 1, 1);
+    const totalDays = daysInMonth(parsed.year, parsed.month);
+    const monthEnd = new Date(parsed.year, parsed.month - 1, totalDays, 23, 59, 59);
+
+    // Check overlap between [from, to] and [monthStart, monthEnd]
+    if (toDate < monthStart || fromDate > monthEnd) continue;
+
+    const overlapStart = fromDate > monthStart ? fromDate : monthStart;
+    const overlapEnd = toDate < monthEnd ? toDate : monthEnd;
+    const overlapDays = Math.floor((overlapEnd.getTime() - overlapStart.getTime()) / 86400000) + 1;
+    const ratio = overlapDays / totalDays;
+
+    const channels: [string, number][] = [
+      ["Outdoor", row.outdoor],
+      ["Rádio", row.radio],
+      ["Jornal", row.jornal],
+      ["Evento", row.evento],
+      ["Outros", row.outros],
+    ];
+
+    for (const [canal, valor] of channels) {
+      if (valor > 0) {
+        result[canal] = (result[canal] || 0) + valor * ratio;
+      }
+    }
+  }
+
+  return result;
+}
+
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const to = searchParams.get("to") || new Date().toISOString().split("T")[0];
@@ -155,18 +237,23 @@ export async function GET(request: Request) {
   }
 
   // Fetch all sources in parallel
-  const [metaAds, crmLeads, uauVendas] = await Promise.all([
+  const [metaAds, crmLeads, uauVendas, custosOffline] = await Promise.all([
     fetchMetaAds(from, to),
     fetchCRMLeads(from, to),
     fetchUAUVendas(from, to),
+    fetchCustosOffline(),
   ]);
+
+  // Calculate offline costs for the selected date range (pro-rata by days in month)
+  const offlinePorCanal = calcOfflineForRange(custosOffline, from, to);
 
   // Build canal data
   const canais: Record<string, CanalData> = {};
   for (const canal of ALL_CANAIS) {
     const crm = crmLeads[canal] || { leads: 0, convertidos: 0 };
+    const offline = offlinePorCanal[canal] || 0;
     canais[canal] = {
-      investimento: canal === "Meta Ads" ? metaAds.spend : 0,
+      investimento: (canal === "Meta Ads" ? metaAds.spend : 0) + offline,
       leads: canal === "Meta Ads" ? Math.max(metaAds.leads, crm.leads) : crm.leads,
       leadsQualificados: 0,
       vendas: 0,
