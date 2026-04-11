@@ -5,7 +5,7 @@ import * as XLSX from "xlsx";
 export const maxDuration = 30;
 
 // Caminho do arquivo Excel no OneDrive (pode ser configurado via env ou POST)
-const ONEDRIVE_FILE_PATH = process.env.ONEDRIVE_CUSTOS_FILE_PATH || "/Controle de investimento cenario.xlsx";
+const ONEDRIVE_FILE_PATH = (process.env.ONEDRIVE_CUSTOS_FILE_PATH || "/Controle de investimento cenario.xlsx").trim().replace(/\\n/g, "");
 const TOKEN_BLOB_NAME = "onedrive-token.json";
 
 // Cache in-memory (5 min TTL)
