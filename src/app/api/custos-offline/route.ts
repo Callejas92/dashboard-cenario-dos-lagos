@@ -22,6 +22,38 @@ interface CustoMensal {
   total_offline: number;
 }
 
+export interface LancamentoOffline {
+  canal: string;
+  valor: number;
+  data_pgto: string;      // YYYY-MM-DD
+  inicio_veic: string;     // YYYY-MM-DD (ou vazio)
+  fim_veic: string;        // YYYY-MM-DD (ou vazio)
+  descricao: string;
+}
+
+const CANAIS_OFFLINE = ["Outdoor", "Radio", "Rádio", "Jornal", "Evento", "Outros"];
+
+function normalizeCanal(canal: string): string {
+  const c = canal.trim();
+  if (c.toLowerCase() === "radio" || c === "Rádio") return "Rádio";
+  return c;
+}
+
+function parseExcelDate(val: unknown): string {
+  if (!val) return "";
+  if (typeof val === "number") {
+    const d = XLSX.SSF.parse_date_code(val);
+    if (d) return `${d.y}-${String(d.m).padStart(2, "0")}-${String(d.d).padStart(2, "0")}`;
+  }
+  const s = String(val);
+  if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.split("T")[0];
+  if (/^\d{2}\/\d{2}\/\d{4}/.test(s)) {
+    const [dd, mm, yyyy] = s.split("/");
+    return `${yyyy}-${mm}-${dd}`;
+  }
+  return "";
+}
+
 function parseWorkbook(workbook: XLSX.WorkBook) {
   // ── 1. Dados mensais agregados (aba _DASHBOARD, A5:J23) ──
   const custosMensais: CustoMensal[] = [];
@@ -48,9 +80,38 @@ function parseWorkbook(workbook: XLSX.WorkBook) {
     }
   }
 
+  // ── 2. Lançamentos individuais (aba GASTOS, A26:L500) ──
+  // Colunas: A=Mes, B=Canal, C=Descricao, D=Fornecedor, E=Data Pgto,
+  //          F=Valor, G=Forma Pgto, H=Observacao, I=Status, J=Recorrente,
+  //          K=Inicio Veic, L=Fim Veic
+  const lancamentos: LancamentoOffline[] = [];
+  const sheetGastos = workbook.Sheets["GASTOS"];
+  if (sheetGastos) {
+    const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheetGastos, {
+      range: "A26:L500",
+      header: ["mes", "canal", "descricao", "fornecedor", "data_pgto", "valor", "forma_pgto", "obs", "status", "recorrente", "inicio_veic", "fim_veic"],
+    });
+    for (const r of rows) {
+      const canal = String(r.canal || "").trim();
+      if (!canal) continue;
+      if (!CANAIS_OFFLINE.some((c) => c.toLowerCase() === canal.toLowerCase())) continue;
+      const valor = Number(r.valor) || 0;
+      if (valor === 0) continue;
+
+      lancamentos.push({
+        canal: normalizeCanal(canal),
+        valor,
+        data_pgto: parseExcelDate(r.data_pgto),
+        inicio_veic: parseExcelDate(r.inicio_veic),
+        fim_veic: parseExcelDate(r.fim_veic),
+        descricao: String(r.descricao || ""),
+      });
+    }
+  }
+
   const total_offline = custosMensais.reduce((s, r) => s + r.total_offline, 0);
 
-  return { custosMensais, total_offline };
+  return { custosMensais, lancamentos, total_offline };
 }
 
 // ── Obter access token do OneDrive via refresh token salvo no Blob ──
@@ -201,7 +262,7 @@ export async function GET() {
     const errMsg = error instanceof Error ? error.message : String(error);
     console.error("Custos offline GET error:", errMsg);
     return NextResponse.json(
-      { error: errMsg, custosMensais: [], total_offline: 0 },
+      { error: errMsg, custosMensais: [], lancamentos: [], total_offline: 0 },
       { status: 200 }
     );
   }
@@ -257,6 +318,7 @@ export async function POST(request: NextRequest) {
         success: true,
         sheets: workbook.SheetNames,
         custosMensais: parsed.custosMensais.length,
+        lancamentos: parsed.lancamentos.length,
         total_offline: parsed.total_offline,
       });
     }

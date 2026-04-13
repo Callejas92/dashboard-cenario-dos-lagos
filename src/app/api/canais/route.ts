@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import type { LancamentoOffline } from "../custos-offline/route";
 
 const META_API = "https://graph.facebook.com/v21.0";
 const CRM_API = "http://leadsc2s.eggs.com.br/api/webhook/leads";
@@ -143,17 +144,7 @@ async function fetchUAUVendas(from: string, to: string): Promise<{ qtdVendas: nu
 }
 
 // ── Custos offline do OneDrive Excel ──
-interface CustoMensal {
-  mes: string;
-  outdoor: number;
-  radio: number;
-  jornal: number;
-  evento: number;
-  outros: number;
-  total_offline: number;
-}
-
-async function fetchCustosOffline(): Promise<CustoMensal[]> {
+async function fetchCustosOffline(): Promise<LancamentoOffline[]> {
   try {
     const baseUrl = process.env.VERCEL_URL
       ? `https://${process.env.VERCEL_URL}`
@@ -162,62 +153,42 @@ async function fetchCustosOffline(): Promise<CustoMensal[]> {
       signal: AbortSignal.timeout(15000),
     });
     const data = await res.json();
-    return data.custosMensais || [];
+    return data.lancamentos || [];
   } catch { return []; }
 }
 
-// Mes format: "Abr/26" → { year: 2026, month: 4 }
-function parseMes(mes: string): { year: number; month: number } | null {
-  const meses: Record<string, number> = {
-    "jan": 1, "fev": 2, "mar": 3, "abr": 4, "mai": 5, "jun": 6,
-    "jul": 7, "ago": 8, "set": 9, "out": 10, "nov": 11, "dez": 12,
-  };
-  const parts = mes.split("/");
-  if (parts.length !== 2) return null;
-  const m = meses[parts[0].toLowerCase()];
-  if (!m) return null;
-  const y = parseInt(parts[1]);
-  return { year: y < 100 ? 2000 + y : y, month: m };
-}
-
-function daysInMonth(year: number, month: number): number {
-  return new Date(year, month, 0).getDate();
-}
-
-// Pro-rata offline costs for selected date range
-function calcOfflineForRange(custos: CustoMensal[], from: string, to: string): Record<string, number> {
+// Calcula custos offline por canal para o período selecionado
+// - Se tem inicio_veic + fim_veic: pro-rata pelos dias sobrepostos
+// - Se só tem data_pgto: inclui valor inteiro se cai no período
+// - Se não tem data nenhuma: ignora
+function calcOfflineForRange(lancamentos: LancamentoOffline[], from: string, to: string): Record<string, number> {
   const result: Record<string, number> = {};
-  const fromDate = new Date(from + "T00:00:00");
-  const toDate = new Date(to + "T23:59:59");
 
-  for (const row of custos) {
-    const parsed = parseMes(row.mes);
-    if (!parsed) continue;
+  for (const lanc of lancamentos) {
+    let valor = 0;
 
-    const monthStart = new Date(parsed.year, parsed.month - 1, 1);
-    const totalDays = daysInMonth(parsed.year, parsed.month);
-    const monthEnd = new Date(parsed.year, parsed.month - 1, totalDays, 23, 59, 59);
-
-    // Check overlap between [from, to] and [monthStart, monthEnd]
-    if (toDate < monthStart || fromDate > monthEnd) continue;
-
-    const overlapStart = fromDate > monthStart ? fromDate : monthStart;
-    const overlapEnd = toDate < monthEnd ? toDate : monthEnd;
-    const overlapDays = Math.floor((overlapEnd.getTime() - overlapStart.getTime()) / 86400000) + 1;
-    const ratio = overlapDays / totalDays;
-
-    const channels: [string, number][] = [
-      ["Outdoor", row.outdoor],
-      ["Rádio", row.radio],
-      ["Jornal", row.jornal],
-      ["Evento", row.evento],
-      ["Outros", row.outros],
-    ];
-
-    for (const [canal, valor] of channels) {
-      if (valor > 0) {
-        result[canal] = (result[canal] || 0) + valor * ratio;
+    if (lanc.inicio_veic && lanc.fim_veic) {
+      // Pro-rata pela sobreposição com o período de veiculação
+      const veicStart = lanc.inicio_veic;
+      const veicEnd = lanc.fim_veic;
+      // Sem sobreposição?
+      if (to < veicStart || from > veicEnd) continue;
+      const overlapStart = from > veicStart ? from : veicStart;
+      const overlapEnd = to < veicEnd ? to : veicEnd;
+      const overlapDays = Math.floor((new Date(overlapEnd).getTime() - new Date(overlapStart).getTime()) / 86400000) + 1;
+      const totalDays = Math.floor((new Date(veicEnd).getTime() - new Date(veicStart).getTime()) / 86400000) + 1;
+      valor = lanc.valor * (overlapDays / totalDays);
+    } else if (lanc.data_pgto) {
+      // Sem veiculação: usa data de pagamento pontual
+      if (lanc.data_pgto >= from && lanc.data_pgto <= to) {
+        valor = lanc.valor;
       }
+    } else {
+      continue;
+    }
+
+    if (valor > 0) {
+      result[lanc.canal] = (result[lanc.canal] || 0) + valor;
     }
   }
 
@@ -244,7 +215,7 @@ export async function GET(request: Request) {
     fetchCustosOffline(),
   ]);
 
-  // Calculate offline costs for the selected date range (pro-rata by days in month)
+  // Calculate offline costs for the selected date range
   const offlinePorCanal = calcOfflineForRange(custosOffline, from, to);
 
   // Build canal data
