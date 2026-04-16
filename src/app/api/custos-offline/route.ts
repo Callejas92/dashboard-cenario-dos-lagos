@@ -80,16 +80,16 @@ function parseWorkbook(workbook: XLSX.WorkBook) {
     }
   }
 
-  // ── 2. Lançamentos individuais (aba GASTOS, A26:L500) ──
-  // Colunas: A=Mes, B=Canal, C=Descricao, D=Fornecedor, E=Data Pgto,
-  //          F=Valor, G=Forma Pgto, H=Observacao, I=Status, J=Recorrente,
-  //          K=Inicio Veic, L=Fim Veic
+  // ── 2. Lançamentos individuais (aba GASTOS, B26:L500) ──
+  // Coluna A é vazia. Colunas reais a partir de B:
+  // B=Mes, C=Canal, D=Descricao, E=Fornecedor, F=Data Pgto,
+  // G=Valor, H=Forma Pgto, I=Observacao, J=Inicio Veic, K=Fim Veic, L=Recorrente
   const lancamentos: LancamentoOffline[] = [];
   const sheetGastos = workbook.Sheets["GASTOS"];
   if (sheetGastos) {
     const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheetGastos, {
-      range: "A26:L500",
-      header: ["mes", "canal", "descricao", "fornecedor", "data_pgto", "valor", "forma_pgto", "obs", "status", "recorrente", "inicio_veic", "fim_veic"],
+      range: "B26:L500",
+      header: ["mes", "canal", "descricao", "fornecedor", "data_pgto", "valor", "forma_pgto", "obs", "inicio_veic", "fim_veic", "recorrente"],
     });
     for (const r of rows) {
       const canal = String(r.canal || "").trim();
