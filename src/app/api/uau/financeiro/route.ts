@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 import { authenticate, isUauConfigured, uauFetch } from "@/lib/uau-auth";
 import lotesData from "@/data/lotes.json";
+import investorData from "@/data/investor-lots.json";
+
+const INVESTOR_LOTS = new Set<string>(investorData.lots);
 
 export const maxDuration = 60;
 
@@ -151,13 +154,21 @@ export async function GET() {
       }
     }
 
-    // Build final vendas with enriched data
+    // Build final vendas with enriched data (excluindo lotes do investidor)
     const vendas: { dataVenda: string; valorVenda: number }[] = [];
+    let vendasInvestidor = 0;
+    let valorInvestidor = 0;
     for (const base of baseVendas) {
       const resumo = resumoMap.get(base.numVen);
       const dataVendaResumo = resumo ? parseDate(resumo.DataVenda_ven as string || resumo.DataVenda as string || "") : "";
       const dataFinal = dataVendaResumo || base.dataVenda;
       const valorFinal = Number(resumo?.ValorVenda_ven) || base.valorVenda || 0;
+
+      if (INVESTOR_LOTS.has(base.identificador)) {
+        vendasInvestidor++;
+        valorInvestidor += valorFinal;
+        continue;
+      }
 
       vendas.push({ dataVenda: dataFinal, valorVenda: valorFinal });
     }
@@ -223,6 +234,12 @@ export async function GET() {
       valorVendidoTotal,
       ticketMedio,
       qtdVendas,
+      // Vendas do investidor (excluídas - Tio Ico)
+      investidor: {
+        quantidade: vendasInvestidor,
+        valorTotal: valorInvestidor,
+        lotesNaLista: INVESTOR_LOTS.size,
+      },
       inadimplencia: {
         totalVencido,
         totalEmDia,

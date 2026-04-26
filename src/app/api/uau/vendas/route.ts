@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { authenticate, isUauConfigured, uauFetch } from "@/lib/uau-auth";
 import lotesData from "@/data/lotes.json";
+import investorData from "@/data/investor-lots.json";
+
+const INVESTOR_LOTS = new Set<string>(investorData.lots);
 
 export const maxDuration = 60;
 
@@ -171,6 +174,8 @@ export async function GET(request: NextRequest) {
     }
 
     // Merge base data with resumo data
+    let vendasInvestidor = 0;
+    let valorInvestidor = 0;
     for (const base of baseVendas) {
       const resumo = resumoMap.get(base.numVen);
       const dataVendaResumo = resumo ? parseDate(resumo.DataVenda_ven as string || resumo.DataVenda as string || "") : "";
@@ -180,11 +185,20 @@ export async function GET(request: NextRequest) {
       if (dataFinal && dataFinal < startDate) continue;
       if (dataFinal && dataFinal > endDate) continue;
 
+      const valorVenda = Number(resumo?.ValorVenda_ven) || base.valorVenda || 0;
+
+      // Excluir vendas de lotes do investidor (Tio Ico)
+      if (INVESTOR_LOTS.has(base.id)) {
+        vendasInvestidor++;
+        valorInvestidor += valorVenda;
+        continue;
+      }
+
       vendas.push({
         chaveVenda: `${base.empresa}-${base.numVen || base.id}`,
         identificadorUnidade: base.id,
         dataVenda: dataFinal,
-        valorVenda: Number(resumo?.ValorVenda_ven) || base.valorVenda || 0,
+        valorVenda,
         compradorNome: (resumo?.Nome_pes as string) || "",
         compradorCpfCnpj: (resumo?.CpfCnpj_pes as string) || "",
         corretor: (resumo?.NomeCorretor as string) || (resumo?.Nome_Corretor as string) || (resumo?.Corretor_ven as string) || "",
@@ -218,6 +232,12 @@ export async function GET(request: NextRequest) {
       porDia,
       total: vendas.length,
       valorTotal,
+      // Vendas do investidor (excluídas do total - Tio Ico)
+      investidor: {
+        quantidade: vendasInvestidor,
+        valorTotal: valorInvestidor,
+        lotesNaLista: INVESTOR_LOTS.size,
+      },
       periodo: { inicio: startDate, fim: endDate },
       _debug: {
         totalRowsFromERP: rows.length,
