@@ -105,6 +105,7 @@ export default function TabVisaoGeral({ data }: Props) {
   const [detailView, setDetailView] = useState<"tabela" | "grafico">("tabela");
   const [detailMode, setDetailMode] = useState<"canal" | "dia">("canal");
   const [detailCanalFilter, setDetailCanalFilter] = useState<string>("Todos"); // "Todos" ou nome do canal
+  const [canalDropdownOpen, setCanalDropdownOpen] = useState(false);
 
   // ---- Fetch /api/canais ----
   const fetchCanais = useCallback(async (from: string, to: string) => {
@@ -271,21 +272,78 @@ export default function TabVisaoGeral({ data }: Props) {
             </h4>
             {/* Dropdown de canal — só aparece em modo "dia" */}
             {detailMode === "dia" && canaisComDados.length > 0 && (
-              <select
-                value={detailCanalFilter}
-                onChange={(e) => setDetailCanalFilter(e.target.value)}
-                style={{
-                  padding: "0.25rem 0.5rem", fontSize: "0.7rem", fontWeight: 600,
-                  background: "var(--surface)", color: "var(--text)",
-                  border: "1px solid var(--border)", borderRadius: "0.375rem",
-                  cursor: "pointer",
-                }}
-              >
-                <option value="Todos">Todos os canais</option>
-                {canaisComDados.map((c) => (
-                  <option key={c} value={c}>{c}</option>
-                ))}
-              </select>
+              <div style={{ position: "relative" }}>
+                <button
+                  onClick={() => setCanalDropdownOpen((v) => !v)}
+                  onBlur={() => setTimeout(() => setCanalDropdownOpen(false), 150)}
+                  style={{
+                    display: "flex", alignItems: "center", gap: "0.5rem",
+                    padding: "0.375rem 0.75rem", fontSize: "0.7rem", fontWeight: 600,
+                    background: detailCanalFilter !== "Todos" ? cfg.color + "20" : "var(--surface)",
+                    color: detailCanalFilter !== "Todos" ? cfg.color : "var(--text)",
+                    border: `1px solid ${detailCanalFilter !== "Todos" ? cfg.color : "var(--border)"}`,
+                    borderRadius: "0.5rem",
+                    cursor: "pointer",
+                    minWidth: "140px",
+                    justifyContent: "space-between",
+                  }}
+                >
+                  <span style={{ display: "flex", alignItems: "center", gap: "0.375rem" }}>
+                    {detailCanalFilter !== "Todos" && (
+                      <span style={{
+                        display: "inline-block", width: 8, height: 8, borderRadius: "50%",
+                        background: CANAL_COLORS[detailCanalFilter] ?? "#6b7280",
+                      }} />
+                    )}
+                    {detailCanalFilter}
+                  </span>
+                  {canalDropdownOpen ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                </button>
+                {canalDropdownOpen && (
+                  <div style={{
+                    position: "absolute", top: "100%", left: 0, marginTop: "0.25rem",
+                    background: "var(--card-bg)", border: "1px solid var(--border)",
+                    borderRadius: "0.5rem", boxShadow: "0 4px 12px rgba(0,0,0,0.3)",
+                    minWidth: "180px", zIndex: 50,
+                    overflow: "hidden",
+                  }}>
+                    <button
+                      onMouseDown={() => { setDetailCanalFilter("Todos"); setCanalDropdownOpen(false); }}
+                      style={{
+                        display: "flex", alignItems: "center", gap: "0.5rem",
+                        width: "100%", padding: "0.5rem 0.75rem", fontSize: "0.75rem",
+                        fontWeight: detailCanalFilter === "Todos" ? 700 : 500,
+                        background: detailCanalFilter === "Todos" ? cfg.color + "15" : "transparent",
+                        color: detailCanalFilter === "Todos" ? cfg.color : "var(--text)",
+                        border: "none", cursor: "pointer", textAlign: "left",
+                      }}
+                    >
+                      <span style={{ width: 8, height: 8 }} />
+                      Todos os canais
+                    </button>
+                    {canaisComDados.map((c) => (
+                      <button
+                        key={c}
+                        onMouseDown={() => { setDetailCanalFilter(c); setCanalDropdownOpen(false); }}
+                        style={{
+                          display: "flex", alignItems: "center", gap: "0.5rem",
+                          width: "100%", padding: "0.5rem 0.75rem", fontSize: "0.75rem",
+                          fontWeight: detailCanalFilter === c ? 700 : 500,
+                          background: detailCanalFilter === c ? cfg.color + "15" : "transparent",
+                          color: detailCanalFilter === c ? cfg.color : "var(--text)",
+                          border: "none", cursor: "pointer", textAlign: "left",
+                        }}
+                      >
+                        <span style={{
+                          display: "inline-block", width: 8, height: 8, borderRadius: "50%",
+                          background: CANAL_COLORS[c] ?? "#6b7280",
+                        }} />
+                        {c}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
             )}
           </div>
           <div className="flex items-center gap-2 flex-wrap">
