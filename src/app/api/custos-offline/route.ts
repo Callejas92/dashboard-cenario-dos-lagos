@@ -25,6 +25,7 @@ interface CustoMensal {
 export interface LancamentoOffline {
   canal: string;
   valor: number;
+  mes: string;             // "Abr/26"
   data_pgto: string;      // YYYY-MM-DD
   inicio_veic: string;     // YYYY-MM-DD (ou vazio)
   fim_veic: string;        // YYYY-MM-DD (ou vazio)
@@ -101,6 +102,7 @@ function parseWorkbook(workbook: XLSX.WorkBook) {
       lancamentos.push({
         canal: normalizeCanal(canal),
         valor,
+        mes: String(r.mes || "").trim(),
         data_pgto: parseExcelDate(r.data_pgto),
         inicio_veic: parseExcelDate(r.inicio_veic),
         fim_veic: parseExcelDate(r.fim_veic),

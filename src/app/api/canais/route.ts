@@ -144,12 +144,7 @@ async function fetchUAUVendas(from: string, to: string): Promise<{ qtdVendas: nu
 }
 
 // ── Custos offline do OneDrive Excel ──
-interface OfflineData {
-  lancamentos: LancamentoOffline[];
-  custosMensais: { mes: string; outdoor: number; radio: number; jornal: number; evento: number; outros: number }[];
-}
-
-async function fetchCustosOffline(): Promise<OfflineData> {
+async function fetchCustosOffline(): Promise<LancamentoOffline[]> {
   try {
     const baseUrl = process.env.VERCEL_URL
       ? `https://${process.env.VERCEL_URL}`
@@ -158,14 +153,11 @@ async function fetchCustosOffline(): Promise<OfflineData> {
       signal: AbortSignal.timeout(15000),
     });
     const data = await res.json();
-    return {
-      lancamentos: data.lancamentos || [],
-      custosMensais: data.custosMensais || [],
-    };
-  } catch { return { lancamentos: [], custosMensais: [] }; }
+    return data.lancamentos || [];
+  } catch { return []; }
 }
 
-// Mes format: "Abr/26" → { year: 2026, month: 4 }
+// Parse "Abr/26" → { year: 2026, month: 4 }
 const MESES_MAP: Record<string, number> = {
   "jan": 1, "fev": 2, "mar": 3, "abr": 4, "mai": 5, "jun": 6,
   "jul": 7, "ago": 8, "set": 9, "out": 10, "nov": 11, "dez": 12,
@@ -180,67 +172,45 @@ function parseMes(mes: string): { year: number; month: number } | null {
   return { year: y < 100 ? 2000 + y : y, month: m };
 }
 
-// Calcula custos offline por canal para o período selecionado.
-// Prioridade:
-// 1. Se lançamento tem inicio_veic + fim_veic → pro-rata pelos dias sobrepostos
-// 2. Se lançamento tem data_pgto → inclui valor inteiro se cai no período
-// 3. Se NENHUM lançamento tem datas → fallback: usa _DASHBOARD (mês cheio)
-function calcOfflineForRange(offline: OfflineData, from: string, to: string): Record<string, number> {
+// Calcula custos offline por canal para o período [from, to].
+// Cada lançamento da aba GASTOS é processado por UMA das regras (sem duplicação):
+// 1. Inicio Veic + Fim Veic preenchidos → pro-rata por dias de veiculação
+// 2. Só Data Pgto preenchida → valor inteiro se data cai no período
+// 3. Nenhuma data, só coluna Mes → mês cheio (se filtro intersecta o mês)
+function calcOfflineForRange(lancamentos: LancamentoOffline[], from: string, to: string): Record<string, number> {
   const result: Record<string, number> = {};
-  const { lancamentos, custosMensais } = offline;
 
-  // Verificar se algum lançamento tem data
-  const temDatas = lancamentos.some((l) => l.data_pgto || (l.inicio_veic && l.fim_veic));
+  for (const lanc of lancamentos) {
+    let valor = 0;
 
-  if (temDatas) {
-    // ── Modo preciso: usar lançamentos individuais com datas ──
-    for (const lanc of lancamentos) {
-      let valor = 0;
-
-      if (lanc.inicio_veic && lanc.fim_veic) {
-        if (to < lanc.inicio_veic || from > lanc.fim_veic) continue;
-        const overlapStart = from > lanc.inicio_veic ? from : lanc.inicio_veic;
-        const overlapEnd = to < lanc.fim_veic ? to : lanc.fim_veic;
-        const overlapDays = Math.floor((new Date(overlapEnd).getTime() - new Date(overlapStart).getTime()) / 86400000) + 1;
-        const totalDays = Math.floor((new Date(lanc.fim_veic).getTime() - new Date(lanc.inicio_veic).getTime()) / 86400000) + 1;
-        valor = lanc.valor * (overlapDays / totalDays);
-      } else if (lanc.data_pgto) {
-        if (lanc.data_pgto >= from && lanc.data_pgto <= to) {
+    if (lanc.inicio_veic && lanc.fim_veic) {
+      // Regra 1: Pro-rata por veiculação
+      if (to < lanc.inicio_veic || from > lanc.fim_veic) continue;
+      const overlapStart = from > lanc.inicio_veic ? from : lanc.inicio_veic;
+      const overlapEnd = to < lanc.fim_veic ? to : lanc.fim_veic;
+      const overlapDays = Math.floor((new Date(overlapEnd).getTime() - new Date(overlapStart).getTime()) / 86400000) + 1;
+      const totalDays = Math.floor((new Date(lanc.fim_veic).getTime() - new Date(lanc.inicio_veic).getTime()) / 86400000) + 1;
+      valor = lanc.valor * (overlapDays / totalDays);
+    } else if (lanc.data_pgto) {
+      // Regra 2: Data de pagamento exata
+      if (lanc.data_pgto >= from && lanc.data_pgto <= to) {
+        valor = lanc.valor;
+      }
+    } else if (lanc.mes) {
+      // Regra 3: Mês cheio (sem datas específicas)
+      const parsed = parseMes(lanc.mes);
+      if (parsed) {
+        const monthStart = `${parsed.year}-${String(parsed.month).padStart(2, "0")}-01`;
+        const lastDay = new Date(parsed.year, parsed.month, 0).getDate();
+        const monthEnd = `${parsed.year}-${String(parsed.month).padStart(2, "0")}-${lastDay}`;
+        if (!(to < monthStart || from > monthEnd)) {
           valor = lanc.valor;
         }
       }
-
-      if (valor > 0) {
-        result[lanc.canal] = (result[lanc.canal] || 0) + valor;
-      }
     }
-  } else {
-    // ── Fallback: usar _DASHBOARD com mês cheio ──
-    // Se o período filtrado inclui qualquer dia do mês, inclui o valor inteiro
-    for (const row of custosMensais) {
-      const parsed = parseMes(row.mes);
-      if (!parsed) continue;
 
-      const monthStart = `${parsed.year}-${String(parsed.month).padStart(2, "0")}-01`;
-      const lastDay = new Date(parsed.year, parsed.month, 0).getDate();
-      const monthEnd = `${parsed.year}-${String(parsed.month).padStart(2, "0")}-${lastDay}`;
-
-      // Sem sobreposição? Pula
-      if (to < monthStart || from > monthEnd) continue;
-
-      const channels: [string, number][] = [
-        ["Outdoor", row.outdoor],
-        ["Rádio", row.radio],
-        ["Jornal", row.jornal],
-        ["Evento", row.evento],
-        ["Outros", row.outros],
-      ];
-
-      for (const [canal, valor] of channels) {
-        if (valor > 0) {
-          result[canal] = (result[canal] || 0) + valor;
-        }
-      }
+    if (valor > 0) {
+      result[lanc.canal] = (result[lanc.canal] || 0) + valor;
     }
   }
 
