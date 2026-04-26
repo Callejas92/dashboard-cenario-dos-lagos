@@ -24,6 +24,7 @@ type MetricKey = "investimento" | "leads" | "vendas" | "valorVendas";
 const CANAL_COLORS: Record<string, string> = {
   "Meta Ads": "#1877f2",
   "Google Ads": "#ea4335",
+  "WhatsApp": "#25d366",
   "Site": "#10b981",
   "Outdoor": "#f4a236",
   "Rádio": "#8b5cf6",

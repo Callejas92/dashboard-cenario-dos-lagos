@@ -17,7 +17,7 @@ const DEFAULT_DATA = {
     fim: "2027-08-31",
     totalSemanas: 78,
     canais: [
-      "Google Ads", "Meta Ads", "Outdoor", "Rádio", "Site",
+      "Google Ads", "Meta Ads", "WhatsApp", "Outdoor", "Rádio", "Site",
       "Jornal", "Outros", "Indicação", "Contato Corretor",
     ],
     metas: { cpl: 50, cac: 11250, roi: 3.5, vso: 5, tlq: 30, tcs: 35, slaResposta: 5 },
