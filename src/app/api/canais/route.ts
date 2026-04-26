@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import type { LancamentoOffline } from "../custos-offline/route";
+import { getCustosOffline, type LancamentoOffline } from "@/lib/onedrive-custos";
 
 const META_API = "https://graph.facebook.com/v21.0";
 const CRM_API = "http://leadsc2s.eggs.com.br/api/webhook/leads";
@@ -143,18 +143,15 @@ async function fetchUAUVendas(from: string, to: string): Promise<{ qtdVendas: nu
   } catch { return { qtdVendas: 0, valorTotal: 0 }; }
 }
 
-// ── Custos offline do OneDrive Excel ──
+// ── Custos offline do OneDrive Excel (chamada direta ao lib, sem HTTP) ──
 async function fetchCustosOffline(): Promise<LancamentoOffline[]> {
   try {
-    const baseUrl = process.env.VERCEL_URL
-      ? `https://${process.env.VERCEL_URL}`
-      : "http://localhost:3000";
-    const res = await fetch(`${baseUrl}/api/custos-offline`, {
-      signal: AbortSignal.timeout(15000),
-    });
-    const data = await res.json();
-    return data.lancamentos || [];
-  } catch { return []; }
+    const parsed = await getCustosOffline();
+    return parsed.lancamentos;
+  } catch (err) {
+    console.error("Erro ao buscar custos offline:", err);
+    return [];
+  }
 }
 
 // Parse "Abr/26" → { year: 2026, month: 4 }
