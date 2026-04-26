@@ -8,6 +8,7 @@ import {
 } from "recharts";
 import KPICard from "./KPICard";
 import DateRangeFilter from "./DateRangeFilter";
+import CrmStatusPanel from "./CrmStatusPanel";
 import { Search, Home, BarChart3, DollarSign, TrendingUp, Layers, RefreshCw, ShoppingCart, User, CreditCard, Calendar } from "lucide-react";
 import { formatBRL, VendasResponse, VendaRecord } from "@/lib/types";
 
@@ -438,6 +439,9 @@ export default function TabEstoque({ data }: { data: EstoqueData }) {
           </span>
         )}
       </div>
+
+      {/* Status Realtime via CRM Eggs */}
+      <CrmStatusPanel />
 
       {/* KPI Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 xl:grid-cols-8 gap-4">
