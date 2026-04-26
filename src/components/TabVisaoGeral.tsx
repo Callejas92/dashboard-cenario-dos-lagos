@@ -248,10 +248,15 @@ export default function TabVisaoGeral({ data }: Props) {
     const currentData = detailMode === "dia" ? dailyValues : canaisDetail;
     const total = currentData.reduce((s, d) => s + d.value, 0);
 
-    const offlineCanais = (apiData.canaisSemDadosDiarios || []).filter((c) => {
-      const cd = apiData.canais[c];
-      return cd && (cd[cfg.dataKey] as number) > 0;
-    });
+    // Canais com valor > 0 mas sem dados diários para essa métrica
+    const offlineCanais = Object.entries(apiData.canais)
+      .filter(([nome, c]) => {
+        const v = c[cfg.dataKey] as number;
+        if (v <= 0) return false;
+        const hasDaily = dailyByCanal.some((d) => d.canal === nome && (d[cfg.dataKey] as number) > 0);
+        return !hasDaily;
+      })
+      .map(([nome]) => nome);
 
     return (
       <div
