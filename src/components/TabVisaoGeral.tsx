@@ -58,6 +58,15 @@ interface DailyDataPoint {
   leads: number;
 }
 
+interface DailyByCanalEntry {
+  date: string;
+  canal: string;
+  investimento: number;
+  leads: number;
+  vendas: number;
+  valorVendas: number;
+}
+
 interface CanaisApiResponse {
   canais: Record<string, CanalApiData>;
   kpis: {
@@ -70,6 +79,8 @@ interface CanaisApiResponse {
     roi: number;
   };
   daily: DailyDataPoint[];
+  dailyByCanal?: DailyByCanalEntry[];
+  canaisSemDadosDiarios?: string[];
   crmTotal: {
     total: number;
     convertidos: number;
@@ -93,6 +104,7 @@ export default function TabVisaoGeral({ data }: Props) {
   const [expandedKPI, setExpandedKPI] = useState<MetricKey | null>(null);
   const [detailView, setDetailView] = useState<"tabela" | "grafico">("tabela");
   const [detailMode, setDetailMode] = useState<"canal" | "dia">("canal");
+  const [detailCanalFilter, setDetailCanalFilter] = useState<string>("Todos"); // "Todos" ou nome do canal
 
   // ---- Fetch /api/canais ----
   const fetchCanais = useCallback(async (from: string, to: string) => {
@@ -176,9 +188,10 @@ export default function TabVisaoGeral({ data }: Props) {
   const axisTick = { fill: "var(--text-dim)", fontSize: 11 };
 
   // ---- Metric config ----
+  type DailyMetricKey = "investimento" | "leads" | "vendas" | "valorVendas";
   const metricConfig: Record<
     MetricKey,
-    { label: string; color: string; format: (v: number) => string; dataKey: keyof CanalApiData }
+    { label: string; color: string; format: (v: number) => string; dataKey: DailyMetricKey }
   > = {
     investimento: { label: "Investimento", color: "#f4a236", format: formatBRL, dataKey: "investimento" },
     leads:        { label: "Leads",        color: "#4285f4", format: formatNumber, dataKey: "leads" },
@@ -190,21 +203,34 @@ export default function TabVisaoGeral({ data }: Props) {
     setExpandedKPI((prev) => (prev === key ? null : key));
     setDetailView("tabela");
     setDetailMode("canal");
+    setDetailCanalFilter("Todos");
   }
 
   const daily = apiData?.daily || [];
+  const dailyByCanal = apiData?.dailyByCanal || [];
 
   // ---- Detail panel: per-canal or per-day breakdown ----
   function renderDetailPanel(key: MetricKey) {
     if (expandedKPI !== key || !apiData) return null;
     const cfg = metricConfig[key];
 
-    // Daily data mapping per metric
-    const getDailyValues = (): { date: string; value: number }[] => {
-      if (key === "investimento") return daily.filter((d) => d.spend > 0).map((d) => ({ date: d.date, value: d.spend }));
-      if (key === "leads") return daily.filter((d) => d.leads > 0).map((d) => ({ date: d.date, value: d.leads }));
-      // vendas/valorVendas don't have daily from API yet
-      return [];
+    // Daily data mapping per metric, opcionalmente filtrado por canal
+    const getDailyValues = (canalFilter: string): { date: string; value: number }[] => {
+      const dataKey = cfg.dataKey;
+      const filtered = canalFilter === "Todos"
+        ? dailyByCanal
+        : dailyByCanal.filter((d) => d.canal === canalFilter);
+
+      // Agrupa por data e soma o valor da métrica
+      const byDate: Record<string, number> = {};
+      for (const d of filtered) {
+        const v = d[dataKey] as number;
+        if (v > 0) byDate[d.date] = (byDate[d.date] || 0) + v;
+      }
+
+      return Object.entries(byDate)
+        .map(([date, value]) => ({ date, value }))
+        .sort((a, b) => a.date.localeCompare(b.date));
     };
 
     const canaisDetail = Object.entries(apiData.canais)
@@ -212,10 +238,20 @@ export default function TabVisaoGeral({ data }: Props) {
       .filter((c) => c.value > 0)
       .sort((a, b) => b.value - a.value);
 
-    const dailyValues = getDailyValues();
-    const hasDailyData = dailyValues.length > 0;
+    // Lista de canais que têm dados diários para essa métrica
+    const canaisComDados = Array.from(new Set(
+      dailyByCanal.filter((d) => (d[cfg.dataKey] as number) > 0).map((d) => d.canal)
+    )).sort();
+
+    const dailyValues = getDailyValues(detailCanalFilter);
+    const hasDailyData = dailyByCanal.some((d) => (d[cfg.dataKey] as number) > 0);
     const currentData = detailMode === "dia" ? dailyValues : canaisDetail;
     const total = currentData.reduce((s, d) => s + d.value, 0);
+
+    const offlineCanais = (apiData.canaisSemDadosDiarios || []).filter((c) => {
+      const cd = apiData.canais[c];
+      return cd && (cd[cfg.dataKey] as number) > 0;
+    });
 
     return (
       <div
@@ -224,17 +260,35 @@ export default function TabVisaoGeral({ data }: Props) {
       >
         {/* Panel header */}
         <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <h4 className="text-sm font-bold" style={{ color: "var(--text-muted)" }}>
-              {cfg.label.toUpperCase()} — {detailMode === "canal" ? "POR CANAL" : "POR DIA"}
+              {cfg.label.toUpperCase()} — {detailMode === "canal" ? "POR CANAL" : detailCanalFilter === "Todos" ? "POR DIA" : `POR DIA — ${detailCanalFilter.toUpperCase()}`}
             </h4>
+            {/* Dropdown de canal — só aparece em modo "dia" */}
+            {detailMode === "dia" && canaisComDados.length > 0 && (
+              <select
+                value={detailCanalFilter}
+                onChange={(e) => setDetailCanalFilter(e.target.value)}
+                style={{
+                  padding: "0.25rem 0.5rem", fontSize: "0.7rem", fontWeight: 600,
+                  background: "var(--surface)", color: "var(--text)",
+                  border: "1px solid var(--border)", borderRadius: "0.375rem",
+                  cursor: "pointer",
+                }}
+              >
+                <option value="Todos">Todos os canais</option>
+                {canaisComDados.map((c) => (
+                  <option key={c} value={c}>{c}</option>
+                ))}
+              </select>
+            )}
           </div>
           <div className="flex items-center gap-2 flex-wrap">
             {/* Mode toggle: Canal / Dia */}
             {(["canal", "dia"] as const).map((m) => (
               <button
                 key={m}
-                onClick={() => { setDetailMode(m); setDetailView("tabela"); }}
+                onClick={() => { setDetailMode(m); setDetailView("tabela"); setDetailCanalFilter("Todos"); }}
                 disabled={m === "dia" && !hasDailyData}
                 style={{
                   padding: "0.25rem 0.75rem", fontSize: "0.7rem", fontWeight: 600, borderRadius: "0.375rem",
@@ -273,6 +327,18 @@ export default function TabVisaoGeral({ data }: Props) {
             </button>
           </div>
         </div>
+
+        {/* Nota sobre custos offline não incluídos no Por Dia */}
+        {detailMode === "dia" && offlineCanais.length > 0 && (
+          <div style={{
+            marginBottom: "0.75rem", padding: "0.5rem 0.75rem",
+            background: "var(--surface)", border: "1px dashed var(--border)",
+            borderRadius: "0.375rem", fontSize: "0.7rem",
+            color: "var(--text-dim)",
+          }}>
+            ℹ️ Canais sem dados diários (apenas mensais): <strong>{offlineCanais.join(", ")}</strong>. Use &quot;Por Canal&quot; para ver esses valores.
+          </div>
+        )}
 
         {detailMode === "dia" ? (
           /* ---- POR DIA ---- */

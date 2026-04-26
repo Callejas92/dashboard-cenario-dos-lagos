@@ -89,13 +89,19 @@ async function fetchMetaAds(from: string, to: string): Promise<MetaAdsResult> {
   } catch { return { spend: 0, leads: 0, reach: 0, impressions: 0, clicks: 0, daily: [] }; }
 }
 
-async function fetchCRMLeads(from: string, to: string): Promise<Record<string, { leads: number; convertidos: number }>> {
-  const key = process.env.CRM_API_KEY?.trim();
-  if (!key) return {};
+interface CRMLeadsResult {
+  totals: Record<string, { leads: number; convertidos: number }>;
+  daily: Record<string, Record<string, number>>; // date → canal → leads
+}
 
-  const result: Record<string, { leads: number; convertidos: number }> = {};
-  for (const canal of ALL_CANAIS) result[canal] = { leads: 0, convertidos: 0 };
-  result["Outros"] = { leads: 0, convertidos: 0 };
+async function fetchCRMLeads(from: string, to: string): Promise<CRMLeadsResult> {
+  const key = process.env.CRM_API_KEY?.trim();
+  if (!key) return { totals: {}, daily: {} };
+
+  const totals: Record<string, { leads: number; convertidos: number }> = {};
+  const daily: Record<string, Record<string, number>> = {};
+  for (const canal of ALL_CANAIS) totals[canal] = { leads: 0, convertidos: 0 };
+  totals["Outros"] = { leads: 0, convertidos: 0 };
 
   try {
     let offset = 0;
@@ -117,9 +123,13 @@ async function fetchCRMLeads(from: string, to: string): Promise<Record<string, {
 
         const srcName = a.lead_source?.name || "";
         const canal = CRM_SOURCE_MAP[srcName] || "Outros";
-        if (!result[canal]) result[canal] = { leads: 0, convertidos: 0 };
-        result[canal].leads++;
-        if (a.done_details?.done) result[canal].convertidos++;
+        if (!totals[canal]) totals[canal] = { leads: 0, convertidos: 0 };
+        totals[canal].leads++;
+        if (a.done_details?.done) totals[canal].convertidos++;
+
+        // Daily breakdown
+        if (!daily[createdAt]) daily[createdAt] = {};
+        daily[createdAt][canal] = (daily[createdAt][canal] || 0) + 1;
       }
 
       if (leads.length < pageSize) break;
@@ -127,14 +137,21 @@ async function fetchCRMLeads(from: string, to: string): Promise<Record<string, {
     }
   } catch { /* ignore */ }
 
-  return result;
+  return { totals, daily };
 }
 
 // ── Custo WhatsApp Business via Meta conversation_analytics ──
-async function fetchWhatsAppCost(from: string, to: string): Promise<{ custoBRL: number; conversas: number; mensagensRecebidas: number }> {
+interface WhatsAppResult {
+  custoBRL: number;
+  conversas: number;
+  mensagensRecebidas: number;
+  daily: Record<string, number>; // date → custoBRL no dia
+}
+
+async function fetchWhatsAppCost(from: string, to: string): Promise<WhatsAppResult> {
   const token = process.env.WHATSAPP_TOKEN?.trim();
   const wabaId = process.env.WHATSAPP_WABA_ID?.trim();
-  if (!token || !wabaId) return { custoBRL: 0, conversas: 0, mensagensRecebidas: 0 };
+  if (!token || !wabaId) return { custoBRL: 0, conversas: 0, mensagensRecebidas: 0, daily: {} };
 
   const startTs = Math.floor(new Date(from + "T00:00:00").getTime() / 1000);
   const endTs = Math.floor(new Date(to + "T23:59:59").getTime() / 1000);
@@ -157,10 +174,16 @@ async function fetchWhatsAppCost(from: string, to: string): Promise<{ custoBRL: 
 
     let totalConversas = 0;
     let custoUSD = 0;
+    const daily: Record<string, number> = {};
     for (const entry of (convData.data || [])) {
       for (const point of (entry.data_points || [])) {
         totalConversas += point.conversation || 0;
         custoUSD += point.cost || 0;
+        // Agrupar por dia (start é timestamp do dia)
+        if (point.start) {
+          const dateStr = new Date(point.start * 1000).toISOString().split("T")[0];
+          daily[dateStr] = (daily[dateStr] || 0) + (point.cost || 0) * exchangeRate;
+        }
       }
     }
 
@@ -184,9 +207,10 @@ async function fetchWhatsAppCost(from: string, to: string): Promise<{ custoBRL: 
       custoBRL: custoUSD * exchangeRate,
       conversas: totalConversas,
       mensagensRecebidas,
+      daily,
     };
   } catch {
-    return { custoBRL: 0, conversas: 0, mensagensRecebidas: 0 };
+    return { custoBRL: 0, conversas: 0, mensagensRecebidas: 0, daily: {} };
   }
 }
 
@@ -304,7 +328,7 @@ export async function GET(request: Request) {
   // Build canal data
   const canais: Record<string, CanalData> = {};
   for (const canal of ALL_CANAIS) {
-    const crm = crmLeads[canal] || { leads: 0, convertidos: 0 };
+    const crm = crmLeads.totals[canal] || { leads: 0, convertidos: 0 };
     const offline = offlinePorCanal[canal] || 0;
 
     let investimento = offline;
@@ -357,6 +381,69 @@ export async function GET(request: Request) {
     cpc: metaAds.clicks > 0 ? metaAds.spend / metaAds.clicks : 0,
   };
 
+  // ── Build daily breakdown per canal ──
+  // Estrutura: array de { date, canal, investimento, leads, vendas, valorVendas }
+  // Canais offline NÃO aparecem aqui (só têm dados mensais/agregados)
+  const dailyEntries: { date: string; canal: string; investimento: number; leads: number; vendas: number; valorVendas: number }[] = [];
+
+  // Meta Ads daily (já tem date, spend, leads)
+  for (const d of metaAds.daily) {
+    if (d.date < from || d.date > to) continue;
+    dailyEntries.push({
+      date: d.date,
+      canal: "Meta Ads",
+      investimento: d.spend,
+      leads: d.leads,
+      vendas: 0,
+      valorVendas: 0,
+    });
+  }
+
+  // WhatsApp daily (custo por dia)
+  for (const [date, custo] of Object.entries(whatsApp.daily)) {
+    if (date < from || date > to) continue;
+    dailyEntries.push({
+      date,
+      canal: "WhatsApp",
+      investimento: custo,
+      leads: 0,
+      vendas: 0,
+      valorVendas: 0,
+    });
+  }
+
+  // CRM leads daily (por canal por dia)
+  for (const [date, canalMap] of Object.entries(crmLeads.daily)) {
+    for (const [canal, leadsCount] of Object.entries(canalMap)) {
+      if (date < from || date > to) continue;
+      // Skip Meta Ads se já temos do Meta API (evita dupla contagem)
+      if (canal === "Meta Ads") {
+        // Adiciona apenas se não tem entry de Meta Ads nesse dia
+        const exists = dailyEntries.find((e) => e.date === date && e.canal === "Meta Ads");
+        if (exists) {
+          exists.leads = Math.max(exists.leads, leadsCount);
+          continue;
+        }
+      }
+      // Procura entry existente desse canal+dia
+      const existing = dailyEntries.find((e) => e.date === date && e.canal === canal);
+      if (existing) {
+        existing.leads += leadsCount;
+      } else {
+        dailyEntries.push({
+          date,
+          canal,
+          investimento: 0,
+          leads: leadsCount,
+          vendas: 0,
+          valorVendas: 0,
+        });
+      }
+    }
+  }
+
+  dailyEntries.sort((a, b) => a.date.localeCompare(b.date) || a.canal.localeCompare(b.canal));
+
   const result = {
     dateFrom: from,
     dateTo: to,
@@ -371,10 +458,12 @@ export async function GET(request: Request) {
       roi,
     },
     metaExtras,
-    daily: metaAds.daily,
+    daily: metaAds.daily, // legacy: usado por outros componentes
+    dailyByCanal: dailyEntries, // novo: para Wave 5 (Por Canal por Dia)
+    canaisSemDadosDiarios: ["Outdoor", "Rádio", "Jornal", "Evento", "Outros", "Site", "Indicação", "Contato Corretor", "Google Ads"],
     crmTotal: {
-      total: Object.values(crmLeads).reduce((s, c) => s + c.leads, 0),
-      convertidos: Object.values(crmLeads).reduce((s, c) => s + c.convertidos, 0),
+      total: Object.values(crmLeads.totals).reduce((s, c) => s + c.leads, 0),
+      convertidos: Object.values(crmLeads.totals).reduce((s, c) => s + c.convertidos, 0),
     },
     fetchedAt: new Date().toISOString(),
   };
