@@ -25,9 +25,12 @@ const CRM_SOURCE_MAP: Record<string, string> = {
   "Indicacao": "Indicação",
   "Corretor": "Contato Corretor",
   "Contato Corretor": "Contato Corretor",
+  "WhatsApp": "WhatsApp",
+  "Whatsapp": "WhatsApp",
+  "WPP": "WhatsApp",
 };
 
-const ALL_CANAIS = ["Google Ads", "Meta Ads", "Outdoor", "Rádio", "Site", "Jornal", "Outros", "Indicação", "Contato Corretor"];
+const ALL_CANAIS = ["Google Ads", "Meta Ads", "WhatsApp", "Outdoor", "Rádio", "Site", "Jornal", "Outros", "Indicação", "Contato Corretor"];
 
 interface CanalData {
   investimento: number;
@@ -125,6 +128,66 @@ async function fetchCRMLeads(from: string, to: string): Promise<Record<string, {
   } catch { /* ignore */ }
 
   return result;
+}
+
+// ── Custo WhatsApp Business via Meta conversation_analytics ──
+async function fetchWhatsAppCost(from: string, to: string): Promise<{ custoBRL: number; conversas: number; mensagensRecebidas: number }> {
+  const token = process.env.WHATSAPP_TOKEN?.trim();
+  const wabaId = process.env.WHATSAPP_WABA_ID?.trim();
+  if (!token || !wabaId) return { custoBRL: 0, conversas: 0, mensagensRecebidas: 0 };
+
+  const startTs = Math.floor(new Date(from + "T00:00:00").getTime() / 1000);
+  const endTs = Math.floor(new Date(to + "T23:59:59").getTime() / 1000);
+
+  try {
+    const [convRes, fxRes] = await Promise.all([
+      fetch(
+        `https://graph.facebook.com/v21.0/${wabaId}/conversation_analytics` +
+        `?start=${startTs}&end=${endTs}&granularity=DAILY` +
+        `&metric_types=${encodeURIComponent(JSON.stringify(["COST", "CONVERSATION"]))}` +
+        `&access_token=${token}`,
+        { signal: AbortSignal.timeout(10000) }
+      ),
+      fetch("https://open.er-api.com/v6/latest/USD", { signal: AbortSignal.timeout(5000) }).catch(() => null),
+    ]);
+
+    const convData = await convRes.json();
+    const fxData = fxRes ? await fxRes.json() : null;
+    const exchangeRate = fxData?.rates?.BRL ?? 5.70;
+
+    let totalConversas = 0;
+    let custoUSD = 0;
+    for (const entry of (convData.data || [])) {
+      for (const point of (entry.data_points || [])) {
+        totalConversas += point.conversation || 0;
+        custoUSD += point.cost || 0;
+      }
+    }
+
+    // Buscar mensagens recebidas do webhook stats (proxy de "leads via WhatsApp")
+    let mensagensRecebidas = 0;
+    try {
+      const { list } = await import("@vercel/blob");
+      const { blobs } = await list({ prefix: "whatsapp-events.json" });
+      if (blobs.length > 0) {
+        const statsRes = await fetch(blobs[0].url, { cache: "no-store" });
+        const stats = await statsRes.json();
+        for (const [day, dayStats] of Object.entries(stats.daily || {}) as [string, { received?: number }][]) {
+          if (day >= from && day <= to) {
+            mensagensRecebidas += dayStats.received || 0;
+          }
+        }
+      }
+    } catch { /* ignore */ }
+
+    return {
+      custoBRL: custoUSD * exchangeRate,
+      conversas: totalConversas,
+      mensagensRecebidas,
+    };
+  } catch {
+    return { custoBRL: 0, conversas: 0, mensagensRecebidas: 0 };
+  }
 }
 
 async function fetchUAUVendas(from: string, to: string): Promise<{ qtdVendas: number; valorTotal: number }> {
@@ -227,11 +290,12 @@ export async function GET(request: Request) {
   }
 
   // Fetch all sources in parallel
-  const [metaAds, crmLeads, uauVendas, custosOffline] = await Promise.all([
+  const [metaAds, crmLeads, uauVendas, custosOffline, whatsApp] = await Promise.all([
     fetchMetaAds(from, to),
     fetchCRMLeads(from, to),
     fetchUAUVendas(from, to),
     fetchCustosOffline(),
+    fetchWhatsAppCost(from, to),
   ]);
 
   // Calculate offline costs for the selected date range
@@ -242,9 +306,21 @@ export async function GET(request: Request) {
   for (const canal of ALL_CANAIS) {
     const crm = crmLeads[canal] || { leads: 0, convertidos: 0 };
     const offline = offlinePorCanal[canal] || 0;
+
+    let investimento = offline;
+    let leads = crm.leads;
+
+    if (canal === "Meta Ads") {
+      investimento += metaAds.spend;
+      leads = Math.max(metaAds.leads, crm.leads);
+    } else if (canal === "WhatsApp") {
+      // WhatsApp tem custo via API Meta. Leads vêm do CRM (lead_source = "WhatsApp")
+      investimento += whatsApp.custoBRL;
+    }
+
     canais[canal] = {
-      investimento: (canal === "Meta Ads" ? metaAds.spend : 0) + offline,
-      leads: canal === "Meta Ads" ? Math.max(metaAds.leads, crm.leads) : crm.leads,
+      investimento,
+      leads,
       leadsQualificados: 0,
       vendas: 0,
       valorVendas: 0,
