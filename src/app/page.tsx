@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { BarChart3, ShieldCheck, PlusCircle, RefreshCw, Plug, Globe, Sun, Moon, Home as HomeIcon, DollarSign, Users, Instagram, Megaphone, MessageCircle } from "lucide-react";
+import { BarChart3, ShieldCheck, PlusCircle, RefreshCw, Plug, Globe, Sun, Moon, Home as HomeIcon, DollarSign, Users, Instagram, Megaphone, MessageCircle, Target } from "lucide-react";
 import TabVisaoGeral from "@/components/TabVisaoGeral";
 import TabCanais from "@/components/TabCanais";
 import TabQualidade from "@/components/TabQualidade";
@@ -12,12 +12,13 @@ import TabFinanceiro from "@/components/TabFinanceiro";
 import TabCRM from "@/components/TabCRM";
 import TabInstagram from "@/components/TabInstagram";
 import TabMetaAds from "@/components/TabMetaAds";
+import TabGoogleAds from "@/components/TabGoogleAds";
 import TabWhatsApp from "@/components/TabWhatsApp";
 import FormSemanal from "@/components/FormSemanal";
 import LoginScreen from "@/components/LoginScreen";
 import { MetricsData, FinanceiroResponse } from "@/lib/types";
 
-type Tab = "geral" | "canais" | "qualidade" | "analytics" | "estoque" | "financeiro" | "crm" | "instagram" | "metaads" | "whatsapp" | "integracoes" | "inserir";
+type Tab = "geral" | "canais" | "qualidade" | "analytics" | "estoque" | "financeiro" | "crm" | "instagram" | "metaads" | "googleads" | "whatsapp" | "integracoes" | "inserir";
 
 const tabs: { id: Tab; label: string; icon: typeof BarChart3 }[] = [
   { id: "geral", label: "Visao Geral", icon: BarChart3 },
@@ -29,6 +30,7 @@ const tabs: { id: Tab; label: string; icon: typeof BarChart3 }[] = [
   { id: "crm", label: "CRM", icon: Users },
   { id: "instagram", label: "Instagram", icon: Instagram },
   { id: "metaads", label: "Meta Ads", icon: Megaphone },
+  { id: "googleads", label: "Google Ads", icon: Target },
   { id: "whatsapp", label: "WhatsApp", icon: MessageCircle },
   { id: "integracoes", label: "APIs", icon: Plug },
   // { id: "inserir", label: "Inserir Dados", icon: PlusCircle }, // oculto por decisão do proprietário
@@ -278,6 +280,7 @@ export default function Home() {
         {activeTab === "crm" && <TabCRM />}
         {activeTab === "instagram" && <TabInstagram />}
         {activeTab === "metaads" && <TabMetaAds />}
+        {activeTab === "googleads" && <TabGoogleAds />}
         {activeTab === "whatsapp" && <TabWhatsApp />}
         {activeTab === "integracoes" && <TabIntegracoes />}
         {activeTab === "inserir" && <FormSemanal data={data} onSaved={loadData} authToken={authToken} />}

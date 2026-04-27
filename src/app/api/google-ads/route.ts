@@ -40,6 +40,59 @@ function getHeaders(accessToken: string) {
   };
 }
 
+async function fetchDailyData(
+  accessToken: string,
+  customerId: string,
+  dateFrom: string,
+  dateTo: string
+): Promise<{ date: string; impressions: number; clicks: number; cost: number; conversions: number }[]> {
+  const query = `
+    SELECT
+      segments.date,
+      metrics.impressions,
+      metrics.clicks,
+      metrics.cost_micros,
+      metrics.conversions
+    FROM campaign
+    WHERE segments.date BETWEEN '${dateFrom}' AND '${dateTo}'
+    ORDER BY segments.date
+  `;
+
+  try {
+    const res = await fetch(
+      `${GOOGLE_ADS_API}/customers/${customerId}/googleAds:search`,
+      {
+        method: "POST",
+        headers: getHeaders(accessToken),
+        body: JSON.stringify({ query }),
+        signal: AbortSignal.timeout(15000),
+      }
+    );
+
+    if (!res.ok) return [];
+    const data = await res.json();
+
+    // Agrega por dia (vários campanhas/dia somadas)
+    const byDate = new Map<string, { impressions: number; clicks: number; cost: number; conversions: number }>();
+    for (const row of data.results || []) {
+      const date = row.segments?.date || "";
+      if (!date) continue;
+      const cur = byDate.get(date) || { impressions: 0, clicks: 0, cost: 0, conversions: 0 };
+      cur.impressions += parseInt(row.metrics?.impressions || "0");
+      cur.clicks += parseInt(row.metrics?.clicks || "0");
+      cur.cost += parseInt(row.metrics?.costMicros || "0") / 1_000_000;
+      cur.conversions += parseFloat(row.metrics?.conversions || "0");
+      byDate.set(date, cur);
+    }
+
+    return Array.from(byDate.entries())
+      .map(([date, v]) => ({ date, ...v }))
+      .sort((a, b) => a.date.localeCompare(b.date));
+  } catch {
+    return [];
+  }
+}
+
 async function fetchCampaignData(
   accessToken: string,
   customerId: string,
@@ -141,8 +194,11 @@ export async function GET(request: Request) {
     const checkData = await checkRes.json();
     const accountName = checkData.results?.[0]?.customer?.descriptiveName || "";
 
-    // Now fetch campaign metrics
-    const campaigns = await fetchCampaignData(accessToken, customerId, dateFrom, dateTo);
+    // Now fetch campaign metrics + daily breakdown in parallel
+    const [campaigns, daily] = await Promise.all([
+      fetchCampaignData(accessToken, customerId, dateFrom, dateTo),
+      fetchDailyData(accessToken, customerId, dateFrom, dateTo),
+    ]);
 
     const totals = campaigns.reduce(
       (acc, c) => ({
@@ -176,6 +232,7 @@ export async function GET(request: Request) {
         cpc: cpc.toFixed(2),
         cpa: cpa.toFixed(2),
       },
+      daily,
       fetchedAt: new Date().toISOString(),
     });
   } catch (error) {
