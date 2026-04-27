@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getCustosOffline, type LancamentoOffline } from "@/lib/onedrive-custos";
 import { getWhatsAppCost } from "@/lib/whatsapp-cost";
+import { getGoogleAdsCost } from "@/lib/google-ads-cost";
 
 const META_API = "https://graph.facebook.com/v21.0";
 const CRM_API = "http://leadsc2s.eggs.com.br/api/webhook/leads";
@@ -151,27 +152,13 @@ async function fetchWhatsAppCost(from: string, to: string) {
   }
 }
 
-// ── Custo Google Ads ──
-async function fetchGoogleAdsCost(from: string, to: string): Promise<{ custoBRL: number; conversoes: number; clicks: number; impressions: number }> {
+// ── Custo Google Ads via lib compartilhado (sem HTTP self-call) ──
+async function fetchGoogleAdsCost(from: string, to: string) {
   try {
-    const baseUrl = process.env.VERCEL_URL
-      ? `https://${process.env.VERCEL_URL}`
-      : "http://localhost:3000";
-    const res = await fetch(`${baseUrl}/api/google-ads?from=${from}&to=${to}`, {
-      signal: AbortSignal.timeout(20000),
-    });
-    if (!res.ok) return { custoBRL: 0, conversoes: 0, clicks: 0, impressions: 0 };
-    const data = await res.json();
-    const totals = data.totals || {};
-    return {
-      custoBRL: totals.cost || 0,
-      conversoes: totals.conversions || 0,
-      clicks: totals.clicks || 0,
-      impressions: totals.impressions || 0,
-    };
+    return await getGoogleAdsCost(from, to);
   } catch (err) {
     console.error("fetchGoogleAdsCost error:", err);
-    return { custoBRL: 0, conversoes: 0, clicks: 0, impressions: 0 };
+    return { custoBRL: 0, conversoes: 0, clicks: 0, impressions: 0, campaignCount: 0 };
   }
 }
 
