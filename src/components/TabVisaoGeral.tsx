@@ -239,10 +239,9 @@ export default function TabVisaoGeral({ data }: Props) {
       .filter((c) => c.value > 0)
       .sort((a, b) => b.value - a.value);
 
-    // Lista de canais que têm dados diários para essa métrica
-    const canaisComDados = Array.from(new Set(
-      dailyByCanal.filter((d) => (d[cfg.dataKey] as number) > 0).map((d) => d.canal)
-    )).sort();
+    // Lista de TODOS os canais que aparecem em qualquer dia (independe da métrica)
+    // Isso permite filtrar por canal mesmo quando o valor da métrica é 0 nesse canal
+    const canaisComDados = Array.from(new Set(dailyByCanal.map((d) => d.canal))).sort();
 
     const dailyValues = getDailyValues(detailCanalFilter);
     const hasDailyData = dailyByCanal.some((d) => (d[cfg.dataKey] as number) > 0);

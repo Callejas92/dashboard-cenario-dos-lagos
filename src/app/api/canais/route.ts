@@ -214,7 +214,7 @@ async function fetchWhatsAppCost(from: string, to: string): Promise<WhatsAppResu
   }
 }
 
-async function fetchUAUVendas(from: string, to: string): Promise<{ qtdVendas: number; valorTotal: number }> {
+async function fetchUAUVendas(from: string, to: string): Promise<{ qtdVendas: number; valorTotal: number; porDia: { data: string; quantidade: number; valorTotal: number }[] }> {
   try {
     const baseUrl = process.env.VERCEL_URL
       ? `https://${process.env.VERCEL_URL}`
@@ -224,10 +224,41 @@ async function fetchUAUVendas(from: string, to: string): Promise<{ qtdVendas: nu
     });
     const data = await res.json();
     return {
-      qtdVendas: data.qtdVendas || 0,
-      valorTotal: data.valorVendidoTotal || 0,
+      qtdVendas: data.total || 0,
+      valorTotal: data.valorTotal || 0,
+      porDia: data.porDia || [],
     };
-  } catch { return { qtdVendas: 0, valorTotal: 0 }; }
+  } catch { return { qtdVendas: 0, valorTotal: 0, porDia: [] }; }
+}
+
+// ── Cruzamento Lead × Venda (atribui canal correto às vendas) ──
+interface CrossSellPorCanal {
+  vendas: number;
+  receita: number;
+}
+
+interface CrossSellMatch {
+  venda: { dataVenda: string; valorVenda: number };
+  canal: string;
+  confianca: string;
+}
+
+async function fetchCrossSell(from: string, to: string): Promise<{ porCanal: Record<string, CrossSellPorCanal>; matches: CrossSellMatch[]; totalMatches: number; taxaMatching: number }> {
+  try {
+    const baseUrl = process.env.VERCEL_URL
+      ? `https://${process.env.VERCEL_URL}`
+      : "http://localhost:3000";
+    const res = await fetch(`${baseUrl}/api/cross-sell?from=${from}&to=${to}`, {
+      signal: AbortSignal.timeout(30000),
+    });
+    const data = await res.json();
+    return {
+      porCanal: data.porCanal || {},
+      matches: data.matches || [],
+      totalMatches: data.stats?.totalMatches || 0,
+      taxaMatching: data.stats?.taxaMatching || 0,
+    };
+  } catch { return { porCanal: {}, matches: [], totalMatches: 0, taxaMatching: 0 }; }
 }
 
 // ── Custos offline do OneDrive Excel (chamada direta ao lib, sem HTTP) ──
@@ -314,12 +345,13 @@ export async function GET(request: Request) {
   }
 
   // Fetch all sources in parallel
-  const [metaAds, crmLeads, uauVendas, custosOffline, whatsApp] = await Promise.all([
+  const [metaAds, crmLeads, uauVendas, custosOffline, whatsApp, crossSell] = await Promise.all([
     fetchMetaAds(from, to),
     fetchCRMLeads(from, to),
     fetchUAUVendas(from, to),
     fetchCustosOffline(),
     fetchWhatsAppCost(from, to),
+    fetchCrossSell(from, to),
   ]);
 
   // Calculate offline costs for the selected date range
@@ -352,14 +384,14 @@ export async function GET(request: Request) {
     };
   }
 
-  // Distribute UAU sales proportionally by leads
-  const totalLeads = Object.values(canais).reduce((s, c) => s + c.leads, 0);
-  if (uauVendas.qtdVendas > 0 && totalLeads > 0) {
-    // Assign to Meta Ads if it has most leads, otherwise distribute
-    const metaLeads = canais["Meta Ads"].leads;
-    if (metaLeads > 0) {
-      canais["Meta Ads"].vendas = uauVendas.qtdVendas;
-      canais["Meta Ads"].valorVendas = uauVendas.valorTotal;
+  // Atribuir vendas/receita por canal via cross-sell (CRM × ERP)
+  // Cada venda foi matchada com lead → canal real conhecido
+  // Vendas "Sem atribuição" não vão pra nenhum canal específico
+  for (const [canalNome, dados] of Object.entries(crossSell.porCanal)) {
+    if (canalNome === "Sem atribuição") continue;
+    if (canais[canalNome]) {
+      canais[canalNome].vendas = dados.vendas;
+      canais[canalNome].valorVendas = dados.receita;
     }
   }
 
@@ -439,6 +471,29 @@ export async function GET(request: Request) {
           valorVendas: 0,
         });
       }
+    }
+  }
+
+  // Vendas/Receita daily por canal (do cross-sell)
+  for (const m of crossSell.matches) {
+    if (!m.venda.dataVenda) continue;
+    const date = m.venda.dataVenda;
+    if (date < from || date > to) continue;
+    const canal = m.canal === "Sem atribuição" ? "Outros" : m.canal;
+
+    const existing = dailyEntries.find((e) => e.date === date && e.canal === canal);
+    if (existing) {
+      existing.vendas += 1;
+      existing.valorVendas += m.venda.valorVenda;
+    } else {
+      dailyEntries.push({
+        date,
+        canal,
+        investimento: 0,
+        leads: 0,
+        vendas: 1,
+        valorVendas: m.venda.valorVenda,
+      });
     }
   }
 

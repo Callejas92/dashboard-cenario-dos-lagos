@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { RefreshCw, Phone, MessageCircle, CheckCheck, DollarSign, FileText, TrendingUp, ChevronDown, ChevronUp, X, Table, BarChart3 } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, PieChart, Pie, Cell } from "recharts";
 import { formatNumber } from "@/lib/types";
+import DateRangeFilter from "./DateRangeFilter";
 
 interface WppData {
   configured: boolean;
@@ -57,27 +58,36 @@ const QUALIDADE_COLOR: Record<string, string> = {
 
 type WppMetricKey = "sent" | "delivered" | "read" | "received";
 
-const DAYS_SINCE_LAUNCH = Math.max(Math.ceil((Date.now() - new Date("2026-04-14").getTime()) / (24 * 60 * 60 * 1000)), 1);
-const PERIODS = [
-  { label: "Lançamento", days: DAYS_SINCE_LAUNCH },
-  { label: "7 dias", days: 7 },
-  { label: "30 dias", days: 30 },
-  { label: "60 dias", days: 60 },
-  { label: "90 dias", days: 90 },
-];
+function today() {
+  return new Date().toISOString().split("T")[0];
+}
+function daysAgo(n: number) {
+  const d = new Date();
+  d.setDate(d.getDate() - n);
+  return d.toISOString().split("T")[0];
+}
 
 export default function TabWhatsApp() {
   const [data, setData] = useState<WppData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  // Default: days since launch (14/04/2026)
-  const [days, setDays] = useState(() => {
-    const launch = new Date("2026-04-14");
-    const diff = Math.ceil((Date.now() - launch.getTime()) / (24 * 60 * 60 * 1000));
-    return Math.max(diff, 1);
-  });
+  // Default: desde lançamento (14/04/2026)
+  const [startDate, setStartDate] = useState("2026-04-14");
+  const [endDate, setEndDate] = useState(today());
+  const [activeQuick, setActiveQuick] = useState<number | "total" | null>("total");
   const [expandedKPI, setExpandedKPI] = useState<WppMetricKey | null>(null);
   const [detailView, setDetailView] = useState<"tabela" | "grafico">("tabela");
+
+  function handleQuickSelect(days: number | "total") {
+    setActiveQuick(days);
+    if (days === "total") {
+      setStartDate("2026-04-14");
+      setEndDate(today());
+    } else {
+      setStartDate(daysAgo(days));
+      setEndDate(today());
+    }
+  }
 
   const tooltipStyle = {
     contentStyle: { background: "var(--tooltip-bg)", border: "1px solid var(--border)", borderRadius: "0.75rem", color: "var(--text)" },
@@ -88,7 +98,7 @@ export default function TabWhatsApp() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`/api/whatsapp?days=${days}`);
+      const res = await fetch(`/api/whatsapp?from=${startDate}&to=${endDate}`);
       const json = await res.json();
       if (!json.configured) setError(json.message || "WhatsApp não configurado");
       else if (json.error) setError(json.error);
@@ -97,7 +107,7 @@ export default function TabWhatsApp() {
       setError(String(err));
     }
     setLoading(false);
-  }, [days]);
+  }, [startDate, endDate]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
@@ -251,23 +261,15 @@ export default function TabWhatsApp() {
         </div>
       </div>
 
-      {/* Period filter */}
-      <div className="flex gap-2 flex-wrap">
-        {PERIODS.map((p) => (
-          <button
-            key={p.days}
-            onClick={() => setDays(p.days)}
-            className="px-3 py-1.5 rounded-lg text-xs font-medium transition-all"
-            style={{
-              background: days === p.days ? "#25d366" : "var(--surface)",
-              color: days === p.days ? "#fff" : "var(--text-dim)",
-              border: `1px solid ${days === p.days ? "#25d366" : "var(--border)"}`,
-            }}
-          >
-            {p.label}
-          </button>
-        ))}
-      </div>
+      {/* Period filter (padrão do dashboard) */}
+      <DateRangeFilter
+        startDate={startDate}
+        endDate={endDate}
+        onStartChange={(d) => { setStartDate(d); setActiveQuick(null); }}
+        onEndChange={(d) => { setEndDate(d); setActiveQuick(null); }}
+        onQuickSelect={handleQuickSelect}
+        activeQuick={activeQuick}
+      />
 
       {/* KPIs - Expandable */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
@@ -304,7 +306,7 @@ export default function TabWhatsApp() {
             </div>
             <div>
               <p className="text-xs font-medium" style={{ color: "var(--text-dim)" }}>CONVERSAS & CUSTO</p>
-              <p className="text-xs" style={{ color: "var(--text-muted)" }}>últimos {days} dias</p>
+              <p className="text-xs" style={{ color: "var(--text-muted)" }}>{data.periodo.dias} dias</p>
             </div>
           </div>
           {data.conversas.fonte && (
@@ -484,7 +486,7 @@ export default function TabWhatsApp() {
       {data.dailyChart && data.dailyChart.some(d => d.sent > 0 || d.received > 0) && (
         <div className="kpi-card">
           <h3 className="text-sm font-bold mb-4" style={{ color: "var(--text-muted)" }}>
-            MENSAGENS POR DIA — últimos {days} dias
+            MENSAGENS POR DIA — {data.periodo.dias} dias
           </h3>
           <ResponsiveContainer width="100%" height={220}>
             <BarChart data={data.dailyChart.map(d => ({

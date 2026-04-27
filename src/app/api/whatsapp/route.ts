@@ -188,19 +188,31 @@ export async function GET(request: Request) {
   }
 
   const { searchParams } = new URL(request.url);
+  const fromParam = searchParams.get("from");
+  const toParam = searchParams.get("to");
   const days = parseInt(searchParams.get("days") || "30");
-  const cacheKey = `wpp-${days}`;
 
+  // Aceita from/to (preferido) ou days (fallback de compatibilidade)
+  let startDate: string;
+  let endDate: string;
+  if (fromParam && toParam) {
+    startDate = fromParam;
+    endDate = toParam;
+  } else {
+    const now = new Date();
+    endDate = now.toISOString().split("T")[0];
+    const startD = new Date(now); startD.setDate(startD.getDate() - days);
+    startDate = startD.toISOString().split("T")[0];
+  }
+
+  const cacheKey = `wpp-${startDate}-${endDate}`;
   if (cachedData && cachedData.key === cacheKey && Date.now() - cachedData.timestamp < CACHE_TTL) {
     return NextResponse.json(cachedData.data);
   }
 
-  const now = new Date();
-  const endDate   = now.toISOString().split("T")[0];
-  const startD    = new Date(now); startD.setDate(startD.getDate() - days);
-  const startDate = startD.toISOString().split("T")[0];
-  const endTs   = Math.floor(now.getTime() / 1000);
-  const startTs = Math.floor(startD.getTime() / 1000);
+  const startTs = Math.floor(new Date(startDate + "T00:00:00").getTime() / 1000);
+  const endTs = Math.floor(new Date(endDate + "T23:59:59").getTime() / 1000);
+  const dateRangeDays = Math.max(1, Math.ceil((endTs - startTs) / 86400));
 
   try {
     // Fetch all in parallel
@@ -220,10 +232,11 @@ export async function GET(request: Request) {
     // Message counts from webhook
     const mensagens = sumDays(webhookStats.daily, startDate, endDate);
 
-    // Daily chart
+    // Daily chart - itera de startDate até endDate
     const dailyChart: { data: string; sent: number; delivered: number; read: number; received: number }[] = [];
-    for (let i = days - 1; i >= 0; i--) {
-      const d = new Date(); d.setDate(d.getDate() - i);
+    const start = new Date(startDate + "T00:00:00");
+    const end = new Date(endDate + "T00:00:00");
+    for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
       const key = d.toISOString().split("T")[0];
       const st = webhookStats.daily[key] ?? { sent: 0, delivered: 0, read: 0, received: 0 };
       dailyChart.push({ data: key, ...st });
@@ -290,7 +303,7 @@ export async function GET(request: Request) {
       webhookAtivo: Object.keys(webhookStats.daily).length > 0,
       webhookUpdatedAt: webhookStats.updatedAt,
       qualityHistory: webhookStats.qualityHistory ?? [],
-      periodo: { dias: days, inicio: startDate, fim: endDate },
+      periodo: { dias: dateRangeDays, inicio: startDate, fim: endDate },
       fetchedAt: new Date().toISOString(),
     };
 
