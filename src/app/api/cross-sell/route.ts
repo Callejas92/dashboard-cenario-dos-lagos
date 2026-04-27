@@ -11,6 +11,8 @@
  */
 import { NextRequest, NextResponse } from "next/server";
 
+export const maxDuration = 90;
+
 const CRM_API = process.env.CRM_API_URL || "http://leadsc2s.eggs.com.br/api/webhook/leads";
 
 interface CRMLead {
@@ -151,11 +153,18 @@ async function fetchAllVendas(from: string, to: string): Promise<ERPVenda[]> {
       ? `https://${process.env.VERCEL_URL}`
       : "http://localhost:3000";
     const res = await fetch(`${baseUrl}/api/uau/vendas?startDate=${from}&endDate=${to}`, {
-      signal: AbortSignal.timeout(60000),
+      signal: AbortSignal.timeout(75000),
     });
+    if (!res.ok) {
+      console.error(`fetchAllVendas falhou: ${res.status}`);
+      return [];
+    }
     const data = await res.json();
     return data.vendas || [];
-  } catch { return []; }
+  } catch (err) {
+    console.error("fetchAllVendas error:", err);
+    return [];
+  }
 }
 
 // Mapeia fonte do CRM para nome do canal usado no dashboard
