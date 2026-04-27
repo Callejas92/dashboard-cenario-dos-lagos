@@ -151,6 +151,30 @@ async function fetchWhatsAppCost(from: string, to: string) {
   }
 }
 
+// ── Custo Google Ads ──
+async function fetchGoogleAdsCost(from: string, to: string): Promise<{ custoBRL: number; conversoes: number; clicks: number; impressions: number }> {
+  try {
+    const baseUrl = process.env.VERCEL_URL
+      ? `https://${process.env.VERCEL_URL}`
+      : "http://localhost:3000";
+    const res = await fetch(`${baseUrl}/api/google-ads?from=${from}&to=${to}`, {
+      signal: AbortSignal.timeout(20000),
+    });
+    if (!res.ok) return { custoBRL: 0, conversoes: 0, clicks: 0, impressions: 0 };
+    const data = await res.json();
+    const totals = data.totals || {};
+    return {
+      custoBRL: totals.cost || 0,
+      conversoes: totals.conversions || 0,
+      clicks: totals.clicks || 0,
+      impressions: totals.impressions || 0,
+    };
+  } catch (err) {
+    console.error("fetchGoogleAdsCost error:", err);
+    return { custoBRL: 0, conversoes: 0, clicks: 0, impressions: 0 };
+  }
+}
+
 async function fetchUAUVendas(from: string, to: string): Promise<{ qtdVendas: number; valorTotal: number; porDia: { data: string; quantidade: number; valorTotal: number }[] }> {
   try {
     const baseUrl = process.env.VERCEL_URL
@@ -282,13 +306,14 @@ export async function GET(request: Request) {
   }
 
   // Fetch all sources in parallel
-  const [metaAds, crmLeads, uauVendas, custosOffline, whatsApp, crossSell] = await Promise.all([
+  const [metaAds, crmLeads, uauVendas, custosOffline, whatsApp, crossSell, googleAds] = await Promise.all([
     fetchMetaAds(from, to),
     fetchCRMLeads(from, to),
     fetchUAUVendas(from, to),
     fetchCustosOffline(),
     fetchWhatsAppCost(from, to),
     fetchCrossSell(from, to),
+    fetchGoogleAdsCost(from, to),
   ]);
 
   // Calculate offline costs for the selected date range
@@ -309,6 +334,9 @@ export async function GET(request: Request) {
     } else if (canal === "WhatsApp") {
       // WhatsApp tem custo via API Meta. Leads vêm do CRM (lead_source = "WhatsApp")
       investimento += whatsApp.custoBRL;
+    } else if (canal === "Google Ads") {
+      // Google Ads tem custo via API. Leads vêm do CRM (lead_source = "Google Ads")
+      investimento += googleAds.custoBRL;
     }
 
     canais[canal] = {
