@@ -34,6 +34,7 @@ interface AnalyticsData {
     avgDuration?: number;
   }[];
   topPages?: { path: string; views: number; users: number }[];
+  eventos?: { nome: string; qtd: number; conversoes: number; isKeyEvent: boolean }[];
   fetchedAt?: string;
 }
 
@@ -44,6 +45,7 @@ type DailyMetric = "traffic" | "engagement" | "conversions";
 
 export default function TabAnalytics() {
   const [data, setData] = useState<AnalyticsData | null>(null);
+  const [leadsSite, setLeadsSite] = useState<number>(0);
   const [loading, setLoading] = useState(false);
   const [dailyView, setDailyView] = useState<DailyMetric>("traffic");
 
@@ -57,8 +59,23 @@ export default function TabAnalytics() {
   async function fetchData() {
     setLoading(true);
     try {
-      const res = await fetch(`/api/analytics?days=${days}&startDate=${startDate}&endDate=${endDate}`);
-      setData(await res.json());
+      const [analyticsRes, crmRes] = await Promise.all([
+        fetch(`/api/analytics?days=${days}&startDate=${startDate}&endDate=${endDate}`),
+        fetch(`/api/crm`),
+      ]);
+      setData(await analyticsRes.json());
+
+      // Conta leads com fonte=Site no período
+      const crmData = await crmRes.json();
+      const leads = (crmData.leads || []).filter((l: { fonte?: string; canal?: string; criadoEm?: string }) => {
+        const fonte = (l.fonte || "").toLowerCase();
+        const canal = (l.canal || "").toLowerCase();
+        const isSite = fonte === "site" || fonte === "website" || canal === "site" || canal === "website";
+        if (!isSite) return false;
+        const dia = (l.criadoEm || "").split("T")[0];
+        return dia >= startDate && dia <= endDate;
+      }).length;
+      setLeadsSite(leads);
     } catch {
       setData({ configured: false, message: "Erro de conexao" });
     }
@@ -128,38 +145,55 @@ export default function TabAnalytics() {
       {data?.configured && !data?.error && data?.overview && (
         <>
           {/* KPIs */}
-          <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
-            <KPICard
-              label="Usuarios"
-              value={formatNumber(data.overview.users)}
-              icon={<Users size={14} style={{ color: "#4285f4" }} />}
-            />
-            <KPICard
-              label="Sessoes"
-              value={formatNumber(data.overview.sessions)}
-              icon={<MousePointer size={14} style={{ color: "#10b981" }} />}
-            />
-            <KPICard
-              label="Visualizacoes"
-              value={formatNumber(data.overview.pageViews)}
-              icon={<Eye size={14} style={{ color: "#f4a236" }} />}
-            />
-            <KPICard
-              label="Tempo Medio"
-              value={`${Math.floor(data.overview.avgSessionDuration / 60)}m ${Math.floor(data.overview.avgSessionDuration % 60)}s`}
-              icon={<Clock size={14} style={{ color: "#8b5cf6" }} />}
-            />
-            <KPICard
-              label="Taxa de Rejeicao"
-              value={`${(data.overview.bounceRate * 100).toFixed(1)}%`}
-              status={data.overview.bounceRate < 0.5 ? "good" : "bad"}
-            />
-            <KPICard
-              label="Conversoes"
-              value={formatNumber(data.overview.conversions)}
-              icon={<Globe size={14} style={{ color: "#e94560" }} />}
-            />
-          </div>
+          {(() => {
+            const taxaConversao = data.overview.users > 0 ? (leadsSite / data.overview.users) * 100 : 0;
+            // Meta: 2-5% (sugestão SPEC)
+            const taxaStatus = taxaConversao === 0 ? "neutral" : taxaConversao >= 2 ? "good" : "bad";
+            return (
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                <KPICard
+                  label="Usuarios"
+                  value={formatNumber(data.overview.users)}
+                  icon={<Users size={14} style={{ color: "#4285f4" }} />}
+                />
+                <KPICard
+                  label="Sessoes"
+                  value={formatNumber(data.overview.sessions)}
+                  icon={<MousePointer size={14} style={{ color: "#10b981" }} />}
+                />
+                <KPICard
+                  label="Visualizacoes"
+                  value={formatNumber(data.overview.pageViews)}
+                  icon={<Eye size={14} style={{ color: "#f4a236" }} />}
+                />
+                <KPICard
+                  label="Tempo Medio"
+                  value={`${Math.floor(data.overview.avgSessionDuration / 60)}m ${Math.floor(data.overview.avgSessionDuration % 60)}s`}
+                  icon={<Clock size={14} style={{ color: "#8b5cf6" }} />}
+                />
+                <KPICard
+                  label="Taxa de Rejeicao"
+                  value={`${(data.overview.bounceRate * 100).toFixed(1)}%`}
+                  status={data.overview.bounceRate < 0.5 ? "good" : "bad"}
+                />
+                <KPICard
+                  label="Conversoes (GA4)"
+                  value={formatNumber(data.overview.conversions)}
+                  icon={<Globe size={14} style={{ color: "#e94560" }} />}
+                />
+                <KPICard
+                  label="Leads do Site (CRM)"
+                  value={formatNumber(leadsSite)}
+                  icon={<Users size={14} style={{ color: "#10b981" }} />}
+                />
+                <KPICard
+                  label="Taxa Conversao Site"
+                  value={`${taxaConversao.toFixed(2)}%`}
+                  status={taxaStatus}
+                />
+              </div>
+            );
+          })()}
 
           {/* Grafico diario com toggle de views */}
           {data.daily && data.daily.length > 0 && (
@@ -238,6 +272,43 @@ export default function TabAnalytics() {
                   <Bar dataKey="sessions" name="Sessoes" fill="#4285f4" radius={[0, 4, 4, 0]} />
                 </BarChart>
               </ResponsiveContainer>
+            </div>
+          )}
+
+          {/* Eventos GA4 com destaque dos key events */}
+          {data.eventos && data.eventos.length > 0 && (
+            <div className="kpi-card overflow-x-auto">
+              <div className="flex items-center justify-between mb-1 flex-wrap gap-2">
+                <h3 className="text-sm font-bold" style={{ color: "var(--text-muted)" }}>EVENTOS GA4</h3>
+                <span style={{ fontSize: "0.7rem", color: "var(--text-dim)" }}>
+                  <strong style={{ color: "#10b981" }}>{data.eventos.filter((e) => e.isKeyEvent).length}</strong> key event(s)
+                </span>
+              </div>
+              <p className="text-xs mb-3" style={{ color: "var(--text-dim)" }}>
+                Eventos marcados como &quot;chave&quot; (com 🔑) entram nas conversões. Configure no GA4 para incluir click_whatsapp, etc.
+              </p>
+              <table className="w-full text-sm">
+                <thead>
+                  <tr style={{ borderBottom: "1px solid var(--border)" }}>
+                    <th className="text-left py-2 px-2 font-semibold" style={{ color: "var(--text-dim)" }}>Evento</th>
+                    <th className="text-right py-2 px-2 font-semibold" style={{ color: "var(--text-dim)" }}>Total</th>
+                    <th className="text-right py-2 px-2 font-semibold" style={{ color: "var(--text-dim)" }}>Conversões</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.eventos.slice(0, 15).map((ev) => (
+                    <tr key={ev.nome} style={{ borderBottom: "1px solid var(--border)" }}>
+                      <td className="py-2 px-2" style={{ color: ev.isKeyEvent ? "#10b981" : "var(--text)", fontWeight: ev.isKeyEvent ? 600 : 400 }}>
+                        {ev.isKeyEvent && "🔑 "}{ev.nome}
+                      </td>
+                      <td className="text-right py-2 px-2" style={{ color: "var(--text)" }}>{formatNumber(ev.qtd)}</td>
+                      <td className="text-right py-2 px-2" style={{ color: ev.conversoes > 0 ? "#10b981" : "var(--text-dim)", fontWeight: ev.conversoes > 0 ? 600 : 400 }}>
+                        {ev.conversoes > 0 ? formatNumber(ev.conversoes) : "—"}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           )}
 

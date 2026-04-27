@@ -153,6 +153,33 @@ export async function GET(request: Request) {
       users: parseInt(row.metricValues[1].value),
     }));
 
+    // ── Eventos por nome (incluindo conversões/key events) ──
+    const eventsRes = await fetch(`${GA_API}/properties/${propertyId}:runReport`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        dateRanges: [{ startDate: `${days}daysAgo`, endDate: "today" }],
+        dimensions: [{ name: "eventName" }],
+        metrics: [
+          { name: "eventCount" },
+          { name: "conversions" },
+        ],
+        orderBys: [{ metric: { metricName: "eventCount" }, desc: true }],
+        limit: 30,
+      }),
+    });
+
+    const eventsData = await eventsRes.json();
+    const eventos = (eventsData.rows || []).map((row: { dimensionValues: { value: string }[]; metricValues: { value: string }[] }) => ({
+      nome: row.dimensionValues[0].value,
+      qtd: parseInt(row.metricValues[0].value),
+      conversoes: parseInt(row.metricValues[1].value),
+      isKeyEvent: parseInt(row.metricValues[1].value) > 0,
+    }));
+
     return NextResponse.json({
       configured: true,
       days,
@@ -167,6 +194,7 @@ export async function GET(request: Request) {
       sources,
       daily,
       topPages,
+      eventos,
       fetchedAt: new Date().toISOString(),
     });
   } catch (error) {
