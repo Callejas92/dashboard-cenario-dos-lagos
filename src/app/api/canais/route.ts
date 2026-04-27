@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getCustosOffline, type LancamentoOffline } from "@/lib/onedrive-custos";
+import { getWhatsAppCost } from "@/lib/whatsapp-cost";
 
 const META_API = "https://graph.facebook.com/v21.0";
 const CRM_API = "http://leadsc2s.eggs.com.br/api/webhook/leads";
@@ -140,52 +141,13 @@ async function fetchCRMLeads(from: string, to: string): Promise<CRMLeadsResult> 
   return { totals, daily };
 }
 
-// ── Custo WhatsApp Business (via /api/whatsapp que já tem fallback de estimação) ──
-interface WhatsAppResult {
-  custoBRL: number;
-  conversas: number;
-  mensagensRecebidas: number;
-  daily: Record<string, number>; // date → custoBRL no dia
-}
-
-async function fetchWhatsAppCost(from: string, to: string): Promise<WhatsAppResult> {
+// ── Custo WhatsApp via lib compartilhado (mesma lógica do /api/whatsapp) ──
+async function fetchWhatsAppCost(from: string, to: string) {
   try {
-    const baseUrl = process.env.VERCEL_URL
-      ? `https://${process.env.VERCEL_URL}`
-      : "http://localhost:3000";
-    const res = await fetch(`${baseUrl}/api/whatsapp?from=${from}&to=${to}`, {
-      signal: AbortSignal.timeout(15000),
-    });
-    if (!res.ok) return { custoBRL: 0, conversas: 0, mensagensRecebidas: 0, daily: {} };
-
-    const data = await res.json();
-    const conversas = data.conversas || {};
-    const mensagens = data.mensagens || {};
-    const dailyChart = data.dailyChart || [];
-
-    // Calcula custo diário rateando o total pelos dias com atividade
-    // (a API de WhatsApp não retorna custo por dia, só agregado)
-    const daily: Record<string, number> = {};
-    const custoTotal = conversas.custoBRL || 0;
-    const totalDelivered = mensagens.delivered || 0;
-    if (custoTotal > 0 && totalDelivered > 0) {
-      for (const d of dailyChart) {
-        if (d.delivered > 0) {
-          // Rateia proporcionalmente pelas mensagens entregues do dia
-          daily[d.data] = (d.delivered / totalDelivered) * custoTotal;
-        }
-      }
-    }
-
-    return {
-      custoBRL: custoTotal,
-      conversas: conversas.total || 0,
-      mensagensRecebidas: mensagens.received || 0,
-      daily,
-    };
+    return await getWhatsAppCost(from, to);
   } catch (err) {
     console.error("fetchWhatsAppCost error:", err);
-    return { custoBRL: 0, conversas: 0, mensagensRecebidas: 0, daily: {} };
+    return { custoBRL: 0, conversas: 0, mensagensRecebidas: 0, daily: {}, fonte: "none" as const };
   }
 }
 
