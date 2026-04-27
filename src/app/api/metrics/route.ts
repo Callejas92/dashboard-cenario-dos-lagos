@@ -18,7 +18,7 @@ const DEFAULT_DATA = {
     totalSemanas: 78,
     canais: [
       "Google Ads", "Meta Ads", "WhatsApp", "Outdoor", "Rádio", "Site",
-      "Jornal", "Outros", "Indicação", "Contato Corretor",
+      "Jornal", "Evento", "Outros", "Indicação", "Contato Corretor",
     ],
     metas: { cpl: 50, cac: 11250, roi: 3.5, vso: 5, tlq: 30, tcs: 35, slaResposta: 5 },
     vgv: { totalUnidades: 0, ticketMedio: 0, vgvTotal: 0 },

@@ -30,7 +30,7 @@ const CRM_SOURCE_MAP: Record<string, string> = {
   "WPP": "WhatsApp",
 };
 
-const ALL_CANAIS = ["Google Ads", "Meta Ads", "WhatsApp", "Outdoor", "Rádio", "Site", "Jornal", "Outros", "Indicação", "Contato Corretor"];
+const ALL_CANAIS = ["Google Ads", "Meta Ads", "WhatsApp", "Outdoor", "Rádio", "Site", "Jornal", "Evento", "Outros", "Indicação", "Contato Corretor"];
 
 interface CanalData {
   investimento: number;
@@ -140,7 +140,7 @@ async function fetchCRMLeads(from: string, to: string): Promise<CRMLeadsResult> 
   return { totals, daily };
 }
 
-// ── Custo WhatsApp Business via Meta conversation_analytics ──
+// ── Custo WhatsApp Business (via /api/whatsapp que já tem fallback de estimação) ──
 interface WhatsAppResult {
   custoBRL: number;
   conversas: number;
@@ -149,67 +149,42 @@ interface WhatsAppResult {
 }
 
 async function fetchWhatsAppCost(from: string, to: string): Promise<WhatsAppResult> {
-  const token = process.env.WHATSAPP_TOKEN?.trim();
-  const wabaId = process.env.WHATSAPP_WABA_ID?.trim();
-  if (!token || !wabaId) return { custoBRL: 0, conversas: 0, mensagensRecebidas: 0, daily: {} };
-
-  const startTs = Math.floor(new Date(from + "T00:00:00").getTime() / 1000);
-  const endTs = Math.floor(new Date(to + "T23:59:59").getTime() / 1000);
-
   try {
-    const [convRes, fxRes] = await Promise.all([
-      fetch(
-        `https://graph.facebook.com/v21.0/${wabaId}/conversation_analytics` +
-        `?start=${startTs}&end=${endTs}&granularity=DAILY` +
-        `&metric_types=${encodeURIComponent(JSON.stringify(["COST", "CONVERSATION"]))}` +
-        `&access_token=${token}`,
-        { signal: AbortSignal.timeout(10000) }
-      ),
-      fetch("https://open.er-api.com/v6/latest/USD", { signal: AbortSignal.timeout(5000) }).catch(() => null),
-    ]);
+    const baseUrl = process.env.VERCEL_URL
+      ? `https://${process.env.VERCEL_URL}`
+      : "http://localhost:3000";
+    const res = await fetch(`${baseUrl}/api/whatsapp?from=${from}&to=${to}`, {
+      signal: AbortSignal.timeout(15000),
+    });
+    if (!res.ok) return { custoBRL: 0, conversas: 0, mensagensRecebidas: 0, daily: {} };
 
-    const convData = await convRes.json();
-    const fxData = fxRes ? await fxRes.json() : null;
-    const exchangeRate = fxData?.rates?.BRL ?? 5.70;
+    const data = await res.json();
+    const conversas = data.conversas || {};
+    const mensagens = data.mensagens || {};
+    const dailyChart = data.dailyChart || [];
 
-    let totalConversas = 0;
-    let custoUSD = 0;
+    // Calcula custo diário rateando o total pelos dias com atividade
+    // (a API de WhatsApp não retorna custo por dia, só agregado)
     const daily: Record<string, number> = {};
-    for (const entry of (convData.data || [])) {
-      for (const point of (entry.data_points || [])) {
-        totalConversas += point.conversation || 0;
-        custoUSD += point.cost || 0;
-        // Agrupar por dia (start é timestamp do dia)
-        if (point.start) {
-          const dateStr = new Date(point.start * 1000).toISOString().split("T")[0];
-          daily[dateStr] = (daily[dateStr] || 0) + (point.cost || 0) * exchangeRate;
+    const custoTotal = conversas.custoBRL || 0;
+    const totalDelivered = mensagens.delivered || 0;
+    if (custoTotal > 0 && totalDelivered > 0) {
+      for (const d of dailyChart) {
+        if (d.delivered > 0) {
+          // Rateia proporcionalmente pelas mensagens entregues do dia
+          daily[d.data] = (d.delivered / totalDelivered) * custoTotal;
         }
       }
     }
 
-    // Buscar mensagens recebidas do webhook stats (proxy de "leads via WhatsApp")
-    let mensagensRecebidas = 0;
-    try {
-      const { list } = await import("@vercel/blob");
-      const { blobs } = await list({ prefix: "whatsapp-events.json" });
-      if (blobs.length > 0) {
-        const statsRes = await fetch(blobs[0].url, { cache: "no-store" });
-        const stats = await statsRes.json();
-        for (const [day, dayStats] of Object.entries(stats.daily || {}) as [string, { received?: number }][]) {
-          if (day >= from && day <= to) {
-            mensagensRecebidas += dayStats.received || 0;
-          }
-        }
-      }
-    } catch { /* ignore */ }
-
     return {
-      custoBRL: custoUSD * exchangeRate,
-      conversas: totalConversas,
-      mensagensRecebidas,
+      custoBRL: custoTotal,
+      conversas: conversas.total || 0,
+      mensagensRecebidas: mensagens.received || 0,
       daily,
     };
-  } catch {
+  } catch (err) {
+    console.error("fetchWhatsAppCost error:", err);
     return { custoBRL: 0, conversas: 0, mensagensRecebidas: 0, daily: {} };
   }
 }

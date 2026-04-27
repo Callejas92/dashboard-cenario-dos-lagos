@@ -29,10 +29,14 @@ const CANAL_COLORS: Record<string, string> = {
   "Outdoor": "#f4a236",
   "Rádio": "#8b5cf6",
   "Jornal": "#e94560",
+  "Evento": "#ec4899",
   "Indicação": "#0ea5e9",
   "Contato Corretor": "#f59e0b",
   "Outros": "#6b7280",
 };
+
+// Canais que sempre aparecem na tabela (mesmo zerados) — fontes de mídia paga relevantes
+const CANAIS_SEMPRE_VISIVEIS = ["Meta Ads", "Google Ads", "WhatsApp", "Outdoor", "Rádio", "Jornal", "Evento"];
 
 function today() {
   return new Date().toISOString().split("T")[0];
@@ -234,15 +238,15 @@ export default function TabVisaoGeral({ data }: Props) {
         .sort((a, b) => a.date.localeCompare(b.date));
     };
 
-    // Mostra canais que tenham QUALQUER atividade (investimento, leads, vendas)
-    // Isso garante que canais como WhatsApp apareçam mesmo com R$ 0 de custo
+    // Mostra canais com qualquer atividade OU canais "sempre visíveis" (mídia paga)
+    // Isso garante que WhatsApp, Eventos, Google Ads etc apareçam mesmo zerados
     const canaisDetail = Object.entries(apiData.canais)
       .map(([nome, c]) => ({
         nome,
         value: c[cfg.dataKey] as number,
         hasAnyActivity: c.investimento > 0 || c.leads > 0 || c.vendas > 0 || c.valorVendas > 0,
       }))
-      .filter((c) => c.hasAnyActivity)
+      .filter((c) => c.hasAnyActivity || CANAIS_SEMPRE_VISIVEIS.includes(c.nome))
       .sort((a, b) => b.value - a.value);
 
     // Lista de canais com info se têm dados pra métrica atual
