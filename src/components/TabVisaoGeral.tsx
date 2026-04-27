@@ -239,9 +239,13 @@ export default function TabVisaoGeral({ data }: Props) {
       .filter((c) => c.value > 0)
       .sort((a, b) => b.value - a.value);
 
-    // Lista de TODOS os canais que aparecem em qualquer dia (independe da métrica)
-    // Isso permite filtrar por canal mesmo quando o valor da métrica é 0 nesse canal
-    const canaisComDados = Array.from(new Set(dailyByCanal.map((d) => d.canal))).sort();
+    // Lista de canais com info se têm dados pra métrica atual
+    const canaisComDados = Array.from(new Set(dailyByCanal.map((d) => d.canal)))
+      .sort()
+      .map((c) => ({
+        nome: c,
+        temValor: dailyByCanal.some((d) => d.canal === c && (d[cfg.dataKey] as number) > 0),
+      }));
 
     const dailyValues = getDailyValues(detailCanalFilter);
     const hasDailyData = dailyByCanal.some((d) => (d[cfg.dataKey] as number) > 0);
@@ -322,22 +326,28 @@ export default function TabVisaoGeral({ data }: Props) {
                     </button>
                     {canaisComDados.map((c) => (
                       <button
-                        key={c}
-                        onMouseDown={() => { setDetailCanalFilter(c); setCanalDropdownOpen(false); }}
+                        key={c.nome}
+                        onMouseDown={() => { setDetailCanalFilter(c.nome); setCanalDropdownOpen(false); }}
                         style={{
-                          display: "flex", alignItems: "center", gap: "0.5rem",
+                          display: "flex", alignItems: "center", gap: "0.5rem", justifyContent: "space-between",
                           width: "100%", padding: "0.5rem 0.75rem", fontSize: "0.75rem",
-                          fontWeight: detailCanalFilter === c ? 700 : 500,
-                          background: detailCanalFilter === c ? cfg.color + "15" : "transparent",
-                          color: detailCanalFilter === c ? cfg.color : "var(--text)",
+                          fontWeight: detailCanalFilter === c.nome ? 700 : 500,
+                          background: detailCanalFilter === c.nome ? cfg.color + "15" : "transparent",
+                          color: detailCanalFilter === c.nome ? cfg.color : c.temValor ? "var(--text)" : "var(--text-dim)",
                           border: "none", cursor: "pointer", textAlign: "left",
+                          opacity: c.temValor ? 1 : 0.55,
                         }}
                       >
-                        <span style={{
-                          display: "inline-block", width: 8, height: 8, borderRadius: "50%",
-                          background: CANAL_COLORS[c] ?? "#6b7280",
-                        }} />
-                        {c}
+                        <span style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                          <span style={{
+                            display: "inline-block", width: 8, height: 8, borderRadius: "50%",
+                            background: CANAL_COLORS[c.nome] ?? "#6b7280",
+                          }} />
+                          {c.nome}
+                        </span>
+                        {!c.temValor && (
+                          <span style={{ fontSize: "0.6rem", color: "var(--text-dim)" }}>(sem dados)</span>
+                        )}
                       </button>
                     ))}
                   </div>
