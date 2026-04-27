@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { RefreshCw, Users, Heart, MessageCircle, TrendingUp, Eye, Image, ChevronDown, ChevronUp, X, Table, BarChart3 } from "lucide-react";
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
-  PieChart, Pie, Cell, AreaChart, Area,
+  PieChart, Pie, Cell, AreaChart, Area, LineChart, Line,
 } from "recharts";
 import { formatNumber } from "@/lib/types";
 import DateRangeFilter from "@/components/DateRangeFilter";
@@ -41,6 +41,8 @@ interface IGData {
     avgEngagement: number;
     engagementRate: number;
   };
+  historicoSeguidores?: { data: string; seguidores: number }[];
+  crescimento?: { dia: number; semana: number };
   insights: Record<string, number[]>;
   posts: Post[];
   topPosts: Post[];
@@ -233,7 +235,7 @@ export default function TabInstagram() {
       {/* KPIs - Expandable */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
         {([
-          { key: "seguidores" as IgMetricKey, label: "Seguidores", value: formatNumber(data.perfil.seguidores), sub: undefined as string | undefined, icon: Users, color: "#e94560" },
+          { key: "seguidores" as IgMetricKey, label: "Seguidores", value: formatNumber(data.perfil.seguidores), sub: data.crescimento && data.crescimento.semana !== 0 ? `${data.crescimento.semana > 0 ? "+" : ""}${data.crescimento.semana} em 7d` : data.crescimento && data.crescimento.dia !== 0 ? `${data.crescimento.dia > 0 ? "+" : ""}${data.crescimento.dia} hoje` : "histórico iniciando" as string | undefined, icon: Users, color: "#e94560" },
           { key: "curtidas" as IgMetricKey, label: "Curtidas", value: formatNumber(totalLikes), sub: `${filteredPosts.length} posts` as string | undefined, icon: Heart, color: "#f59e0b" },
           { key: "comentarios" as IgMetricKey, label: "Comentários", value: formatNumber(totalComments), sub: undefined as string | undefined, icon: MessageCircle, color: "#6366f1" },
           { key: "engajamento" as IgMetricKey, label: "Taxa Engaj.", value: `${engRate.toFixed(2)}%`, sub: `Méd. ${avgEng.toFixed(1)}/post` as string | undefined, icon: TrendingUp, color: "#10b981" },
@@ -323,6 +325,88 @@ export default function TabInstagram() {
           );
         })()}
       </div>
+
+      {/* Evolução de Seguidores (histórico diário acumulado no Vercel Blob) */}
+      {data.historicoSeguidores && data.historicoSeguidores.length > 0 && (
+        <div className="kpi-card">
+          <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+            <div>
+              <h3 className="text-sm font-bold" style={{ color: "var(--text-muted)" }}>
+                EVOLUÇÃO DE SEGUIDORES
+              </h3>
+              <p className="text-xs mt-1" style={{ color: "var(--text-dim)" }}>
+                {data.historicoSeguidores.length} {data.historicoSeguidores.length === 1 ? "dia" : "dias"} de histórico
+                {data.crescimento && data.crescimento.semana !== 0 && (
+                  <span style={{
+                    marginLeft: "0.5rem",
+                    color: data.crescimento.semana > 0 ? "#10b981" : "#e94560",
+                    fontWeight: 600,
+                  }}>
+                    {data.crescimento.semana > 0 ? "↑" : "↓"} {Math.abs(data.crescimento.semana)} em 7 dias
+                  </span>
+                )}
+              </p>
+            </div>
+            {data.historicoSeguidores.length === 1 && (
+              <span style={{
+                fontSize: "0.65rem", padding: "0.25rem 0.5rem",
+                background: "#f59e0b15", color: "#f59e0b",
+                borderRadius: "0.375rem", fontWeight: 600,
+              }}>
+                Coletando dados — volte amanhã
+              </span>
+            )}
+          </div>
+
+          {data.historicoSeguidores.length >= 2 ? (
+            <ResponsiveContainer width="100%" height={240}>
+              <LineChart data={data.historicoSeguidores.map((h) => ({
+                ...h,
+                dataLabel: new Date(h.data + "T00:00:00").toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" }),
+              }))}>
+                <defs>
+                  <linearGradient id="gradFollowers" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#e94560" stopOpacity={0.3} />
+                    <stop offset="95%" stopColor="#e94560" stopOpacity={0} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+                <XAxis dataKey="dataLabel" tick={{ fill: "var(--text-dim)", fontSize: 11 }} interval="preserveStartEnd" />
+                <YAxis
+                  tick={{ fill: "var(--text-dim)", fontSize: 11 }}
+                  domain={["dataMin - 5", "dataMax + 5"]}
+                  tickFormatter={(v) => formatNumber(Number(v))}
+                />
+                <Tooltip
+                  {...tooltipStyle}
+                  labelFormatter={(_, p) => {
+                    const payload = p[0]?.payload as { data?: string } | undefined;
+                    return payload?.data ? new Date(payload.data + "T00:00:00").toLocaleDateString("pt-BR") : "";
+                  }}
+                  formatter={(v) => [formatNumber(Number(v)), "Seguidores"]}
+                />
+                <Line
+                  type="monotone"
+                  dataKey="seguidores"
+                  stroke="#e94560"
+                  strokeWidth={2.5}
+                  dot={{ fill: "#e94560", r: 3 }}
+                  activeDot={{ r: 5 }}
+                />
+              </LineChart>
+            </ResponsiveContainer>
+          ) : (
+            <div className="text-center py-8">
+              <p className="text-sm" style={{ color: "var(--text-dim)" }}>
+                📊 O histórico está sendo coletado automaticamente.
+              </p>
+              <p className="text-xs mt-2" style={{ color: "var(--text-dim)" }}>
+                Volte amanhã para ver a evolução dos seus seguidores ao longo do tempo.
+              </p>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Charts */}
       {filteredPosts.length > 0 ? (

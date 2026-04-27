@@ -1,10 +1,73 @@
 import { NextRequest, NextResponse } from "next/server";
+import { list, put } from "@vercel/blob";
 
 const META_API = "https://graph.facebook.com/v21.0";
+const FOLLOWERS_BLOB_NAME = "instagram-followers.json";
 
 // In-memory cache
 let cachedData: { data: unknown; timestamp: number } | null = null;
 const CACHE_TTL = 10 * 60 * 1000;
+
+interface FollowersHistory {
+  historico: { data: string; seguidores: number }[];
+  updatedAt: string;
+}
+
+// ── Carrega histórico de seguidores do Blob ──
+async function loadFollowersHistory(): Promise<FollowersHistory> {
+  try {
+    const { blobs } = await list({ prefix: FOLLOWERS_BLOB_NAME });
+    if (blobs.length === 0) return { historico: [], updatedAt: "" };
+    const res = await fetch(blobs[0].url, { cache: "no-store" });
+    return await res.json();
+  } catch {
+    return { historico: [], updatedAt: "" };
+  }
+}
+
+// ── Salva snapshot diário (max 1 por dia) ──
+// Fire-and-forget: não bloqueia o request principal
+async function saveFollowersSnapshot(seguidores: number): Promise<{ data: string; seguidores: number }[]> {
+  try {
+    const history = await loadFollowersHistory();
+    const today = new Date().toISOString().split("T")[0];
+
+    // Se já tem registro de hoje, atualiza só se mudou (não duplica)
+    const existingIdx = history.historico.findIndex((h) => h.data === today);
+    if (existingIdx >= 0) {
+      // Atualiza valor de hoje (caso tenha mudado durante o dia)
+      if (history.historico[existingIdx].seguidores !== seguidores) {
+        history.historico[existingIdx].seguidores = seguidores;
+        history.updatedAt = new Date().toISOString();
+        // Salva fire-and-forget
+        put(FOLLOWERS_BLOB_NAME, JSON.stringify(history), {
+          access: "public",
+          addRandomSuffix: false,
+          allowOverwrite: true,
+        }).catch((e) => console.warn("Erro ao salvar followers (update):", e));
+      }
+    } else {
+      // Adiciona novo registro de hoje
+      history.historico.push({ data: today, seguidores });
+      // Mantém ordenado e limita a 365 dias
+      history.historico.sort((a, b) => a.data.localeCompare(b.data));
+      if (history.historico.length > 365) {
+        history.historico = history.historico.slice(-365);
+      }
+      history.updatedAt = new Date().toISOString();
+      put(FOLLOWERS_BLOB_NAME, JSON.stringify(history), {
+        access: "public",
+        addRandomSuffix: false,
+        allowOverwrite: true,
+      }).catch((e) => console.warn("Erro ao salvar followers (new):", e));
+    }
+
+    return history.historico;
+  } catch (err) {
+    console.error("saveFollowersSnapshot error:", err);
+    return [];
+  }
+}
 
 export async function GET(request: NextRequest) {
   const accessToken = process.env.META_ACCESS_TOKEN?.trim();
@@ -108,13 +171,29 @@ export async function GET(request: NextRequest) {
     }
     const porTipo = Array.from(tipoMap.entries()).map(([tipo, qtd]) => ({ tipo, qtd }));
 
+    // Salva snapshot de hoje no Blob e retorna histórico atualizado
+    const seguidoresHoje = profile.followers_count || 0;
+    const historicoSeguidores = await saveFollowersSnapshot(seguidoresHoje);
+
+    // Calcula crescimento (vs dia anterior, vs 7 dias atrás)
+    let crescimentoDia = 0;
+    let crescimento7d = 0;
+    if (historicoSeguidores.length >= 2) {
+      const ontem = historicoSeguidores[historicoSeguidores.length - 2];
+      crescimentoDia = seguidoresHoje - ontem.seguidores;
+    }
+    if (historicoSeguidores.length >= 8) {
+      const semanaPassada = historicoSeguidores[historicoSeguidores.length - 8];
+      crescimento7d = seguidoresHoje - semanaPassada.seguidores;
+    }
+
     const response = {
       configured: true,
       perfil: {
         nome: profile.name || "",
         username: profile.username || "",
         foto: profile.profile_picture_url || "",
-        seguidores: profile.followers_count || 0,
+        seguidores: seguidoresHoje,
         seguindo: profile.follows_count || 0,
         totalPosts: profile.media_count || 0,
         bio: profile.biography || "",
@@ -124,6 +203,12 @@ export async function GET(request: NextRequest) {
         totalComments,
         avgEngagement: Math.round(avgEngagement * 10) / 10,
         engagementRate: Math.round(engagementRate * 100) / 100,
+      },
+      // Histórico de seguidores acumulado dia a dia
+      historicoSeguidores,
+      crescimento: {
+        dia: crescimentoDia,
+        semana: crescimento7d,
       },
       insights,
       posts,
