@@ -235,10 +235,10 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // ── 4. Ranking de hashtags ──
+    // ── 4. Ranking de hashtags (suporta acentos PT-BR via Unicode classes) ──
     const hashtagMap = new Map<string, { posts: number; totalEng: number }>();
     for (const p of posts) {
-      const tags = (p.caption.match(/#\w+/g) || []).map((t: string) => t.toLowerCase());
+      const tags = (p.caption.match(/#[\p{L}\p{N}_]+/gu) || []).map((t: string) => t.toLowerCase());
       for (const tag of new Set(tags)) {
         const cur = hashtagMap.get(tag) || { posts: 0, totalEng: 0 };
         cur.posts++;
