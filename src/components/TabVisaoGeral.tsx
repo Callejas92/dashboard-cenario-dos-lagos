@@ -234,9 +234,15 @@ export default function TabVisaoGeral({ data }: Props) {
         .sort((a, b) => a.date.localeCompare(b.date));
     };
 
+    // Mostra canais que tenham QUALQUER atividade (investimento, leads, vendas)
+    // Isso garante que canais como WhatsApp apareçam mesmo com R$ 0 de custo
     const canaisDetail = Object.entries(apiData.canais)
-      .map(([nome, c]) => ({ nome, value: c[cfg.dataKey] as number }))
-      .filter((c) => c.value > 0)
+      .map(([nome, c]) => ({
+        nome,
+        value: c[cfg.dataKey] as number,
+        hasAnyActivity: c.investimento > 0 || c.leads > 0 || c.vendas > 0 || c.valorVendas > 0,
+      }))
+      .filter((c) => c.hasAnyActivity)
       .sort((a, b) => b.value - a.value);
 
     // Lista de canais com info se têm dados pra métrica atual

@@ -200,110 +200,100 @@ export default function CrmStatusPanel() {
         </div>
       </div>
 
-      {/* Modal com lotes do status selecionado */}
+      {/* Painel inline com lotes do status selecionado (estilo Visão Geral) */}
       {openStatus && data.lotes && (
         <div
-          onClick={() => setOpenStatus(null)}
           style={{
-            position: "fixed", inset: 0, zIndex: 100,
-            background: "rgba(0,0,0,0.6)",
-            display: "flex", alignItems: "center", justifyContent: "center",
-            padding: "1rem",
+            marginTop: "1rem",
+            background: "var(--surface)", border: `1px solid ${STATUS_CONFIG[openStatus]?.color || "var(--border)"}40`,
+            borderRadius: "0.75rem", padding: "1rem",
+            animation: "fadeIn 0.2s ease",
           }}
         >
-          <div
-            onClick={(e) => e.stopPropagation()}
-            style={{
-              background: "var(--card-bg)", border: "1px solid var(--border)",
-              borderRadius: "1rem", padding: "1.5rem",
-              maxWidth: "900px", width: "100%",
-              maxHeight: "80vh", display: "flex", flexDirection: "column",
-            }}
-          >
-            <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center gap-2">
-                <span style={{
-                  display: "inline-block", width: 12, height: 12, borderRadius: "50%",
-                  background: STATUS_CONFIG[openStatus]?.color || "#6b7280",
-                }} />
-                <h3 className="text-base font-bold" style={{ color: "var(--text)" }}>
-                  Lotes {openStatus} ({(counts[openStatus] || 0)})
-                </h3>
-              </div>
-              <button
-                onClick={() => setOpenStatus(null)}
-                style={{
-                  padding: "0.375rem", borderRadius: "0.375rem",
-                  background: "var(--surface)", border: "1px solid var(--border)",
-                  cursor: "pointer", color: "var(--text-dim)",
-                }}
-              >
-                <X size={16} />
-              </button>
+          <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+            <div className="flex items-center gap-2">
+              <span style={{
+                display: "inline-block", width: 10, height: 10, borderRadius: "50%",
+                background: STATUS_CONFIG[openStatus]?.color || "#6b7280",
+              }} />
+              <h4 className="text-sm font-bold" style={{ color: "var(--text-muted)" }}>
+                LOTES {openStatus} ({data.lotes.filter((l) => l.status === openStatus && (showInvestidor || !l.isInvestidor)).length})
+              </h4>
             </div>
+            <button
+              onClick={() => setOpenStatus(null)}
+              style={{
+                padding: "0.25rem", borderRadius: "0.375rem",
+                background: "var(--card-bg)", border: "1px solid var(--border)",
+                cursor: "pointer", color: "var(--text-dim)",
+              }}
+              title="Fechar"
+            >
+              <X size={14} />
+            </button>
+          </div>
 
-            <div style={{ overflowY: "auto", flex: 1 }}>
-              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.8rem" }}>
-                <thead>
-                  <tr style={{ borderBottom: "2px solid var(--border)", position: "sticky", top: 0, background: "var(--card-bg)" }}>
-                    <th style={{ textAlign: "left", padding: "0.5rem", color: "var(--text-dim)", fontWeight: 600 }}>Lote</th>
-                    <th style={{ textAlign: "left", padding: "0.5rem", color: "var(--text-dim)", fontWeight: 600 }}>Rua</th>
-                    <th style={{ textAlign: "right", padding: "0.5rem", color: "var(--text-dim)", fontWeight: 600 }}>Área (m²)</th>
-                    <th style={{ textAlign: "right", padding: "0.5rem", color: "var(--text-dim)", fontWeight: 600 }}>Valor</th>
-                    <th style={{ textAlign: "center", padding: "0.5rem", color: "var(--text-dim)", fontWeight: 600 }}>Origem</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {data.lotes
-                    .filter((l) => l.status === openStatus && (showInvestidor || !l.isInvestidor))
-                    .sort((a, b) => a.loteId.localeCompare(b.loteId))
-                    .map((l) => (
-                      <tr key={l.loteId} style={{ borderBottom: "1px solid var(--border)" }}>
-                        <td style={{ padding: "0.5rem", color: "var(--text)", fontWeight: 600 }}>
-                          {l.loteId}
-                        </td>
-                        <td style={{ padding: "0.5rem", color: "var(--text-muted)" }}>
-                          {l.rua || "—"}
-                        </td>
-                        <td style={{ padding: "0.5rem", textAlign: "right", color: "var(--text)" }}>
-                          {l.metragem.toFixed(0)}
-                        </td>
-                        <td style={{ padding: "0.5rem", textAlign: "right", color: "var(--text)", fontWeight: 500 }}>
-                          {formatBRL(l.valor)}
-                        </td>
-                        <td style={{ padding: "0.5rem", textAlign: "center" }}>
-                          {l.isInvestidor ? (
-                            <span style={{
-                              fontSize: "0.65rem", padding: "0.125rem 0.5rem",
-                              background: "#8b5cf615", color: "#8b5cf6",
-                              borderRadius: "0.375rem", fontWeight: 600,
-                            }}>
-                              Investidor
-                            </span>
-                          ) : (
-                            <span style={{ fontSize: "0.7rem", color: "var(--text-dim)" }}>Cliente</span>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
-                </tbody>
-                <tfoot>
-                  <tr style={{ borderTop: "2px solid var(--border)" }}>
-                    <td colSpan={3} style={{ padding: "0.625rem 0.5rem", fontWeight: 700, color: "var(--text-muted)" }}>
-                      TOTAL
-                    </td>
-                    <td style={{ padding: "0.625rem 0.5rem", textAlign: "right", fontWeight: 700, color: STATUS_CONFIG[openStatus]?.color || "var(--text)" }}>
-                      {formatBRL(
-                        data.lotes
-                          .filter((l) => l.status === openStatus && (showInvestidor || !l.isInvestidor))
-                          .reduce((s, l) => s + l.valor, 0)
-                      )}
-                    </td>
-                    <td></td>
-                  </tr>
-                </tfoot>
-              </table>
-            </div>
+          <div style={{ overflowX: "auto", maxHeight: "400px", overflowY: "auto" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.8rem" }}>
+              <thead>
+                <tr style={{ borderBottom: "2px solid var(--border)", position: "sticky", top: 0, background: "var(--surface)" }}>
+                  <th style={{ textAlign: "left", padding: "0.5rem 0.75rem", color: "var(--text-dim)", fontWeight: 600 }}>Lote</th>
+                  <th style={{ textAlign: "left", padding: "0.5rem 0.75rem", color: "var(--text-dim)", fontWeight: 600 }}>Rua</th>
+                  <th style={{ textAlign: "right", padding: "0.5rem 0.75rem", color: "var(--text-dim)", fontWeight: 600 }}>Área (m²)</th>
+                  <th style={{ textAlign: "right", padding: "0.5rem 0.75rem", color: "var(--text-dim)", fontWeight: 600 }}>Valor</th>
+                  <th style={{ textAlign: "center", padding: "0.5rem 0.75rem", color: "var(--text-dim)", fontWeight: 600 }}>Origem</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.lotes
+                  .filter((l) => l.status === openStatus && (showInvestidor || !l.isInvestidor))
+                  .sort((a, b) => a.loteId.localeCompare(b.loteId))
+                  .map((l) => (
+                    <tr key={l.loteId} style={{ borderBottom: "1px solid var(--border)" }}>
+                      <td style={{ padding: "0.5rem 0.75rem", color: "var(--text)", fontWeight: 600 }}>
+                        {l.loteId}
+                      </td>
+                      <td style={{ padding: "0.5rem 0.75rem", color: "var(--text-muted)" }}>
+                        {l.rua || "—"}
+                      </td>
+                      <td style={{ padding: "0.5rem 0.75rem", textAlign: "right", color: "var(--text)" }}>
+                        {l.metragem.toFixed(0)}
+                      </td>
+                      <td style={{ padding: "0.5rem 0.75rem", textAlign: "right", color: "var(--text)", fontWeight: 500 }}>
+                        {formatBRL(l.valor)}
+                      </td>
+                      <td style={{ padding: "0.5rem 0.75rem", textAlign: "center" }}>
+                        {l.isInvestidor ? (
+                          <span style={{
+                            fontSize: "0.65rem", padding: "0.125rem 0.5rem",
+                            background: "#8b5cf615", color: "#8b5cf6",
+                            borderRadius: "0.375rem", fontWeight: 600,
+                          }}>
+                            Investidor
+                          </span>
+                        ) : (
+                          <span style={{ fontSize: "0.7rem", color: "var(--text-dim)" }}>Cliente</span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+              </tbody>
+              <tfoot>
+                <tr style={{ background: (STATUS_CONFIG[openStatus]?.color || "#6b7280") + "10", fontWeight: 700, borderTop: `2px solid ${STATUS_CONFIG[openStatus]?.color || "#6b7280"}` }}>
+                  <td colSpan={3} style={{ padding: "0.625rem 0.75rem", color: STATUS_CONFIG[openStatus]?.color || "var(--text)" }}>
+                    TOTAL
+                  </td>
+                  <td style={{ padding: "0.625rem 0.75rem", textAlign: "right", color: STATUS_CONFIG[openStatus]?.color || "var(--text)" }}>
+                    {formatBRL(
+                      data.lotes
+                        .filter((l) => l.status === openStatus && (showInvestidor || !l.isInvestidor))
+                        .reduce((s, l) => s + l.valor, 0)
+                    )}
+                  </td>
+                  <td></td>
+                </tr>
+              </tfoot>
+            </table>
           </div>
         </div>
       )}
