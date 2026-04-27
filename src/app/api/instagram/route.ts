@@ -120,7 +120,10 @@ export async function GET(request: NextRequest) {
       likes: number;
       comentarios: number;
       engajamento: number;
+      performance?: "above" | "average" | "below";
     }[] = [];
+
+    type Post = (typeof posts)[number];
 
     if (mediaRes.ok) {
       const mediaData = await mediaRes.json();
@@ -164,12 +167,131 @@ export async function GET(request: NextRequest) {
     // Top posts by engagement
     const topPosts = [...posts].sort((a, b) => b.engajamento - a.engajamento).slice(0, 5);
 
-    // Posts by type
-    const tipoMap = new Map<string, number>();
+    // ── 1. Engajamento por tipo (com avg) ──
+    const tipoEngMap = new Map<string, { qtd: number; totalEng: number; totalLikes: number; totalComments: number }>();
     for (const p of posts) {
-      tipoMap.set(p.tipo, (tipoMap.get(p.tipo) || 0) + 1);
+      const cur = tipoEngMap.get(p.tipo) || { qtd: 0, totalEng: 0, totalLikes: 0, totalComments: 0 };
+      cur.qtd++;
+      cur.totalEng += p.engajamento;
+      cur.totalLikes += p.likes;
+      cur.totalComments += p.comentarios;
+      tipoEngMap.set(p.tipo, cur);
     }
-    const porTipo = Array.from(tipoMap.entries()).map(([tipo, qtd]) => ({ tipo, qtd }));
+    const porTipo = Array.from(tipoEngMap.entries())
+      .map(([tipo, v]) => ({
+        tipo,
+        qtd: v.qtd,
+        avgEngajamento: v.qtd > 0 ? v.totalEng / v.qtd : 0,
+        avgLikes: v.qtd > 0 ? v.totalLikes / v.qtd : 0,
+        avgComments: v.qtd > 0 ? v.totalComments / v.qtd : 0,
+        totalEng: v.totalEng,
+      }))
+      .sort((a, b) => b.avgEngajamento - a.avgEngajamento);
+
+    // ── 2. Melhor dia da semana ──
+    const DIAS_SEMANA = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
+    const diaSemMap = new Map<number, { qtd: number; totalEng: number }>();
+    for (let i = 0; i < 7; i++) diaSemMap.set(i, { qtd: 0, totalEng: 0 });
+    for (const p of posts) {
+      if (!p.data) continue;
+      const d = new Date(p.data);
+      const diaSemana = d.getDay();
+      const cur = diaSemMap.get(diaSemana)!;
+      cur.qtd++;
+      cur.totalEng += p.engajamento;
+    }
+    const porDiaSemana = Array.from(diaSemMap.entries())
+      .map(([dia, v]) => ({
+        dia,
+        nome: DIAS_SEMANA[dia],
+        qtd: v.qtd,
+        avgEngajamento: v.qtd > 0 ? v.totalEng / v.qtd : 0,
+      }));
+    const melhorDia = [...porDiaSemana]
+      .filter((d) => d.qtd > 0)
+      .sort((a, b) => b.avgEngajamento - a.avgEngajamento)[0] || null;
+
+    // ── 3. Frequência de postagem ──
+    let frequencia = { postsTotal: posts.length, semanas: 0, mediaSemanal: 0, ultimaSemana: 0, semanaAnterior: 0 };
+    if (posts.length > 0) {
+      const datasOrdenadas = [...posts].filter((p) => p.data).sort((a, b) => a.data.localeCompare(b.data));
+      if (datasOrdenadas.length > 0) {
+        const primeira = new Date(datasOrdenadas[0].data);
+        const ultima = new Date(datasOrdenadas[datasOrdenadas.length - 1].data);
+        const diasTotal = Math.max(1, Math.ceil((ultima.getTime() - primeira.getTime()) / 86400000));
+        const semanas = Math.max(1, diasTotal / 7);
+        const agora = new Date();
+        const seteDiasAtras = new Date(agora); seteDiasAtras.setDate(seteDiasAtras.getDate() - 7);
+        const quatorzeDiasAtras = new Date(agora); quatorzeDiasAtras.setDate(quatorzeDiasAtras.getDate() - 14);
+        const ultimaSemana = posts.filter((p) => p.data && new Date(p.data) >= seteDiasAtras).length;
+        const semanaAnterior = posts.filter((p) => p.data && new Date(p.data) >= quatorzeDiasAtras && new Date(p.data) < seteDiasAtras).length;
+        frequencia = {
+          postsTotal: posts.length,
+          semanas: Math.round(semanas * 10) / 10,
+          mediaSemanal: Math.round((posts.length / semanas) * 10) / 10,
+          ultimaSemana,
+          semanaAnterior,
+        };
+      }
+    }
+
+    // ── 4. Ranking de hashtags ──
+    const hashtagMap = new Map<string, { posts: number; totalEng: number }>();
+    for (const p of posts) {
+      const tags = (p.caption.match(/#\w+/g) || []).map((t: string) => t.toLowerCase());
+      for (const tag of new Set(tags)) {
+        const cur = hashtagMap.get(tag) || { posts: 0, totalEng: 0 };
+        cur.posts++;
+        cur.totalEng += p.engajamento;
+        hashtagMap.set(tag, cur);
+      }
+    }
+    const topHashtags = Array.from(hashtagMap.entries())
+      .map(([tag, v]) => ({
+        tag,
+        posts: v.posts,
+        totalEng: v.totalEng,
+        avgEng: v.posts > 0 ? v.totalEng / v.posts : 0,
+      }))
+      .filter((h) => h.posts >= 1)
+      .sort((a, b) => b.avgEng - a.avgEng)
+      .slice(0, 10);
+
+    // ── 5. Marcar posts vs média ──
+    // Adiciona campo "performance" em cada post: above | average | below
+    for (const p of posts as Post[]) {
+      if (avgEngagement === 0) {
+        p.performance = "average";
+      } else {
+        const ratio = p.engajamento / avgEngagement;
+        if (ratio >= 1.2) p.performance = "above";
+        else if (ratio <= 0.8) p.performance = "below";
+        else p.performance = "average";
+      }
+    }
+
+    // ── 6. Engajamento semanal (tendência) ──
+    const semMap = new Map<string, { posts: number; totalEng: number }>();
+    for (const p of posts) {
+      if (!p.data) continue;
+      const d = new Date(p.data);
+      // Início da semana (segunda)
+      const day = d.getDay();
+      const diff = d.getDate() - day + (day === 0 ? -6 : 1);
+      const monday = new Date(d.setDate(diff));
+      const key = monday.toISOString().split("T")[0];
+      const cur = semMap.get(key) || { posts: 0, totalEng: 0 };
+      cur.posts++;
+      cur.totalEng += p.engajamento;
+      semMap.set(key, cur);
+    }
+    const engajamentoSemanal = Array.from(semMap.entries())
+      .map(([data, v]) => ({
+        data,
+        posts: v.posts,
+        avgEng: v.posts > 0 ? v.totalEng / v.posts : 0,
+      }))
+      .sort((a, b) => a.data.localeCompare(b.data));
 
     // Salva snapshot de hoje no Blob e retorna histórico atualizado
     const seguidoresHoje = profile.followers_count || 0;
@@ -210,10 +332,16 @@ export async function GET(request: NextRequest) {
         dia: crescimentoDia,
         semana: crescimento7d,
       },
+      // Wave 7 — análises avançadas
+      porTipo,                    // 1. Engajamento médio por tipo
+      porDiaSemana,               // 2. Por dia da semana
+      melhorDia,                  // 2. Melhor dia
+      frequencia,                 // 3. Frequência de postagem
+      topHashtags,                // 4. Ranking de hashtags
+      engajamentoSemanal,         // 6. Tendência semanal
       insights,
-      posts,
+      posts,                      // 5. Posts agora têm campo "performance"
       topPosts,
-      porTipo,
       fetchedAt: new Date().toISOString(),
     };
 

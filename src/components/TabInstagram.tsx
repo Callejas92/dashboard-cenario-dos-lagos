@@ -43,10 +43,16 @@ interface IGData {
   };
   historicoSeguidores?: { data: string; seguidores: number }[];
   crescimento?: { dia: number; semana: number };
+  // Wave 7 — análises avançadas
+  porTipo: { tipo: string; qtd: number; avgEngajamento: number; avgLikes: number; avgComments: number; totalEng: number }[];
+  porDiaSemana?: { dia: number; nome: string; qtd: number; avgEngajamento: number }[];
+  melhorDia?: { dia: number; nome: string; qtd: number; avgEngajamento: number } | null;
+  frequencia?: { postsTotal: number; semanas: number; mediaSemanal: number; ultimaSemana: number; semanaAnterior: number };
+  topHashtags?: { tag: string; posts: number; totalEng: number; avgEng: number }[];
+  engajamentoSemanal?: { data: string; posts: number; avgEng: number }[];
   insights: Record<string, number[]>;
-  posts: Post[];
+  posts: (Post & { performance?: "above" | "average" | "below" })[];
   topPosts: Post[];
-  porTipo: { tipo: string; qtd: number }[];
   fetchedAt: string;
 }
 
@@ -432,6 +438,148 @@ export default function TabInstagram() {
             </div>
           )}
 
+          {/* ─── Wave 7: ANÁLISE DE PERFORMANCE ─── */}
+
+          {/* 3. Frequência de postagem (KPI cards) */}
+          {data.frequencia && data.frequencia.postsTotal > 0 && (
+            <div className="kpi-card">
+              <h3 className="text-sm font-bold mb-4" style={{ color: "var(--text-muted)" }}>FREQUÊNCIA DE POSTAGEM</h3>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <div style={{ padding: "0.75rem", background: "var(--surface)", borderRadius: "0.5rem", textAlign: "center" }}>
+                  <div style={{ fontSize: "0.65rem", color: "var(--text-dim)", marginBottom: "0.25rem", fontWeight: 600 }}>MÉDIA SEMANAL</div>
+                  <div style={{ fontSize: "1.5rem", fontWeight: 800, color: "#e94560" }}>{data.frequencia.mediaSemanal}</div>
+                  <div style={{ fontSize: "0.65rem", color: "var(--text-dim)" }}>posts/semana</div>
+                </div>
+                <div style={{ padding: "0.75rem", background: "var(--surface)", borderRadius: "0.5rem", textAlign: "center" }}>
+                  <div style={{ fontSize: "0.65rem", color: "var(--text-dim)", marginBottom: "0.25rem", fontWeight: 600 }}>ÚLTIMA SEMANA</div>
+                  <div style={{ fontSize: "1.5rem", fontWeight: 800, color: "var(--text)" }}>{data.frequencia.ultimaSemana}</div>
+                  <div style={{ fontSize: "0.65rem", color: data.frequencia.ultimaSemana >= data.frequencia.semanaAnterior ? "#10b981" : "#e94560" }}>
+                    {data.frequencia.ultimaSemana > data.frequencia.semanaAnterior ? "↑" : data.frequencia.ultimaSemana < data.frequencia.semanaAnterior ? "↓" : "="} vs anterior
+                  </div>
+                </div>
+                <div style={{ padding: "0.75rem", background: "var(--surface)", borderRadius: "0.5rem", textAlign: "center" }}>
+                  <div style={{ fontSize: "0.65rem", color: "var(--text-dim)", marginBottom: "0.25rem", fontWeight: 600 }}>SEMANA ANTERIOR</div>
+                  <div style={{ fontSize: "1.5rem", fontWeight: 800, color: "var(--text)" }}>{data.frequencia.semanaAnterior}</div>
+                  <div style={{ fontSize: "0.65rem", color: "var(--text-dim)" }}>posts</div>
+                </div>
+                <div style={{ padding: "0.75rem", background: "var(--surface)", borderRadius: "0.5rem", textAlign: "center" }}>
+                  <div style={{ fontSize: "0.65rem", color: "var(--text-dim)", marginBottom: "0.25rem", fontWeight: 600 }}>HISTÓRICO</div>
+                  <div style={{ fontSize: "1.5rem", fontWeight: 800, color: "var(--text)" }}>{data.frequencia.postsTotal}</div>
+                  <div style={{ fontSize: "0.65rem", color: "var(--text-dim)" }}>em {data.frequencia.semanas} sem.</div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* 1 + 2: Engajamento por tipo & por dia da semana */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* 1. Engajamento médio por tipo */}
+            {data.porTipo && data.porTipo.length > 0 && (
+              <div className="kpi-card">
+                <h3 className="text-sm font-bold mb-1" style={{ color: "var(--text-muted)" }}>ENGAJAMENTO MÉDIO POR TIPO</h3>
+                <p className="text-xs mb-3" style={{ color: "var(--text-dim)" }}>Qual formato performa melhor</p>
+                <ResponsiveContainer width="100%" height={220}>
+                  <BarChart data={data.porTipo.map((t) => ({
+                    tipo: TIPO_LABEL[t.tipo] || t.tipo,
+                    avgEng: Math.round(t.avgEngajamento * 10) / 10,
+                    qtd: t.qtd,
+                  }))} layout="vertical" margin={{ left: 8 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" horizontal={false} />
+                    <XAxis type="number" tick={{ fill: "var(--text-dim)", fontSize: 11 }} />
+                    <YAxis type="category" dataKey="tipo" tick={{ fill: "var(--text-dim)", fontSize: 11 }} width={80} />
+                    <Tooltip {...tooltipStyle} formatter={(v, _, p) => [`${v} (${(p.payload as { qtd: number }).qtd} posts)`, "Eng. médio"]} />
+                    <Bar dataKey="avgEng" radius={[0, 4, 4, 0]}>
+                      {data.porTipo.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            )}
+
+            {/* 2. Engajamento por dia da semana */}
+            {data.porDiaSemana && data.porDiaSemana.some((d) => d.qtd > 0) && (
+              <div className="kpi-card">
+                <h3 className="text-sm font-bold mb-1" style={{ color: "var(--text-muted)" }}>MELHOR DIA PARA POSTAR</h3>
+                <p className="text-xs mb-3" style={{ color: "var(--text-dim)" }}>
+                  {data.melhorDia ? <>🏆 <strong style={{ color: "var(--text)" }}>{data.melhorDia.nome}</strong> tem maior engajamento médio</> : "Engajamento por dia da semana"}
+                </p>
+                <ResponsiveContainer width="100%" height={220}>
+                  <BarChart data={data.porDiaSemana.map((d) => ({
+                    dia: d.nome,
+                    avgEng: Math.round(d.avgEngajamento * 10) / 10,
+                    qtd: d.qtd,
+                  }))}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+                    <XAxis dataKey="dia" tick={{ fill: "var(--text-dim)", fontSize: 11 }} />
+                    <YAxis tick={{ fill: "var(--text-dim)", fontSize: 11 }} />
+                    <Tooltip {...tooltipStyle} formatter={(v, _, p) => [`${v} (${(p.payload as { qtd: number }).qtd} posts)`, "Eng. médio"]} />
+                    <Bar dataKey="avgEng" fill="#6366f1" radius={[4, 4, 0, 0]}>
+                      {data.porDiaSemana.map((d, i) => (
+                        <Cell key={i} fill={data.melhorDia && d.dia === data.melhorDia.dia ? "#10b981" : "#6366f1"} />
+                      ))}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            )}
+          </div>
+
+          {/* 6. Engajamento semanal (tendência) */}
+          {data.engajamentoSemanal && data.engajamentoSemanal.length >= 2 && (
+            <div className="kpi-card">
+              <h3 className="text-sm font-bold mb-1" style={{ color: "var(--text-muted)" }}>TENDÊNCIA DE ENGAJAMENTO</h3>
+              <p className="text-xs mb-3" style={{ color: "var(--text-dim)" }}>Engajamento médio por semana</p>
+              <ResponsiveContainer width="100%" height={220}>
+                <LineChart data={data.engajamentoSemanal.map((s) => ({
+                  ...s,
+                  dataLabel: new Date(s.data + "T00:00:00").toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" }),
+                  avgEng: Math.round(s.avgEng * 10) / 10,
+                }))}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+                  <XAxis dataKey="dataLabel" tick={{ fill: "var(--text-dim)", fontSize: 11 }} />
+                  <YAxis tick={{ fill: "var(--text-dim)", fontSize: 11 }} />
+                  <Tooltip {...tooltipStyle} labelFormatter={(_, p) => {
+                    const payload = p[0]?.payload as { data?: string } | undefined;
+                    return payload?.data ? `Sem. de ${new Date(payload.data + "T00:00:00").toLocaleDateString("pt-BR")}` : "";
+                  }} formatter={(v, _, p) => [`${v} (${(p.payload as { posts: number }).posts} posts)`, "Eng. médio"]} />
+                  <Line type="monotone" dataKey="avgEng" stroke="#10b981" strokeWidth={2.5} dot={{ fill: "#10b981", r: 3 }} activeDot={{ r: 5 }} />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+
+          {/* 4. Top Hashtags */}
+          {data.topHashtags && data.topHashtags.length > 0 && (
+            <div className="kpi-card">
+              <h3 className="text-sm font-bold mb-1" style={{ color: "var(--text-muted)" }}>TOP HASHTAGS POR ENGAJAMENTO</h3>
+              <p className="text-xs mb-3" style={{ color: "var(--text-dim)" }}>Quais hashtags geram mais reação</p>
+              <div style={{ overflowX: "auto" }}>
+                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.8rem" }}>
+                  <thead>
+                    <tr style={{ borderBottom: "2px solid var(--border)" }}>
+                      <th style={{ textAlign: "left", padding: "0.5rem 0.75rem", color: "var(--text-dim)", fontWeight: 600 }}>Hashtag</th>
+                      <th style={{ textAlign: "right", padding: "0.5rem 0.75rem", color: "var(--text-dim)", fontWeight: 600 }}>Posts</th>
+                      <th style={{ textAlign: "right", padding: "0.5rem 0.75rem", color: "var(--text-dim)", fontWeight: 600 }}>Eng. médio</th>
+                      <th style={{ textAlign: "right", padding: "0.5rem 0.75rem", color: "var(--text-dim)", fontWeight: 600 }}>Eng. total</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {data.topHashtags.map((h) => (
+                      <tr key={h.tag} style={{ borderBottom: "1px solid var(--border)" }}>
+                        <td style={{ padding: "0.5rem 0.75rem", color: "#e94560", fontWeight: 600 }}>{h.tag}</td>
+                        <td style={{ textAlign: "right", padding: "0.5rem 0.75rem", color: "var(--text)" }}>{h.posts}</td>
+                        <td style={{ textAlign: "right", padding: "0.5rem 0.75rem", color: "var(--text)", fontWeight: 500 }}>{Math.round(h.avgEng)}</td>
+                        <td style={{ textAlign: "right", padding: "0.5rem 0.75rem", color: "var(--text-dim)" }}>{h.totalEng}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* /Wave 7 */}
+
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {/* Por tipo */}
             {porTipo.length > 0 && (
@@ -501,7 +649,25 @@ export default function TabInstagram() {
                       </td>
                       <td className="py-2 px-2 text-right" style={{ color: "var(--text-muted)" }}>{formatNumber(p.likes)}</td>
                       <td className="py-2 px-2 text-right" style={{ color: "var(--text-muted)" }}>{formatNumber(p.comentarios)}</td>
-                      <td className="py-2 px-2 text-right font-medium" style={{ color: "#e94560" }}>{formatNumber(p.engajamento)}</td>
+                      <td className="py-2 px-2 text-right font-medium" style={{ color: "#e94560" }}>
+                        <span className="inline-flex items-center gap-1">
+                          {formatNumber(p.engajamento)}
+                          {(p as { performance?: string }).performance === "above" && (
+                            <span title="Acima da média" style={{
+                              fontSize: "0.6rem", padding: "0.05rem 0.35rem",
+                              background: "#10b98115", color: "#10b981",
+                              borderRadius: "0.25rem", fontWeight: 700,
+                            }}>↑</span>
+                          )}
+                          {(p as { performance?: string }).performance === "below" && (
+                            <span title="Abaixo da média" style={{
+                              fontSize: "0.6rem", padding: "0.05rem 0.35rem",
+                              background: "#e9456015", color: "#e94560",
+                              borderRadius: "0.25rem", fontWeight: 700,
+                            }}>↓</span>
+                          )}
+                        </span>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
