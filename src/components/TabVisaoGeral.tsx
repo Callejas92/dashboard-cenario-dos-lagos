@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import KPICard from "./KPICard";
 import DateRangeFilter from "./DateRangeFilter";
+import TimelineLeadsAcoes from "./TimelineLeadsAcoes";
 import { MetricsData, formatBRL, formatPercent, formatNumber } from "@/lib/types";
 
 interface Props {
@@ -649,6 +650,9 @@ export default function TabVisaoGeral({ data }: Props) {
           meta="Valor médio/cliente"
         />
       </div>
+
+      {/* ===== Wave 8: Timeline ações × leads ===== */}
+      <TimelineLeadsAcoes startDate={globalStart} endDate={globalEnd} />
 
       {/* ===== Charts: Leads por Canal + Investimento por Canal ===== */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
