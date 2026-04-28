@@ -338,9 +338,8 @@ export async function GET(request: Request) {
 
   // Atribuir vendas/receita por canal via cross-sell (CRM × ERP)
   // Cada venda foi matchada com lead → canal real conhecido
-  // Vendas "Sem atribuição" não vão pra nenhum canal específico
+  // Vendas sem lead correspondente caem em "Contato Corretor" (carteira própria do corretor)
   for (const [canalNome, dados] of Object.entries(crossSell.porCanal)) {
-    if (canalNome === "Sem atribuição") continue;
     if (canais[canalNome]) {
       canais[canalNome].vendas = dados.vendas;
       canais[canalNome].valorVendas = dados.receita;
@@ -431,7 +430,7 @@ export async function GET(request: Request) {
     if (!m.venda.dataVenda) continue;
     const date = m.venda.dataVenda;
     if (date < from || date > to) continue;
-    const canal = m.canal === "Sem atribuição" ? "Outros" : m.canal;
+    const canal = m.canal; // pode ser "Contato Corretor" se sem lead match (carteira própria)
 
     const existing = dailyEntries.find((e) => e.date === date && e.canal === canal);
     if (existing) {

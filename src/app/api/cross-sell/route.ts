@@ -299,8 +299,8 @@ function matchLeadVenda(venda: ERPVenda, leads: CRMLead[]): MatchResult {
     }
   }
 
-  // Sem match
-  return { venda, lead: null, canal: "Sem atribuição", confianca: "sem_match", metodo: "nenhum" };
+  // Sem match em lead → assume venda direta do corretor (carteira própria)
+  return { venda, lead: null, canal: "Contato Corretor", confianca: "sem_match", metodo: "nenhum" };
 }
 
 export async function GET(request: NextRequest) {
