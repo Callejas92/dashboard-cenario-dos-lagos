@@ -2,6 +2,36 @@ import { NextResponse } from "next/server";
 import lotesData from "@/data/lotes.json";
 import { authenticate, UAU_API, isUauConfigured, uauHeaders } from "@/lib/uau-auth";
 
+// Helper: busca status do CRM Eggs (mais atualizado que ERP)
+async function fetchCRMStatus(): Promise<Map<string, string>> {
+  const result = new Map<string, string>();
+  const token = process.env.CRM_EGGS_TOKEN?.trim();
+  const empreendimentoId = process.env.CRM_EGGS_EMPREENDIMENTO_ID?.trim() || "10362";
+  if (!token) return result;
+  try {
+    const url = `https://api.eggs.app/api/v1/Espelhovendaitem/unidades?idsempreendimento=${empreendimentoId}`;
+    const res = await fetch(url, {
+      headers: { token_autorizacao: token },
+      cache: "no-store",
+      signal: AbortSignal.timeout(15000),
+    });
+    if (!res.ok) return result;
+    const data = await res.json();
+    const root = Array.isArray(data) ? data[0] : data;
+    const empreendimento = root?.empreendimentos?.[0];
+    const unidades = empreendimento?.unidades || [];
+    for (const u of unidades) {
+      const q = parseInt(u.bloco) || 0;
+      const l = parseInt(u.unidade) || 0;
+      const loteId = `Q${q}-L${l}`;
+      // Mapeia status do Eggs para status do dashboard
+      const statusEggs = u.situacao_unidade || "";
+      result.set(loteId, statusEggs);
+    }
+  } catch { /* fallback to ERP */ }
+  return result;
+}
+
 interface LoteStatic {
   id: string;
   quadra: number;
@@ -94,7 +124,8 @@ async function fetchUnits(
 
 function buildEnrichedResponse(
   uauRows: UnitRow[] | null,
-  uauStatus?: string
+  uauStatus?: string,
+  crmStatus?: Map<string, string>,
 ) {
   // Build unified lot list from API rows + static JSON fallback
   const unidadesMap = new Map<string, {
@@ -118,10 +149,13 @@ function buildEnrichedResponse(
       const staticLote = lotesMap.get(id);
       const { quadra, lote, loteNum } = parseIdentifier(id);
 
-      // Determine status
-      let status = row.Descr_status || "";
+      // Status: CRM Eggs prioridade (mais atualizado), ERP UAU fallback
+      let status = crmStatus?.get(id) || "";
       if (!status) {
-        status = row.Vendido_unid === 1 ? "Vendida" : "Disponível";
+        status = row.Descr_status || "";
+        if (!status) {
+          status = row.Vendido_unid === 1 ? "Vendida" : "Disponível";
+        }
       }
 
       // Area: prefer static JSON, fallback to FracaoIdeal_unid
@@ -174,9 +208,12 @@ function buildEnrichedResponse(
 
   function classifyStatus(s: string): "vendido" | "emVenda" | "foraDeVenda" | "disponivel" {
     const sl = s.toLowerCase();
+    // CRM Eggs status: LIBERADA, BLOQUEADA, VENDIDA, RESERVADA, CONTRATO, PRÉ-VENDA
     if (sl.includes("vendid")) return "vendido";
-    if (sl.includes("em venda") || sl.includes("em_venda")) return "emVenda";
-    if (sl.includes("fora de venda") || sl.includes("fora_de_venda") || sl.includes("bloqueado")) return "foraDeVenda";
+    if (sl.includes("contrato") || sl.includes("contratado")) return "vendido"; // contrato fechado = vendido
+    if (sl.includes("reservad") || sl.includes("pré-venda") || sl.includes("pre-venda") || sl.includes("em venda") || sl.includes("em_venda")) return "emVenda";
+    if (sl.includes("bloquead") || sl.includes("fora de venda") || sl.includes("fora_de_venda")) return "foraDeVenda";
+    if (sl.includes("liberada")) return "disponivel";
     return "disponivel";
   }
 
@@ -304,12 +341,14 @@ export async function GET(request: Request) {
     const yyyy = now.getFullYear();
     const todayFormatted = `${mm}-${dd}-${yyyy}`;
 
-    // Strategy: "no Vendido filter" returns all 213 lots (incl. lots with null Vendido_unid)
-    // "Vendido=1 with retorna_venda:true" returns sold lots with sale-price enrichment
-    const [allLotsResult, soldEnrichResult] = await Promise.allSettled([
+    // Strategy: ERP UAU + CRM Eggs (status mais atualizado)
+    const [allLotsResult, soldEnrichResult, crmStatusResult] = await Promise.allSettled([
       fetchUnits(token, integrationToken, todayFormatted, "WHERE Empresa_unid = 2", false, 25000),
       fetchUnits(token, integrationToken, todayFormatted, "WHERE Empresa_unid = 2 AND Vendido_unid = 1", true, 25000),
+      fetchCRMStatus(),
     ]);
+
+    const crmStatus = crmStatusResult.status === "fulfilled" ? crmStatusResult.value : new Map<string, string>();
 
     // Debug mode
     if (debug) {
@@ -355,7 +394,7 @@ export async function GET(request: Request) {
       return NextResponse.json(response);
     }
 
-    return NextResponse.json(buildEnrichedResponse(mergedRows));
+    return NextResponse.json(buildEnrichedResponse(mergedRows, undefined, crmStatus));
   } catch (error) {
     const errMsg = error instanceof Error ? error.message : String(error);
     console.error("UAU API error:", errMsg);

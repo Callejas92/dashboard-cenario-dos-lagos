@@ -12,18 +12,27 @@ const CACHE_TTL = 5 * 60 * 1000;
 
 // Maps CRM lead_source names to our canal names
 const CRM_SOURCE_MAP: Record<string, string> = {
+  // Meta Ads (Facebook + Instagram)
   "Meta Ads": "Meta Ads",
   "Facebook": "Meta Ads",
-  "Instagram": "Meta Ads",
   "Facebook Ads": "Meta Ads",
+  "Facebook Leads": "Meta Ads",
+  "Instagram": "Meta Ads",
+  "Instagram Ads": "Meta Ads",
+  "Instagram Leads": "Meta Ads",
+  // Google Ads
   "Google Ads": "Google Ads",
   "Google": "Google Ads",
+  // Site
   "Site": "Site",
   "Website": "Site",
+  "Site Form": "Site",
+  // Outros canais
   "Outdoor": "Outdoor",
   "Radio": "Rádio",
   "Rádio": "Rádio",
   "Jornal": "Jornal",
+  "Evento": "Evento",
   "Indicação": "Indicação",
   "Indicacao": "Indicação",
   "Corretor": "Contato Corretor",
