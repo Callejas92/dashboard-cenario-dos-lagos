@@ -148,23 +148,78 @@ async function fetchAllLeads(): Promise<CRMLead[]> {
 }
 
 async function fetchAllVendas(from: string, to: string): Promise<ERPVenda[]> {
-  try {
-    const baseUrl = process.env.VERCEL_URL
-      ? `https://${process.env.VERCEL_URL}`
-      : "http://localhost:3000";
-    const res = await fetch(`${baseUrl}/api/uau/vendas?startDate=${from}&endDate=${to}`, {
-      signal: AbortSignal.timeout(75000),
-    });
-    if (!res.ok) {
-      console.error(`fetchAllVendas falhou: ${res.status}`);
-      return [];
-    }
-    const data = await res.json();
-    return data.vendas || [];
-  } catch (err) {
-    console.error("fetchAllVendas error:", err);
-    return [];
+  // Busca contratos do Eggs (fonte primária - já tem cliente)
+  // E também vendas do UAU (fonte financeira - quando disponível)
+  const baseUrl = process.env.VERCEL_URL
+    ? `https://${process.env.VERCEL_URL}`
+    : "http://localhost:3000";
+
+  const [contratosRes, uauRes] = await Promise.all([
+    fetch(`${baseUrl}/api/crm/contratos`, { signal: AbortSignal.timeout(20000) }).catch(() => null),
+    fetch(`${baseUrl}/api/uau/vendas?startDate=${from}&endDate=${to}`, { signal: AbortSignal.timeout(75000) }).catch(() => null),
+  ]);
+
+  // 1. Contratos do Eggs (cliente já preenchido)
+  const contratosFromEggs: Map<string, ERPVenda> = new Map();
+  if (contratosRes && contratosRes.ok) {
+    try {
+      const contratosData = await contratosRes.json();
+      const contratos = contratosData.contratos || [];
+      for (const c of contratos) {
+        // Pula cancelados pra não inflar matches
+        if (c.cancelado) continue;
+        // Para cross-sell, considera só contratos efetivos (assinados/faturados/entregues)
+        const STATUS_VALIDOS = ["ASSINADO", "FATURADO", "ENTREGUE AO INCORPORADOR"];
+        if (!STATUS_VALIDOS.includes(c.status)) continue;
+
+        contratosFromEggs.set(c.loteId, {
+          chaveVenda: `eggs-${c.id}`,
+          identificadorUnidade: c.loteId,
+          dataVenda: "", // Eggs não retorna data — será enriquecida do UAU se disponível
+          valorVenda: c.valor || 0,
+          compradorNome: c.cliente || "",
+          compradorCpfCnpj: "", // Eggs não retorna CPF (pode adicionar futuro)
+          corretor: c.corretor?.nome || "",
+          formaPagamento: "",
+        });
+      }
+    } catch { /* ignore */ }
   }
+
+  // 2. Enriquece com UAU (data, CPF, forma pagamento)
+  if (uauRes && uauRes.ok) {
+    try {
+      const uauData = await uauRes.json();
+      for (const venda of (uauData.vendas || [])) {
+        const eggsContrato = contratosFromEggs.get(venda.identificadorUnidade);
+        if (eggsContrato) {
+          // Enriquece o contrato Eggs com dados financeiros do UAU
+          eggsContrato.dataVenda = venda.dataVenda || eggsContrato.dataVenda;
+          eggsContrato.compradorCpfCnpj = venda.compradorCpfCnpj || eggsContrato.compradorCpfCnpj;
+          eggsContrato.formaPagamento = venda.formaPagamento || eggsContrato.formaPagamento;
+          // UAU pode ter valor mais preciso
+          if (venda.valorVenda > 0) eggsContrato.valorVenda = venda.valorVenda;
+        } else {
+          // Venda do UAU sem contrato no Eggs (raro) — adiciona mesmo assim
+          contratosFromEggs.set(venda.identificadorUnidade, venda);
+        }
+      }
+    } catch { /* ignore */ }
+  }
+
+  // Filtra por período (data_pgto OU data atual de fallback)
+  // Se não tiver dataVenda, mantém (assume período atual)
+  const result: ERPVenda[] = [];
+  for (const v of contratosFromEggs.values()) {
+    if (v.dataVenda) {
+      if (v.dataVenda >= from && v.dataVenda <= to) result.push(v);
+    } else {
+      // Sem data, inclui (provavelmente recente)
+      result.push(v);
+    }
+  }
+
+  return result;
 }
 
 // Mapeia fonte do CRM para nome do canal usado no dashboard

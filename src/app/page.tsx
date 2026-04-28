@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { BarChart3, ShieldCheck, PlusCircle, RefreshCw, Plug, Globe, Sun, Moon, Home as HomeIcon, DollarSign, Users, Instagram, Megaphone, MessageCircle, Target } from "lucide-react";
+import { BarChart3, ShieldCheck, PlusCircle, RefreshCw, Plug, Globe, Sun, Moon, Home as HomeIcon, DollarSign, Users, Instagram, Megaphone, MessageCircle, Target, FileText } from "lucide-react";
 import TabVisaoGeral from "@/components/TabVisaoGeral";
 import TabCanais from "@/components/TabCanais";
 import TabQualidade from "@/components/TabQualidade";
@@ -14,11 +14,12 @@ import TabInstagram from "@/components/TabInstagram";
 import TabMetaAds from "@/components/TabMetaAds";
 import TabGoogleAds from "@/components/TabGoogleAds";
 import TabWhatsApp from "@/components/TabWhatsApp";
+import TabContratos from "@/components/TabContratos";
 import FormSemanal from "@/components/FormSemanal";
 import LoginScreen from "@/components/LoginScreen";
 import { MetricsData, FinanceiroResponse } from "@/lib/types";
 
-type Tab = "geral" | "canais" | "qualidade" | "analytics" | "estoque" | "financeiro" | "crm" | "instagram" | "metaads" | "googleads" | "whatsapp" | "integracoes" | "inserir";
+type Tab = "geral" | "canais" | "qualidade" | "analytics" | "estoque" | "financeiro" | "contratos" | "crm" | "instagram" | "metaads" | "googleads" | "whatsapp" | "integracoes" | "inserir";
 
 const tabs: { id: Tab; label: string; icon: typeof BarChart3 }[] = [
   { id: "geral", label: "Visao Geral", icon: BarChart3 },
@@ -27,6 +28,7 @@ const tabs: { id: Tab; label: string; icon: typeof BarChart3 }[] = [
   { id: "analytics", label: "Site", icon: Globe },
   { id: "estoque", label: "Estoque", icon: HomeIcon },
   { id: "financeiro", label: "Financeiro", icon: DollarSign },
+  { id: "contratos", label: "Contratos", icon: FileText },
   { id: "crm", label: "CRM", icon: Users },
   { id: "instagram", label: "Instagram", icon: Instagram },
   { id: "metaads", label: "Meta Ads", icon: Megaphone },
@@ -281,6 +283,7 @@ export default function Home() {
         {activeTab === "instagram" && <TabInstagram />}
         {activeTab === "metaads" && <TabMetaAds />}
         {activeTab === "googleads" && <TabGoogleAds />}
+        {activeTab === "contratos" && <TabContratos />}
         {activeTab === "whatsapp" && <TabWhatsApp />}
         {activeTab === "integracoes" && <TabIntegracoes />}
         {activeTab === "inserir" && <FormSemanal data={data} onSaved={loadData} authToken={authToken} />}
