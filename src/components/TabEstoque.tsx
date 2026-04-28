@@ -96,9 +96,10 @@ function SalesHistorySection() {
   const [salesError, setSalesError] = useState<string | null>(null);
   const [aggregation, setAggregation] = useState<Aggregation>("month");
 
+  // Default "Lançamento" (14/04/2026) → hoje, padronizado com outras abas
   const now = new Date();
   const defaultEnd = now.toISOString().split("T")[0];
-  const defaultStart = new Date(now.getFullYear() - 1, now.getMonth(), now.getDate()).toISOString().split("T")[0];
+  const defaultStart = "2026-04-14";
 
   const [startDate, setStartDate] = useState(defaultStart);
   const [endDate, setEndDate] = useState(defaultEnd);
@@ -131,7 +132,7 @@ function SalesHistorySection() {
     const endStr = end.toISOString().split("T")[0];
     let startStr: string;
     if (days === "total") {
-      startStr = new Date(end.getFullYear() - 2, end.getMonth(), end.getDate()).toISOString().split("T")[0];
+      startStr = "2026-04-14"; // data de lançamento Cenário dos Lagos
     } else {
       const s = new Date(end);
       s.setDate(s.getDate() - days);

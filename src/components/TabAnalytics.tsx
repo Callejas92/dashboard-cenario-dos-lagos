@@ -49,10 +49,10 @@ export default function TabAnalytics() {
   const [loading, setLoading] = useState(false);
   const [dailyView, setDailyView] = useState<DailyMetric>("traffic");
 
-  // Date range state
-  const [startDate, setStartDate] = useState(daysAgo(30));
+  // Date range state — default "Lançamento" (14/04/2026)
+  const [startDate, setStartDate] = useState("2026-04-14");
   const [endDate, setEndDate] = useState(today());
-  const [activeQuick, setActiveQuick] = useState<number | "total" | null>(30);
+  const [activeQuick, setActiveQuick] = useState<number | "total" | null>("total");
 
   const days = Math.max(1, Math.ceil((new Date(endDate).getTime() - new Date(startDate).getTime()) / (1000 * 60 * 60 * 24)));
 
@@ -87,7 +87,7 @@ export default function TabAnalytics() {
   const handleQuickSelect = useCallback((value: number | "total") => {
     setActiveQuick(value);
     if (value === "total") {
-      setStartDate("2020-01-01");
+      setStartDate("2026-04-14"); // data de lançamento Cenário dos Lagos
       setEndDate(today());
     } else {
       setStartDate(daysAgo(value));
