@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { RefreshCw, Activity, X } from "lucide-react";
+import { RefreshCw, Activity, X, User, Phone } from "lucide-react";
 
 interface Lote {
   loteId: string;
@@ -13,6 +13,18 @@ interface Lote {
   status: string;
   statusId: number;
   isInvestidor: boolean;
+}
+
+interface Contrato {
+  id: number;
+  loteId: string;
+  valor: number;
+  status: string;
+  digital: boolean;
+  cliente: string;
+  cancelado: boolean;
+  corretor: { nome: string; telefone: string; creci: string; email: string };
+  imobiliaria: { nomeFantasia: string };
 }
 
 interface UnidadesData {
@@ -44,6 +56,7 @@ function formatBRL(n: number) {
 
 export default function CrmStatusPanel() {
   const [data, setData] = useState<UnidadesData | null>(null);
+  const [contratos, setContratos] = useState<Contrato[]>([]);
   const [loading, setLoading] = useState(true);
   const [showInvestidor, setShowInvestidor] = useState(false);
   const [openStatus, setOpenStatus] = useState<string | null>(null);
@@ -51,14 +64,28 @@ export default function CrmStatusPanel() {
   const fetchData = async () => {
     setLoading(true);
     try {
-      const res = await fetch("/api/crm/unidades");
-      const json = await res.json();
+      const [resU, resC] = await Promise.all([
+        fetch("/api/crm/unidades"),
+        fetch("/api/crm/contratos"),
+      ]);
+      const json = await resU.json();
+      const contratosJson = await resC.json();
       setData(json);
+      setContratos(contratosJson.contratos || []);
     } catch (err) {
       console.error(err);
     }
     setLoading(false);
   };
+
+  // Constrói mapa loteId -> contrato (mais recente, não cancelado primeiro)
+  const contratoPorLote = new Map<string, Contrato>();
+  for (const c of contratos) {
+    const existente = contratoPorLote.get(c.loteId);
+    if (!existente || (existente.cancelado && !c.cancelado)) {
+      contratoPorLote.set(c.loteId, c);
+    }
+  }
 
   useEffect(() => {
     fetchData();
@@ -233,14 +260,17 @@ export default function CrmStatusPanel() {
             </button>
           </div>
 
-          <div style={{ overflowX: "auto", maxHeight: "400px", overflowY: "auto" }}>
+          <div style={{ overflowX: "auto", maxHeight: "500px", overflowY: "auto" }}>
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.8rem" }}>
               <thead>
                 <tr style={{ borderBottom: "2px solid var(--border)", position: "sticky", top: 0, background: "var(--surface)" }}>
                   <th style={{ textAlign: "left", padding: "0.5rem 0.75rem", color: "var(--text-dim)", fontWeight: 600 }}>Lote</th>
                   <th style={{ textAlign: "left", padding: "0.5rem 0.75rem", color: "var(--text-dim)", fontWeight: 600 }}>Rua</th>
-                  <th style={{ textAlign: "right", padding: "0.5rem 0.75rem", color: "var(--text-dim)", fontWeight: 600 }}>Área (m²)</th>
+                  <th style={{ textAlign: "right", padding: "0.5rem 0.75rem", color: "var(--text-dim)", fontWeight: 600 }}>m²</th>
                   <th style={{ textAlign: "right", padding: "0.5rem 0.75rem", color: "var(--text-dim)", fontWeight: 600 }}>Valor</th>
+                  <th style={{ textAlign: "left", padding: "0.5rem 0.75rem", color: "var(--text-dim)", fontWeight: 600 }}>Cliente</th>
+                  <th style={{ textAlign: "left", padding: "0.5rem 0.75rem", color: "var(--text-dim)", fontWeight: 600 }}>Corretor</th>
+                  <th style={{ textAlign: "left", padding: "0.5rem 0.75rem", color: "var(--text-dim)", fontWeight: 600 }}>Contrato</th>
                   <th style={{ textAlign: "center", padding: "0.5rem 0.75rem", color: "var(--text-dim)", fontWeight: 600 }}>Origem</th>
                 </tr>
               </thead>
@@ -248,35 +278,77 @@ export default function CrmStatusPanel() {
                 {data.lotes
                   .filter((l) => l.status === openStatus && (showInvestidor || !l.isInvestidor))
                   .sort((a, b) => a.loteId.localeCompare(b.loteId))
-                  .map((l) => (
-                    <tr key={l.loteId} style={{ borderBottom: "1px solid var(--border)" }}>
-                      <td style={{ padding: "0.5rem 0.75rem", color: "var(--text)", fontWeight: 600 }}>
-                        {l.loteId}
-                      </td>
-                      <td style={{ padding: "0.5rem 0.75rem", color: "var(--text-muted)" }}>
-                        {l.rua || "—"}
-                      </td>
-                      <td style={{ padding: "0.5rem 0.75rem", textAlign: "right", color: "var(--text)" }}>
-                        {l.metragem.toFixed(0)}
-                      </td>
-                      <td style={{ padding: "0.5rem 0.75rem", textAlign: "right", color: "var(--text)", fontWeight: 500 }}>
-                        {formatBRL(l.valor)}
-                      </td>
-                      <td style={{ padding: "0.5rem 0.75rem", textAlign: "center" }}>
-                        {l.isInvestidor ? (
-                          <span style={{
-                            fontSize: "0.65rem", padding: "0.125rem 0.5rem",
-                            background: "#8b5cf615", color: "#8b5cf6",
-                            borderRadius: "0.375rem", fontWeight: 600,
-                          }}>
-                            Investidor
-                          </span>
-                        ) : (
-                          <span style={{ fontSize: "0.7rem", color: "var(--text-dim)" }}>Cliente</span>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
+                  .map((l) => {
+                    const contrato = contratoPorLote.get(l.loteId);
+                    return (
+                      <tr key={l.loteId} style={{ borderBottom: "1px solid var(--border)" }}>
+                        <td style={{ padding: "0.5rem 0.75rem", color: "var(--text)", fontWeight: 600 }}>
+                          {l.loteId}
+                        </td>
+                        <td style={{ padding: "0.5rem 0.75rem", color: "var(--text-muted)" }}>
+                          {l.rua || "—"}
+                        </td>
+                        <td style={{ padding: "0.5rem 0.75rem", textAlign: "right", color: "var(--text)" }}>
+                          {l.metragem.toFixed(0)}
+                        </td>
+                        <td style={{ padding: "0.5rem 0.75rem", textAlign: "right", color: "var(--text)", fontWeight: 500 }}>
+                          {formatBRL(contrato?.valor || l.valor)}
+                        </td>
+                        <td style={{ padding: "0.5rem 0.75rem", color: "var(--text)" }}>
+                          {contrato?.cliente ? (
+                            <div style={{ display: "flex", alignItems: "center", gap: "0.25rem" }}>
+                              <User size={11} style={{ color: "#10b981" }} />
+                              <span style={{ fontSize: "0.75rem" }}>{contrato.cliente}</span>
+                            </div>
+                          ) : (
+                            <span style={{ color: "var(--text-dim)", fontSize: "0.7rem" }}>—</span>
+                          )}
+                        </td>
+                        <td style={{ padding: "0.5rem 0.75rem", color: "var(--text-muted)" }}>
+                          {contrato?.corretor.nome ? (
+                            <div>
+                              <div style={{ fontSize: "0.75rem" }}>{contrato.corretor.nome}</div>
+                              {contrato.corretor.telefone && (
+                                <div style={{ fontSize: "0.65rem", color: "var(--text-dim)", display: "flex", alignItems: "center", gap: "0.2rem" }}>
+                                  <Phone size={9} />{contrato.corretor.telefone}
+                                </div>
+                              )}
+                            </div>
+                          ) : (
+                            <span style={{ color: "var(--text-dim)", fontSize: "0.7rem" }}>—</span>
+                          )}
+                        </td>
+                        <td style={{ padding: "0.5rem 0.75rem" }}>
+                          {contrato ? (
+                            <span style={{
+                              fontSize: "0.65rem", padding: "0.125rem 0.5rem",
+                              background: contrato.cancelado ? "#e9456015" : "#10b98115",
+                              color: contrato.cancelado ? "#e94560" : "#10b981",
+                              borderRadius: "0.375rem", fontWeight: 600,
+                              whiteSpace: "nowrap",
+                            }}>
+                              {contrato.status} {contrato.digital ? "• Digital" : "• Físico"}
+                            </span>
+                          ) : (
+                            <span style={{ color: "var(--text-dim)", fontSize: "0.7rem" }}>—</span>
+                          )}
+                        </td>
+                        <td style={{ padding: "0.5rem 0.75rem", textAlign: "center" }}>
+                          {l.isInvestidor ? (
+                            <span style={{
+                              fontSize: "0.65rem", padding: "0.125rem 0.5rem",
+                              background: "#8b5cf615", color: "#8b5cf6",
+                              borderRadius: "0.375rem", fontWeight: 600,
+                            }}>
+                              Investidor
+                            </span>
+                          ) : (
+                            <span style={{ fontSize: "0.7rem", color: "var(--text-dim)" }}>Cliente</span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
               </tbody>
               <tfoot>
                 <tr style={{ background: (STATUS_CONFIG[openStatus]?.color || "#6b7280") + "10", fontWeight: 700, borderTop: `2px solid ${STATUS_CONFIG[openStatus]?.color || "#6b7280"}` }}>
@@ -287,10 +359,13 @@ export default function CrmStatusPanel() {
                     {formatBRL(
                       data.lotes
                         .filter((l) => l.status === openStatus && (showInvestidor || !l.isInvestidor))
-                        .reduce((s, l) => s + l.valor, 0)
+                        .reduce((s, l) => {
+                          const c = contratoPorLote.get(l.loteId);
+                          return s + (c?.valor || l.valor);
+                        }, 0)
                     )}
                   </td>
-                  <td></td>
+                  <td colSpan={4}></td>
                 </tr>
               </tfoot>
             </table>
