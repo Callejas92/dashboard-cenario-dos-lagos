@@ -15,10 +15,14 @@ interface Contrato {
   metragem: number;
   digital: boolean;
   cliente: string;
+  clienteCpfCnpj?: string;
+  clienteTipo?: "PF" | "PJ" | "";
+  clienteTelefone?: string;
   status: string;
   cancelado: boolean;
   corretor: { nome: string; cpf: string; creci: string; telefone: string; email: string };
   imobiliaria: { razaoSocial: string; nomeFantasia: string; cnpj: string };
+  dataContrato?: string;
 }
 
 interface CorretorStats {
@@ -114,6 +118,7 @@ export default function TabContratos() {
     const q = search.toLowerCase();
     contratosFiltrados = contratosFiltrados.filter((c) =>
       c.cliente.toLowerCase().includes(q) ||
+      (c.clienteCpfCnpj || "").toLowerCase().includes(q) ||
       c.corretor.nome.toLowerCase().includes(q) ||
       c.loteId.toLowerCase().includes(q)
     );
@@ -312,9 +317,22 @@ export default function TabContratos() {
                   <td className="py-2 px-2" style={{ color: "var(--text)", fontWeight: 600 }}>{c.loteId}</td>
                   <td className="py-2 px-2" style={{ color: "var(--text)" }}>
                     <div className="flex items-center gap-1">
-                      <User size={11} style={{ color: "#10b981" }} />
+                      <User size={11} style={{ color: c.clienteTipo === "PJ" ? "#8b5cf6" : "#10b981" }} />
                       <span style={{ fontSize: "0.8rem" }}>{c.cliente || "—"}</span>
+                      {c.clienteTipo && (
+                        <span style={{
+                          fontSize: "0.6rem", padding: "0.05rem 0.3rem",
+                          background: c.clienteTipo === "PJ" ? "#8b5cf615" : "#10b98115",
+                          color: c.clienteTipo === "PJ" ? "#8b5cf6" : "#10b981",
+                          borderRadius: "0.25rem", fontWeight: 700,
+                        }}>{c.clienteTipo}</span>
+                      )}
                     </div>
+                    {c.clienteCpfCnpj && (
+                      <div style={{ fontSize: "0.65rem", color: "var(--text-dim)", marginTop: "0.1rem" }}>
+                        {c.clienteTipo === "PJ" ? "CNPJ" : "CPF"}: {c.clienteCpfCnpj}
+                      </div>
+                    )}
                   </td>
                   <td className="py-2 px-2" style={{ color: "var(--text-muted)" }}>
                     <div>

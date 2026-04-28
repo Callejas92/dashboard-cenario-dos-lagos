@@ -11,11 +11,15 @@ export interface ContratoEnriquecido {
   valor: number;
   metragem: number;
   digital: boolean;
-  cliente: string;
+  cliente: string;        // Nome real do cliente (proponente PF ou empresa PJ)
+  clienteCpfCnpj: string; // CPF (PF) ou CNPJ (PJ)
+  clienteTipo: "PF" | "PJ" | "";
+  clienteTelefone: string;
+  clienteEmail: string;
   status: string;
   statusOriginal: string;
   cancelado: boolean;
-  responsavelCancelou?: string;
+  responsavelSistema?: string; // Usuário Eggs que cadastrou (Lucas, etc.)
   corretor: {
     nome: string;
     cpf: string;
@@ -28,6 +32,22 @@ export interface ContratoEnriquecido {
     nomeFantasia: string;
     cnpj: string;
   };
+  dataContrato?: string;
+  dataEmissao?: string;
+}
+
+interface EggsProponente {
+  principal?: boolean;
+  nome?: string;
+  cpf?: string;
+  contato?: { telefone_1?: string; email?: string };
+}
+
+interface EggsEmpresaCompradora {
+  razao_social?: string;
+  nome_fantasia?: string;
+  cnpj?: string;
+  contato?: { telefone_1?: string; email?: string };
 }
 
 interface EggsContrato {
@@ -42,6 +62,10 @@ interface EggsContrato {
   id_usuario_responsavel?: number;
   responsavel_cancelou?: string;
   status: string;
+  data_contrato?: string;
+  data_emissao?: string;
+  proponentes?: EggsProponente[];
+  empresaCompradora?: EggsEmpresaCompradora;
   empresaVenda?: {
     razao_social?: string;
     nome_fantasia?: string;
@@ -93,32 +117,62 @@ export async function getContratosEggs(): Promise<ContratoEnriquecido[]> {
 
     const raw: EggsContrato[] = await res.json();
 
-    const contratos: ContratoEnriquecido[] = raw.map((c) => ({
-      id: c.id_proposta_contrato,
-      loteId: buildLoteId(c.bloco, c.unidade),
-      bloco: c.bloco,
-      unidade: c.unidade,
-      valor: c.valor_unidade || 0,
-      metragem: c.metragem || 0,
-      digital: c.digital,
-      cliente: c.responsavel || "",
-      status: c.status,
-      statusOriginal: c.status,
-      cancelado: c.status === "CANCELADO",
-      responsavelCancelou: c.responsavel_cancelou || undefined,
-      corretor: {
-        nome: c.corretor?.nome || "",
-        cpf: c.corretor?.cpf || "",
-        creci: c.corretor?.creci || "",
-        telefone: c.corretor?.contato?.telefone_1 || "",
-        email: c.corretor?.contato?.email || "",
-      },
-      imobiliaria: {
-        razaoSocial: c.empresaVenda?.razao_social || "",
-        nomeFantasia: c.empresaVenda?.nome_fantasia || "",
-        cnpj: c.empresaVenda?.cnpj || "",
-      },
-    }));
+    const contratos: ContratoEnriquecido[] = raw.map((c) => {
+      // Extrai cliente real: empresaCompradora (PJ) tem prioridade, senão proponente principal (PF)
+      let cliente = "";
+      let clienteCpfCnpj = "";
+      let clienteTipo: "PF" | "PJ" | "" = "";
+      let clienteTelefone = "";
+      let clienteEmail = "";
+
+      if (c.empresaCompradora) {
+        cliente = c.empresaCompradora.razao_social || c.empresaCompradora.nome_fantasia || "";
+        clienteCpfCnpj = c.empresaCompradora.cnpj || "";
+        clienteTipo = "PJ";
+        clienteTelefone = c.empresaCompradora.contato?.telefone_1 || "";
+        clienteEmail = c.empresaCompradora.contato?.email || "";
+      } else if (c.proponentes && c.proponentes.length > 0) {
+        const principal = c.proponentes.find((p) => p.principal) || c.proponentes[0];
+        cliente = principal.nome || "";
+        clienteCpfCnpj = principal.cpf || "";
+        clienteTipo = "PF";
+        clienteTelefone = principal.contato?.telefone_1 || "";
+        clienteEmail = principal.contato?.email || "";
+      }
+
+      return {
+        id: c.id_proposta_contrato,
+        loteId: buildLoteId(c.bloco, c.unidade),
+        bloco: c.bloco,
+        unidade: c.unidade,
+        valor: c.valor_unidade || 0,
+        metragem: c.metragem || 0,
+        digital: c.digital,
+        cliente,
+        clienteCpfCnpj,
+        clienteTipo,
+        clienteTelefone,
+        clienteEmail,
+        status: c.status,
+        statusOriginal: c.status,
+        cancelado: c.status === "CANCELADO",
+        responsavelSistema: c.responsavel || undefined, // usuário Eggs que cadastrou
+        dataContrato: c.data_contrato?.split("T")[0],
+        dataEmissao: c.data_emissao?.split("T")[0],
+        corretor: {
+          nome: c.corretor?.nome || "",
+          cpf: c.corretor?.cpf || "",
+          creci: c.corretor?.creci || "",
+          telefone: c.corretor?.contato?.telefone_1 || "",
+          email: c.corretor?.contato?.email || "",
+        },
+        imobiliaria: {
+          razaoSocial: c.empresaVenda?.razao_social || "",
+          nomeFantasia: c.empresaVenda?.nome_fantasia || "",
+          cnpj: c.empresaVenda?.cnpj || "",
+        },
+      };
+    });
 
     cache = { data: contratos, timestamp: Date.now() };
     return contratos;

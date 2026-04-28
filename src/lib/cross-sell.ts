@@ -166,10 +166,10 @@ async function fetchVendas(from: string, to: string): Promise<ERPVenda[]> {
     map.set(c.loteId, {
       chaveVenda: `eggs-${c.id}`,
       identificadorUnidade: c.loteId,
-      dataVenda: "",
+      dataVenda: c.dataContrato || "",
       valorVenda: c.valor || 0,
       compradorNome: c.cliente || "",
-      compradorCpfCnpj: "",
+      compradorCpfCnpj: c.clienteCpfCnpj || "",
       corretor: c.corretor?.nome || "",
       formaPagamento: "",
     });

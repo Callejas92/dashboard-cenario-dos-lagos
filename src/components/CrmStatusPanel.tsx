@@ -22,6 +22,8 @@ interface Contrato {
   status: string;
   digital: boolean;
   cliente: string;
+  clienteCpfCnpj?: string;
+  clienteTipo?: "PF" | "PJ" | "";
   cancelado: boolean;
   corretor: { nome: string; telefone: string; creci: string; email: string };
   imobiliaria: { nomeFantasia: string };
@@ -296,9 +298,24 @@ export default function CrmStatusPanel() {
                         </td>
                         <td style={{ padding: "0.5rem 0.75rem", color: "var(--text)" }}>
                           {contrato?.cliente ? (
-                            <div style={{ display: "flex", alignItems: "center", gap: "0.25rem" }}>
-                              <User size={11} style={{ color: "#10b981" }} />
-                              <span style={{ fontSize: "0.75rem" }}>{contrato.cliente}</span>
+                            <div>
+                              <div style={{ display: "flex", alignItems: "center", gap: "0.25rem" }}>
+                                <User size={11} style={{ color: contrato.clienteTipo === "PJ" ? "#8b5cf6" : "#10b981" }} />
+                                <span style={{ fontSize: "0.75rem" }}>{contrato.cliente}</span>
+                                {contrato.clienteTipo && (
+                                  <span style={{
+                                    fontSize: "0.55rem", padding: "0.05rem 0.3rem",
+                                    background: contrato.clienteTipo === "PJ" ? "#8b5cf615" : "#10b98115",
+                                    color: contrato.clienteTipo === "PJ" ? "#8b5cf6" : "#10b981",
+                                    borderRadius: "0.25rem", fontWeight: 700,
+                                  }}>{contrato.clienteTipo}</span>
+                                )}
+                              </div>
+                              {contrato.clienteCpfCnpj && (
+                                <div style={{ fontSize: "0.6rem", color: "var(--text-dim)" }}>
+                                  {contrato.clienteCpfCnpj}
+                                </div>
+                              )}
                             </div>
                           ) : (
                             <span style={{ color: "var(--text-dim)", fontSize: "0.7rem" }}>—</span>
