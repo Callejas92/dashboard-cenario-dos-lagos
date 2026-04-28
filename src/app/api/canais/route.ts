@@ -349,8 +349,10 @@ export async function GET(request: Request) {
   // KPIs totais
   const totalInvestimento = Object.values(canais).reduce((s, c) => s + c.investimento, 0);
   const totalLeadsAll = Object.values(canais).reduce((s, c) => s + c.leads, 0);
-  const totalVendas = uauVendas.qtdVendas;
-  const totalValorVendas = uauVendas.valorTotal;
+  // Total de vendas vem do cross-sell (que combina contratos Eggs + UAU)
+  // Fallback para UAU direto se cross-sell vazio
+  const totalVendas = Object.values(canais).reduce((s, c) => s + c.vendas, 0) || uauVendas.qtdVendas;
+  const totalValorVendas = Object.values(canais).reduce((s, c) => s + c.valorVendas, 0) || uauVendas.valorTotal;
   const cpl = totalLeadsAll > 0 ? totalInvestimento / totalLeadsAll : 0;
   const cac = totalVendas > 0 ? totalInvestimento / totalVendas : 0;
   const roi = totalInvestimento > 0 ? totalValorVendas / totalInvestimento : 0;
