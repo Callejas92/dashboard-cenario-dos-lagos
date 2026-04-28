@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getCustosOffline, type LancamentoOffline } from "@/lib/onedrive-custos";
 import { getWhatsAppCost } from "@/lib/whatsapp-cost";
 import { getGoogleAdsCost } from "@/lib/google-ads-cost";
+import { getCrossSell } from "@/lib/cross-sell";
 
 const META_API = "https://graph.facebook.com/v21.0";
 const CRM_API = "http://leadsc2s.eggs.com.br/api/webhook/leads";
@@ -185,28 +186,19 @@ interface CrossSellPorCanal {
   receita: number;
 }
 
-interface CrossSellMatch {
-  venda: { dataVenda: string; valorVenda: number };
-  canal: string;
-  confianca: string;
-}
-
-async function fetchCrossSell(from: string, to: string): Promise<{ porCanal: Record<string, CrossSellPorCanal>; matches: CrossSellMatch[]; totalMatches: number; taxaMatching: number }> {
+async function fetchCrossSell(from: string, to: string) {
   try {
-    const baseUrl = process.env.VERCEL_URL
-      ? `https://${process.env.VERCEL_URL}`
-      : "http://localhost:3000";
-    const res = await fetch(`${baseUrl}/api/cross-sell?from=${from}&to=${to}`, {
-      signal: AbortSignal.timeout(30000),
-    });
-    const data = await res.json();
+    const data = await getCrossSell(from, to);
     return {
-      porCanal: data.porCanal || {},
-      matches: data.matches || [],
-      totalMatches: data.stats?.totalMatches || 0,
-      taxaMatching: data.stats?.taxaMatching || 0,
+      porCanal: data.porCanal,
+      matches: data.matches,
+      totalMatches: data.stats.totalMatches,
+      taxaMatching: data.stats.taxaMatching,
     };
-  } catch { return { porCanal: {}, matches: [], totalMatches: 0, taxaMatching: 0 }; }
+  } catch (err) {
+    console.error("fetchCrossSell error:", err);
+    return { porCanal: {}, matches: [], totalMatches: 0, taxaMatching: 0 };
+  }
 }
 
 // ── Custos offline do OneDrive Excel (chamada direta ao lib, sem HTTP) ──
