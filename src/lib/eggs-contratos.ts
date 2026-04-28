@@ -125,7 +125,14 @@ export async function getContratosEggs(): Promise<ContratoEnriquecido[]> {
       let clienteTelefone = "";
       let clienteEmail = "";
 
-      if (c.empresaCompradora) {
+      // PJ tem prioridade SE empresaCompradora tem dados reais
+      const empresaValida = c.empresaCompradora && (
+        c.empresaCompradora.razao_social ||
+        c.empresaCompradora.nome_fantasia ||
+        c.empresaCompradora.cnpj
+      );
+
+      if (empresaValida && c.empresaCompradora) {
         cliente = c.empresaCompradora.razao_social || c.empresaCompradora.nome_fantasia || "";
         clienteCpfCnpj = c.empresaCompradora.cnpj || "";
         clienteTipo = "PJ";
@@ -133,11 +140,13 @@ export async function getContratosEggs(): Promise<ContratoEnriquecido[]> {
         clienteEmail = c.empresaCompradora.contato?.email || "";
       } else if (c.proponentes && c.proponentes.length > 0) {
         const principal = c.proponentes.find((p) => p.principal) || c.proponentes[0];
-        cliente = principal.nome || "";
-        clienteCpfCnpj = principal.cpf || "";
-        clienteTipo = "PF";
-        clienteTelefone = principal.contato?.telefone_1 || "";
-        clienteEmail = principal.contato?.email || "";
+        if (principal.nome || principal.cpf) {
+          cliente = principal.nome || "";
+          clienteCpfCnpj = principal.cpf || "";
+          clienteTipo = "PF";
+          clienteTelefone = principal.contato?.telefone_1 || "";
+          clienteEmail = principal.contato?.email || "";
+        }
       }
 
       return {
