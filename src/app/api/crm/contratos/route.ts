@@ -6,6 +6,7 @@
  * Digital: 8 GERADO, 9 CONFERIDO, 10 ENVIADO, 11 ASSINADO, 12 CANCELADO
  */
 import { NextRequest, NextResponse } from "next/server";
+import { getContratosEggs } from "@/lib/eggs-contratos";
 
 const EGGS_API = "https://api.eggs.app/api/v1/PropostaContrato/Exportar";
 
@@ -100,54 +101,8 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    // Busca TODOS os 12 status (params se repetem na query string)
-    const params = new URLSearchParams();
-    params.set("id_empreendimento", empreendimentoId);
-    for (let id = 1; id <= 12; id++) {
-      params.append("idsDocumentoAssinaturaStatus", String(id));
-    }
-
-    const url = `${EGGS_API}?${params.toString()}`;
-    const res = await fetch(url, {
-      headers: { token_autorizacao: token },
-      cache: "no-store",
-      signal: AbortSignal.timeout(20000),
-    });
-
-    if (!res.ok) {
-      const text = await res.text();
-      throw new Error(`Eggs Contratos ${res.status}: ${text.slice(0, 200)}`);
-    }
-
-    const raw: EggsContrato[] = await res.json();
-
-    // Enriquece e normaliza
-    const contratos: ContratoEnriquecido[] = raw.map((c) => ({
-      id: c.id_proposta_contrato,
-      loteId: buildLoteId(c.bloco, c.unidade),
-      bloco: c.bloco,
-      unidade: c.unidade,
-      valor: c.valor_unidade || 0,
-      metragem: c.metragem || 0,
-      digital: c.digital,
-      cliente: c.responsavel || "",
-      status: c.status,
-      statusOriginal: c.status,
-      cancelado: c.status === "CANCELADO",
-      responsavelCancelou: c.responsavel_cancelou || undefined,
-      corretor: {
-        nome: c.corretor?.nome || "",
-        cpf: c.corretor?.cpf || "",
-        creci: c.corretor?.creci || "",
-        telefone: c.corretor?.contato?.telefone_1 || "",
-        email: c.corretor?.contato?.email || "",
-      },
-      imobiliaria: {
-        razaoSocial: c.empresaVenda?.razao_social || "",
-        nomeFantasia: c.empresaVenda?.nome_fantasia || "",
-        cnpj: c.empresaVenda?.cnpj || "",
-      },
-    }));
+    // Usa lib compartilhado (mesma função que o cross-sell usa)
+    const contratos = await getContratosEggs();
 
     // Estatísticas: contagem por status
     const porStatus: Record<string, number> = {};
