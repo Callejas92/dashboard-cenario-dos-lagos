@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { RefreshCw, FileText, CheckCircle, XCircle, User, Phone, TrendingUp, Award } from "lucide-react";
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from "recharts";
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, LabelList } from "recharts";
 import KPICard from "@/components/KPICard";
 import { formatNumber } from "@/lib/types";
 
@@ -266,33 +266,6 @@ export default function TabContratos() {
         </div>
       </div>
 
-      {/* Performance por corretor */}
-      {data.porCorretor.length > 0 && (
-        <div className="kpi-card">
-          <h3 className="text-sm font-bold mb-4" style={{ color: "var(--text-muted)" }}>PERFORMANCE POR CORRETOR</h3>
-          <ResponsiveContainer width="100%" height={Math.max(data.porCorretor.length * 35 + 40, 180)}>
-            <BarChart data={data.porCorretor.slice(0, 10).map((c) => ({
-              nome: c.nome.length > 25 ? c.nome.slice(0, 23) + "…" : c.nome,
-              valorTotal: c.valorTotal,
-              contratos: c.contratos,
-            }))} layout="vertical" margin={{ left: 8 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" horizontal={false} />
-              <XAxis type="number" tick={{ fill: "var(--text-dim)", fontSize: 11 }} tickFormatter={(v) => `R$ ${(Number(v) / 1000).toFixed(0)}k`} />
-              <YAxis type="category" dataKey="nome" tick={{ fill: "var(--text-dim)", fontSize: 10 }} width={150} />
-              <Tooltip
-                contentStyle={{ background: "var(--tooltip-bg)", border: "1px solid var(--border)", borderRadius: "0.5rem", fontSize: "0.75rem" }}
-                formatter={(v, _, p) => [`${formatBRL(Number(v))} (${(p.payload as { contratos: number }).contratos} contratos)`, "Valor"]}
-              />
-              <Bar dataKey="valorTotal" radius={[0, 4, 4, 0]}>
-                {data.porCorretor.slice(0, 10).map((_, i) => (
-                  <Cell key={i} fill={`hsl(${(i * 50) % 360}, 70%, 50%)`} />
-                ))}
-              </Bar>
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
-      )}
-
       {/* Tabela de contratos */}
       <div className="kpi-card overflow-x-auto">
         <h3 className="text-sm font-bold mb-4" style={{ color: "var(--text-muted)" }}>
@@ -378,6 +351,43 @@ export default function TabContratos() {
           )}
         </table>
       </div>
+
+      {/* Performance por corretor (depois da tabela) */}
+      {data.porCorretor.length > 0 && (
+        <div className="kpi-card">
+          <h3 className="text-sm font-bold mb-4" style={{ color: "var(--text-muted)" }}>PERFORMANCE POR CORRETOR</h3>
+          <ResponsiveContainer width="100%" height={Math.max(data.porCorretor.length * 38 + 40, 200)}>
+            <BarChart data={data.porCorretor.slice(0, 10).map((c) => ({
+              nome: c.nome.length > 25 ? c.nome.slice(0, 23) + "…" : c.nome,
+              valorTotal: c.valorTotal,
+              contratos: c.contratos,
+              assinados: c.assinados,
+            }))} layout="vertical" margin={{ left: 8, right: 80 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" horizontal={false} />
+              <XAxis type="number" tick={{ fill: "var(--text-dim)", fontSize: 11 }} tickFormatter={(v) => `R$ ${(Number(v) / 1000).toFixed(0)}k`} />
+              <YAxis type="category" dataKey="nome" tick={{ fill: "var(--text-dim)", fontSize: 10 }} width={150} />
+              <Tooltip
+                contentStyle={{ background: "var(--tooltip-bg)", border: "1px solid var(--border)", borderRadius: "0.5rem", fontSize: "0.75rem" }}
+                formatter={(v, _, p) => {
+                  const payload = p.payload as { contratos: number; assinados: number };
+                  return [`${formatBRL(Number(v))} (${payload.contratos} contratos, ${payload.assinados} assinados)`, "Valor"];
+                }}
+              />
+              <Bar dataKey="valorTotal" radius={[0, 4, 4, 0]}>
+                {data.porCorretor.slice(0, 10).map((_, i) => (
+                  <Cell key={i} fill={`hsl(${(i * 50) % 360}, 70%, 50%)`} />
+                ))}
+                <LabelList
+                  dataKey="contratos"
+                  position="right"
+                  formatter={(v: unknown) => `${v} lotes`}
+                  style={{ fill: "var(--text)", fontSize: 11, fontWeight: 700 }}
+                />
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+      )}
 
       {/* Footer */}
       <p className="text-xs text-right" style={{ color: "var(--text-dim)" }}>

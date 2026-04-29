@@ -68,9 +68,9 @@ function daysAgo(n: number) { const d = new Date(); d.setDate(d.getDate() - n); 
 export default function TabCanais({ data }: Props) {
   const [sortKey, setSortKey] = useState<SortKey>("investimento");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
-  const [startDate, setStartDate] = useState(() => daysAgo(30));
+  const [startDate, setStartDate] = useState("2026-04-14"); // Lançamento Cenário dos Lagos
   const [endDate, setEndDate] = useState(today);
-  const [activeQuick, setActiveQuick] = useState<number | "total" | null>(30);
+  const [activeQuick, setActiveQuick] = useState<number | "total" | null>("total");
   const [apiData, setApiData] = useState<CanaisAPIData | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -89,7 +89,7 @@ export default function TabCanais({ data }: Props) {
   const handleQuickSelect = useCallback((value: number | "total") => {
     setActiveQuick(value);
     if (value === "total") {
-      setStartDate(daysAgo(365));
+      setStartDate("2026-04-14"); // data de lançamento Cenário dos Lagos
       setEndDate(today());
     } else {
       setStartDate(daysAgo(value));

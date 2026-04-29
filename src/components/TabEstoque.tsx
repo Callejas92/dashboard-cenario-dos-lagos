@@ -333,6 +333,8 @@ export default function TabEstoque({ data }: { data: EstoqueData }) {
   // Filter units
   const filteredUnidades = useMemo(() => {
     let filtered = unidades.filter((u) => {
+      // Oculta lotes com valor R$ 0 (áreas comuns / frações de divisão)
+      if (u.valorTotal <= 0) return false;
       if (filterQuadra !== "all" && u.quadra !== filterQuadra) return false;
       if (filterStatus !== "all" && getStatusKey(u.status) !== filterStatus) return false;
       if (filterClassificacao !== "all" && u.classificacao !== filterClassificacao) return false;

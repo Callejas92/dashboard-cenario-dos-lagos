@@ -744,19 +744,84 @@ export default function TabVisaoGeral({ data }: Props) {
         </div>
       </div>
 
-      {/* ===== Funil de Vendas ===== */}
+      {/* ===== Funil de Vendas (apenas vendas via lead — exclui carteira própria) ===== */}
       <div className="kpi-card">
-        <h3 className="text-sm font-bold mb-6" style={{ color: "var(--text-muted)" }}>
-          FUNIL DE VENDAS
-        </h3>
-        <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
-          {(() => {
-            const stages = [
-              { label: "Total Leads", value: kpis.totalLeads, color: "#4285f4" },
-              { label: "Leads Convertidos", value: crmConvertidos, color: "#8b5cf6" },
-              { label: "Vendas Realizadas", value: kpis.totalVendas, color: "#10b981" },
-            ];
-            const maxValue = Math.max(kpis.totalLeads, 1);
+        {(() => {
+          const vendasViaCorretor = apiData?.canais?.["Contato Corretor"]?.vendas || 0;
+          const vendasViaLead = kpis.totalVendas - vendasViaCorretor;
+          const valorViaCorretor = apiData?.canais?.["Contato Corretor"]?.valorVendas || 0;
+          const valorViaLead = kpis.totalValorVendas - valorViaCorretor;
+
+          return (
+            <>
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-sm font-bold" style={{ color: "var(--text-muted)" }}>
+                  FUNIL DE VENDAS
+                </h3>
+                <span className="text-xs" style={{ color: "var(--text-dim)" }}>
+                  apenas vendas atribuídas a leads
+                </span>
+              </div>
+              {/* Comparativo: Lead vs Corretor */}
+              {(vendasViaLead > 0 || vendasViaCorretor > 0) && (
+                <div style={{
+                  marginBottom: "1.25rem", padding: "0.875rem",
+                  background: "var(--surface)", borderRadius: "0.5rem",
+                  border: "1px solid var(--border)",
+                }}>
+                  <div className="text-xs font-bold mb-3" style={{ color: "var(--text-muted)" }}>
+                    ORIGEM DAS VENDAS
+                  </div>
+                  <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+                    {(() => {
+                      const total = vendasViaLead + vendasViaCorretor;
+                      const pctLead = total > 0 ? (vendasViaLead / total) * 100 : 0;
+                      const pctCorretor = total > 0 ? (vendasViaCorretor / total) * 100 : 0;
+                      return (
+                        <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+                          {/* Barra horizontal stacked */}
+                          <div style={{ display: "flex", height: "32px", borderRadius: "0.375rem", overflow: "hidden", background: "var(--card-bg)" }}>
+                            {pctLead > 0 && (
+                              <div style={{
+                                width: `${pctLead}%`, background: "#4285f4",
+                                display: "flex", alignItems: "center", justifyContent: "center",
+                                color: "#fff", fontSize: "0.75rem", fontWeight: 700,
+                              }}>
+                                {pctLead >= 15 && `Lead: ${vendasViaLead}`}
+                              </div>
+                            )}
+                            {pctCorretor > 0 && (
+                              <div style={{
+                                width: `${pctCorretor}%`, background: "#f59e0b",
+                                display: "flex", alignItems: "center", justifyContent: "center",
+                                color: "#fff", fontSize: "0.75rem", fontWeight: 700,
+                              }}>
+                                {pctCorretor >= 15 && `Corretor: ${vendasViaCorretor}`}
+                              </div>
+                            )}
+                          </div>
+                          <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.7rem" }}>
+                            <span style={{ color: "#4285f4", fontWeight: 600 }}>
+                              ⬤ Via Lead: {vendasViaLead} vendas · {formatBRL(valorViaLead)} ({pctLead.toFixed(0)}%)
+                            </span>
+                            <span style={{ color: "#f59e0b", fontWeight: 600 }}>
+                              ⬤ Carteira Corretor: {vendasViaCorretor} vendas · {formatBRL(valorViaCorretor)} ({pctCorretor.toFixed(0)}%)
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    })()}
+                  </div>
+                </div>
+              )}
+              <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
+                {(() => {
+                  const stages = [
+                    { label: "Total Leads", value: kpis.totalLeads, color: "#4285f4" },
+                    { label: "Leads Convertidos", value: crmConvertidos, color: "#8b5cf6" },
+                    { label: "Vendas via Lead", value: vendasViaLead, color: "#10b981" },
+                  ];
+                  const maxValue = Math.max(kpis.totalLeads, 1);
 
             function funnelRate(from: number, to: number) {
               return from > 0 ? ((to / from) * 100).toFixed(1) + "%" : "--";
@@ -833,8 +898,11 @@ export default function TabVisaoGeral({ data }: Props) {
               );
             });
           })()}
+                </div>
+              </>
+            );
+          })()}
         </div>
-      </div>
     </div>
   );
 }
