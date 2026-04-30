@@ -2,9 +2,16 @@ import { NextResponse } from "next/server";
 import lotesData from "@/data/lotes.json";
 import { authenticate, UAU_API, isUauConfigured, uauHeaders } from "@/lib/uau-auth";
 
-// Helper: busca status do CRM Eggs (mais atualizado que ERP)
-async function fetchCRMStatus(): Promise<Map<string, string>> {
-  const result = new Map<string, string>();
+// Helper: busca dados do CRM Eggs (mais atualizado que ERP/JSON estático)
+interface CRMLoteInfo {
+  status: string;
+  metragem: number;
+  valor: number;
+  rua: string;
+}
+
+async function fetchCRMLotes(): Promise<Map<string, CRMLoteInfo>> {
+  const result = new Map<string, CRMLoteInfo>();
   const token = process.env.CRM_EGGS_TOKEN?.trim();
   const empreendimentoId = process.env.CRM_EGGS_EMPREENDIMENTO_ID?.trim() || "10362";
   if (!token) return result;
@@ -24,11 +31,22 @@ async function fetchCRMStatus(): Promise<Map<string, string>> {
       const q = parseInt(u.bloco) || 0;
       const l = parseInt(u.unidade) || 0;
       const loteId = `Q${q}-L${l}`;
-      // Mapeia status do Eggs para status do dashboard
-      const statusEggs = u.situacao_unidade || "";
-      result.set(loteId, statusEggs);
+      result.set(loteId, {
+        status: u.situacao_unidade || "",
+        metragem: u.metragem || 0,
+        valor: u.valor || 0,
+        rua: u.rua || "",
+      });
     }
   } catch { /* fallback to ERP */ }
+  return result;
+}
+
+// Mantém compatibilidade
+async function fetchCRMStatus(): Promise<Map<string, string>> {
+  const lotes = await fetchCRMLotes();
+  const result = new Map<string, string>();
+  for (const [k, v] of lotes) result.set(k, v.status);
   return result;
 }
 
@@ -125,7 +143,7 @@ async function fetchUnits(
 function buildEnrichedResponse(
   uauRows: UnitRow[] | null,
   uauStatus?: string,
-  crmStatus?: Map<string, string>,
+  crmLotes?: Map<string, CRMLoteInfo>,
 ) {
   // Build unified lot list from API rows + static JSON fallback
   const unidadesMap = new Map<string, {
@@ -147,10 +165,11 @@ function buildEnrichedResponse(
       if (!id) continue;
 
       const staticLote = lotesMap.get(id);
+      const crmLote = crmLotes?.get(id);
       const { quadra, lote, loteNum } = parseIdentifier(id);
 
       // Status: CRM Eggs prioridade (mais atualizado), ERP UAU fallback
-      let status = crmStatus?.get(id) || "";
+      let status = crmLote?.status || "";
       if (!status) {
         status = row.Descr_status || "";
         if (!status) {
@@ -158,17 +177,20 @@ function buildEnrichedResponse(
         }
       }
 
-      // Area: prefer static JSON, fallback to FracaoIdeal_unid
-      const area = staticLote?.area ?? (Number(row.FracaoIdeal_unid) || 0);
+      // Área: CRM Eggs > static JSON > ERP UAU
+      const area = (crmLote?.metragem && crmLote.metragem > 0)
+        ? crmLote.metragem
+        : staticLote?.area ?? (Number(row.FracaoIdeal_unid) || 0);
 
-      // Price: prefer static JSON, fallback to UAU fields
-      const valorTotal =
-        staticLote?.valorTotal ??
-        (Number(row.ValorTotal) || Number(row.ValPreco_unid) || 0);
+      // Valor: CRM Eggs > static JSON > ERP UAU
+      const valorTotal = (crmLote?.valor && crmLote.valor > 0)
+        ? crmLote.valor
+        : staticLote?.valorTotal ?? (Number(row.ValorTotal) || Number(row.ValPreco_unid) || 0);
 
       const valorM2 =
-        staticLote?.valorM2 ??
-        (area > 0 && valorTotal > 0 ? valorTotal / area : Number(row.ValPreco_unid) || 0);
+        (area > 0 && valorTotal > 0 ? valorTotal / area : 0) ||
+        staticLote?.valorM2 ||
+        Number(row.ValPreco_unid) || 0;
 
       unidadesMap.set(id, {
         identificador: id,
@@ -185,8 +207,31 @@ function buildEnrichedResponse(
     }
   }
 
-  // If API returned nothing, fall back to static JSON with "Disponível" status
-  if (uauRows === null || unidadesMap.size === 0) {
+  // Adiciona lotes do CRM Eggs que não estão no UAU (CRM tem 213 lotes, UAU pode ter menos)
+  if (crmLotes) {
+    for (const [loteId, crmLote] of crmLotes) {
+      if (unidadesMap.has(loteId)) continue;
+      const staticLote = lotesMap.get(loteId);
+      const { quadra, lote: loteStr, loteNum } = parseIdentifier(loteId);
+      unidadesMap.set(loteId, {
+        identificador: loteId,
+        quadra,
+        lote: loteStr,
+        loteNum,
+        status: crmLote.status || "Disponível",
+        area: crmLote.metragem || staticLote?.area || 0,
+        valorTotal: crmLote.valor || staticLote?.valorTotal || 0,
+        valorM2: (crmLote.metragem > 0 && crmLote.valor > 0)
+          ? crmLote.valor / crmLote.metragem
+          : staticLote?.valorM2 || 0,
+        classificacao: staticLote?.classificacao || "",
+        rua: crmLote.rua || staticLote?.rua || "",
+      });
+    }
+  }
+
+  // Fallback final: se API e CRM falharam, usa JSON estático
+  if (uauRows === null && unidadesMap.size === 0) {
     for (const lote of lotesData as LoteStatic[]) {
       const { quadra, lote: loteStr, loteNum } = parseIdentifier(lote.id);
       unidadesMap.set(lote.id, {
@@ -341,14 +386,14 @@ export async function GET(request: Request) {
     const yyyy = now.getFullYear();
     const todayFormatted = `${mm}-${dd}-${yyyy}`;
 
-    // Strategy: ERP UAU + CRM Eggs (status mais atualizado)
-    const [allLotsResult, soldEnrichResult, crmStatusResult] = await Promise.allSettled([
+    // Strategy: ERP UAU + CRM Eggs (status, metragem, valor mais atualizados)
+    const [allLotsResult, soldEnrichResult, crmLotesResult] = await Promise.allSettled([
       fetchUnits(token, integrationToken, todayFormatted, "WHERE Empresa_unid = 2", false, 25000),
       fetchUnits(token, integrationToken, todayFormatted, "WHERE Empresa_unid = 2 AND Vendido_unid = 1", true, 25000),
-      fetchCRMStatus(),
+      fetchCRMLotes(),
     ]);
 
-    const crmStatus = crmStatusResult.status === "fulfilled" ? crmStatusResult.value : new Map<string, string>();
+    const crmLotes = crmLotesResult.status === "fulfilled" ? crmLotesResult.value : new Map<string, CRMLoteInfo>();
 
     // Debug mode
     if (debug) {
@@ -394,7 +439,7 @@ export async function GET(request: Request) {
       return NextResponse.json(response);
     }
 
-    return NextResponse.json(buildEnrichedResponse(mergedRows, undefined, crmStatus));
+    return NextResponse.json(buildEnrichedResponse(mergedRows, undefined, crmLotes));
   } catch (error) {
     const errMsg = error instanceof Error ? error.message : String(error);
     console.error("UAU API error:", errMsg);
