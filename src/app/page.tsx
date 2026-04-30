@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { BarChart3, ShieldCheck, PlusCircle, RefreshCw, Plug, Globe, Sun, Moon, Home as HomeIcon, DollarSign, Users, Instagram, Megaphone, MessageCircle, Target, FileText } from "lucide-react";
+import { BarChart3, ShieldCheck, PlusCircle, RefreshCw, Plug, Globe, Sun, Moon, Home as HomeIcon, DollarSign, Users, Instagram, Megaphone, MessageCircle, Target, FileText, GripVertical, Check } from "lucide-react";
 import TabVisaoGeral from "@/components/TabVisaoGeral";
 import TabCanais from "@/components/TabCanais";
 import TabQualidade from "@/components/TabQualidade";
@@ -45,6 +45,32 @@ export default function Home() {
   const [data, setData] = useState<MetricsData | null>(null);
   const [loading, setLoading] = useState(true);
   const [dark, setDark] = useState(false);
+
+  // Tabs reorderable (persistido em localStorage)
+  const [tabOrder, setTabOrder] = useState<Tab[]>(() => tabs.map((t) => t.id));
+  const [tabsEditMode, setTabsEditMode] = useState(false);
+  const [dragIdx, setDragIdx] = useState<number | null>(null);
+  const [dragOverIdx, setDragOverIdx] = useState<number | null>(null);
+
+  // Carrega ordem salva do localStorage
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      const saved = localStorage.getItem("dashboard.tabOrder");
+      if (saved) {
+        const parsed = JSON.parse(saved) as Tab[];
+        // Garante que todas as abas atuais estejam presentes (lida com adições futuras)
+        const validIds = new Set(tabs.map((t) => t.id));
+        const filtered = parsed.filter((id) => validIds.has(id));
+        const missing = tabs.map((t) => t.id).filter((id) => !filtered.includes(id));
+        setTabOrder([...filtered, ...missing]);
+      }
+    } catch { /* ignore */ }
+  }, []);
+
+  // Mapeia ordem persistida → array de tabs
+  const tabsMap = new Map(tabs.map((t) => [t.id, t] as const));
+  const orderedTabs = tabOrder.map((id) => tabsMap.get(id)).filter((t): t is typeof tabs[number] => Boolean(t));
 
   // Estoque state
   interface EstoqueData {
@@ -211,22 +237,87 @@ export default function Home() {
         </div>
       </header>
 
-      {/* Tabs */}
+      {/* Tabs (drag-and-drop pra reordenar) */}
       <div className="sticky top-16 z-40 backdrop-blur-xl" style={{ background: "var(--bg-tabs)" }}>
         <div className="max-w-7xl mx-auto px-4 sm:px-6">
-          <div className="flex gap-2 py-3 overflow-x-auto">
-            {tabs.map((tab) => (
+          <div className="flex gap-2 py-3 overflow-x-auto items-center">
+            {orderedTabs.map((tab, idx) => {
+              const isDragging = dragIdx === idx;
+              const isOver = dragOverIdx === idx && dragIdx !== null && dragIdx !== idx;
+              return (
+                <button
+                  key={tab.id}
+                  draggable={tabsEditMode}
+                  onDragStart={(e) => {
+                    if (!tabsEditMode) return;
+                    setDragIdx(idx);
+                    e.dataTransfer.effectAllowed = "move";
+                  }}
+                  onDragOver={(e) => {
+                    if (!tabsEditMode) return;
+                    e.preventDefault();
+                    e.dataTransfer.dropEffect = "move";
+                    if (dragOverIdx !== idx) setDragOverIdx(idx);
+                  }}
+                  onDragEnd={() => { setDragIdx(null); setDragOverIdx(null); }}
+                  onDrop={(e) => {
+                    if (!tabsEditMode) return;
+                    e.preventDefault();
+                    if (dragIdx === null || dragIdx === idx) return;
+                    const newOrder = [...tabOrder];
+                    const fromId = newOrder[dragIdx];
+                    newOrder.splice(dragIdx, 1);
+                    newOrder.splice(idx, 0, fromId);
+                    setTabOrder(newOrder);
+                    localStorage.setItem("dashboard.tabOrder", JSON.stringify(newOrder));
+                    setDragIdx(null);
+                    setDragOverIdx(null);
+                  }}
+                  onClick={() => { if (!tabsEditMode) setActiveTab(tab.id); }}
+                  className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm whitespace-nowrap transition-all ${
+                    activeTab === tab.id && !tabsEditMode ? "tab-active" : "tab-inactive"
+                  }`}
+                  style={{
+                    cursor: tabsEditMode ? "grab" : "pointer",
+                    opacity: isDragging ? 0.4 : 1,
+                    border: isOver ? "2px dashed #4285f4" : undefined,
+                    transform: isOver ? "scale(1.05)" : undefined,
+                  }}
+                >
+                  {tabsEditMode && <GripVertical size={12} style={{ color: "var(--text-dim)" }} />}
+                  <tab.icon size={14} />
+                  {tab.label}
+                </button>
+              );
+            })}
+            {/* Botão pra ativar/desativar modo edição */}
+            <button
+              onClick={() => setTabsEditMode((v) => !v)}
+              className="flex items-center gap-1 px-3 py-2 rounded-xl text-xs whitespace-nowrap ml-auto flex-shrink-0"
+              style={{
+                background: tabsEditMode ? "#4285f4" : "var(--surface)",
+                color: tabsEditMode ? "#fff" : "var(--text-dim)",
+                border: "1px solid var(--border)",
+                cursor: "pointer",
+              }}
+              title={tabsEditMode ? "Concluir reordenação" : "Reordenar abas (arrastar)"}
+            >
+              {tabsEditMode ? <><Check size={12} /> OK</> : <><GripVertical size={12} /> Ordenar</>}
+            </button>
+            {tabsEditMode && (
               <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
-                className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm whitespace-nowrap transition-all ${
-                  activeTab === tab.id ? "tab-active" : "tab-inactive"
-                }`}
+                onClick={() => {
+                  const defaultOrder = tabs.map((t) => t.id);
+                  setTabOrder(defaultOrder);
+                  localStorage.setItem("dashboard.tabOrder", JSON.stringify(defaultOrder));
+                }}
+                className="px-3 py-2 rounded-xl text-xs whitespace-nowrap flex-shrink-0"
+                style={{ background: "var(--surface)", color: "var(--text-dim)", border: "1px solid var(--border)", cursor: "pointer" }}
+                title="Voltar à ordem padrão"
               >
-                <tab.icon size={14} />
-                {tab.label}
+                Resetar
               </button>
-            ))}
+            )}
           </div>
         </div>
       </div>
