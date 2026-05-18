@@ -173,6 +173,26 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    // Debug: lista todos os campos disponíveis no resumo
+    const { searchParams: sp2 } = new URL(request.url);
+    if (sp2.get("debug") === "1") {
+      const debugData = [];
+      for (const [numVen, resumo] of resumoMap.entries()) {
+        const keys = Object.keys(resumo);
+        const interestingFields: Record<string, unknown> = {};
+        for (const k of keys) {
+          const v = resumo[k];
+          // Mostra campos com valor (não nulo/vazio) ou que parecem ser nome/cpf
+          if (v && (typeof v === "string" || typeof v === "number") && String(v).trim()) {
+            interestingFields[k] = v;
+          }
+        }
+        debugData.push({ numVen, totalFields: keys.length, fields: interestingFields });
+        if (debugData.length >= 3) break;
+      }
+      return NextResponse.json({ debug: true, resumos: debugData });
+    }
+
     // Merge base data with resumo data
     let vendasInvestidor = 0;
     let valorInvestidor = 0;
