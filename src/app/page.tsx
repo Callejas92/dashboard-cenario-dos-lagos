@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { BarChart3, ShieldCheck, PlusCircle, RefreshCw, Plug, Globe, Sun, Moon, Home as HomeIcon, DollarSign, Users, Instagram, Megaphone, MessageCircle, Target, FileText, GripVertical, Check } from "lucide-react";
+import { BarChart3, ShieldCheck, PlusCircle, RefreshCw, Plug, Globe, Sun, Moon, Home as HomeIcon, DollarSign, Users, Instagram, Megaphone, MessageCircle, Target, FileText, GripVertical, Check, ChevronLeft, ChevronRight } from "lucide-react";
 import TabVisaoGeral from "@/components/TabVisaoGeral";
 import TabCanais from "@/components/TabCanais";
 import TabQualidade from "@/components/TabQualidade";
@@ -46,11 +46,9 @@ export default function Home() {
   const [loading, setLoading] = useState(true);
   const [dark, setDark] = useState(false);
 
-  // Tabs reorderable (persistido em localStorage)
+  // Tabs reorderable (persistido em localStorage, setas pra mover)
   const [tabOrder, setTabOrder] = useState<Tab[]>(() => tabs.map((t) => t.id));
   const [tabsEditMode, setTabsEditMode] = useState(false);
-  const [dragIdx, setDragIdx] = useState<number | null>(null);
-  const [dragOverIdx, setDragOverIdx] = useState<number | null>(null);
 
   // Carrega ordem salva do localStorage
   useEffect(() => {
@@ -237,77 +235,86 @@ export default function Home() {
         </div>
       </header>
 
-      {/* Tabs (drag-and-drop pra reordenar) */}
+      {/* Tabs (reordenáveis via setas no modo edição) */}
       <div className="sticky top-16 z-40 backdrop-blur-xl" style={{ background: "var(--bg-tabs)" }}>
         <div className="max-w-7xl mx-auto px-4 sm:px-6">
           <div className="flex gap-2 py-3 overflow-x-auto items-center">
             {orderedTabs.map((tab, idx) => {
-              const isDragging = dragIdx === idx;
-              const isOver = dragOverIdx === idx && dragIdx !== null && dragIdx !== idx;
               const isActive = activeTab === tab.id && !tabsEditMode;
+              const canMoveLeft = idx > 0;
+              const canMoveRight = idx < orderedTabs.length - 1;
+
+              function moveTab(direction: "left" | "right") {
+                const newOrder = [...tabOrder];
+                const swapWith = direction === "left" ? idx - 1 : idx + 1;
+                [newOrder[idx], newOrder[swapWith]] = [newOrder[swapWith], newOrder[idx]];
+                setTabOrder(newOrder);
+                try { localStorage.setItem("dashboard.tabOrder", JSON.stringify(newOrder)); } catch { /* ignore */ }
+              }
+
               return (
                 <div
                   key={tab.id}
-                  draggable={tabsEditMode}
-                  onDragStart={(e) => {
-                    if (!tabsEditMode) return;
-                    e.dataTransfer.effectAllowed = "move";
-                    e.dataTransfer.setData("text/plain", String(idx));
-                    setDragIdx(idx);
-                  }}
-                  onDragOver={(e) => {
-                    if (!tabsEditMode || dragIdx === null) return;
-                    e.preventDefault();
-                    e.stopPropagation();
-                    e.dataTransfer.dropEffect = "move";
-                    if (dragOverIdx !== idx) setDragOverIdx(idx);
-                  }}
-                  onDragEnter={(e) => {
-                    if (!tabsEditMode) return;
-                    e.preventDefault();
-                    if (dragIdx !== null && dragIdx !== idx) setDragOverIdx(idx);
-                  }}
-                  onDragLeave={() => {
-                    // intentionally empty — onDragOver no próximo item já atualiza
-                  }}
-                  onDragEnd={() => {
-                    setDragIdx(null);
-                    setDragOverIdx(null);
-                  }}
-                  onDrop={(e) => {
-                    if (!tabsEditMode) return;
-                    e.preventDefault();
-                    e.stopPropagation();
-                    const fromStr = e.dataTransfer.getData("text/plain");
-                    const fromIdx = fromStr ? parseInt(fromStr) : dragIdx;
-                    if (fromIdx === null || fromIdx === idx) return;
-                    const newOrder = [...tabOrder];
-                    const fromId = newOrder[fromIdx];
-                    newOrder.splice(fromIdx, 1);
-                    newOrder.splice(idx, 0, fromId);
-                    setTabOrder(newOrder);
-                    try { localStorage.setItem("dashboard.tabOrder", JSON.stringify(newOrder)); } catch { /* ignore */ }
-                    setDragIdx(null);
-                    setDragOverIdx(null);
-                  }}
-                  onClick={() => { if (!tabsEditMode) setActiveTab(tab.id); }}
-                  role="button"
-                  tabIndex={0}
-                  className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm whitespace-nowrap transition-all select-none ${
+                  className={`flex items-center gap-1 rounded-xl whitespace-nowrap transition-all ${
                     isActive ? "tab-active" : "tab-inactive"
                   }`}
                   style={{
-                    cursor: tabsEditMode ? (isDragging ? "grabbing" : "grab") : "pointer",
-                    opacity: isDragging ? 0.4 : 1,
-                    outline: isOver ? "2px dashed #4285f4" : undefined,
-                    outlineOffset: isOver ? "2px" : undefined,
-                    transform: isOver ? "scale(1.05)" : undefined,
-                    userSelect: "none",
+                    padding: tabsEditMode ? "0.125rem 0.5rem" : "0.5rem 1rem",
                   }}
                 >
-                  {tabsEditMode && <GripVertical size={12} style={{ color: "var(--text-dim)" }} />}
-                  <tab.icon size={14} />
-                  {tab.label}
+                  {tabsEditMode && (
+                    <button
+                      onClick={() => canMoveLeft && moveTab("left")}
+                      disabled={!canMoveLeft}
+                      style={{
+                        padding: "0.25rem",
+                        borderRadius: "0.25rem",
+                        background: "transparent",
+                        border: "none",
+                        cursor: canMoveLeft ? "pointer" : "not-allowed",
+                        color: canMoveLeft ? "var(--text)" : "var(--text-dim)",
+                        opacity: canMoveLeft ? 1 : 0.3,
+                      }}
+                      title="Mover pra esquerda"
+                    >
+                      <ChevronLeft size={14} />
+                    </button>
+                  )}
+                  <button
+                    onClick={() => { if (!tabsEditMode) setActiveTab(tab.id); }}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "0.5rem",
+                      padding: tabsEditMode ? "0.25rem 0.5rem" : "0",
+                      background: "transparent",
+                      border: "none",
+                      color: "inherit",
+                      cursor: tabsEditMode ? "default" : "pointer",
+                      fontSize: "0.875rem",
+                    }}
+                  >
+                    <tab.icon size={14} />
+                    {tab.label}
+                  </button>
+                  {tabsEditMode && (
+                    <button
+                      onClick={() => canMoveRight && moveTab("right")}
+                      disabled={!canMoveRight}
+                      style={{
+                        padding: "0.25rem",
+                        borderRadius: "0.25rem",
+                        background: "transparent",
+                        border: "none",
+                        cursor: canMoveRight ? "pointer" : "not-allowed",
+                        color: canMoveRight ? "var(--text)" : "var(--text-dim)",
+                        opacity: canMoveRight ? 1 : 0.3,
+                      }}
+                      title="Mover pra direita"
+                    >
+                      <ChevronRight size={14} />
+                    </button>
+                  )}
                 </div>
               );
             })}
@@ -321,7 +328,7 @@ export default function Home() {
                 border: "1px solid var(--border)",
                 cursor: "pointer",
               }}
-              title={tabsEditMode ? "Concluir reordenação" : "Reordenar abas (arrastar)"}
+              title={tabsEditMode ? "Concluir reordenação" : "Reordenar abas"}
             >
               {tabsEditMode ? <><Check size={12} /> OK</> : <><GripVertical size={12} /> Ordenar</>}
             </button>
@@ -330,7 +337,7 @@ export default function Home() {
                 onClick={() => {
                   const defaultOrder = tabs.map((t) => t.id);
                   setTabOrder(defaultOrder);
-                  localStorage.setItem("dashboard.tabOrder", JSON.stringify(defaultOrder));
+                  try { localStorage.setItem("dashboard.tabOrder", JSON.stringify(defaultOrder)); } catch { /* ignore */ }
                 }}
                 className="px-3 py-2 rounded-xl text-xs whitespace-nowrap flex-shrink-0"
                 style={{ background: "var(--surface)", color: "var(--text-dim)", border: "1px solid var(--border)", cursor: "pointer" }}

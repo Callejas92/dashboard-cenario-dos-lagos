@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState, useEffect } from "react";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
   LineChart, Line, AreaChart, Area,
@@ -35,6 +35,49 @@ export default function TabFinanceiro({ data }: { data: FinanceiroResponse }) {
   const { inadimplencia, projecoes, vendasMensais, parcelasAReceber } = data;
 
   const inadimStatus: "good" | "bad" | "neutral" = inadimplencia.percentualInadimplencia > 10 ? "bad" : inadimplencia.percentualInadimplencia > 5 ? "neutral" : "good";
+
+  // Previsão de término baseada em velocidade de vendas
+  const [estoqueTotal, setEstoqueTotal] = useState<number>(0);
+  const [estoqueVendido, setEstoqueVendido] = useState<number>(0);
+
+  useEffect(() => {
+    fetch("/api/uau")
+      .then((r) => r.json())
+      .then((d) => {
+        const s = d?.summary;
+        if (s) {
+          // Total de lotes vendáveis (exclui frações de área zero e investidor já vem filtrado)
+          setEstoqueTotal(s.total || 0);
+          setEstoqueVendido(s.vendido || 0);
+        }
+      })
+      .catch(() => { /* ignore */ });
+  }, []);
+
+  // Calcula velocidade mensal (média dos últimos 3 meses ativos)
+  const previsao = useMemo(() => {
+    if (estoqueTotal === 0) return null;
+    const lotesRestantes = estoqueTotal - estoqueVendido;
+    if (lotesRestantes <= 0) return null;
+
+    // Velocidade: média dos últimos 3 meses com vendas
+    const ultimosMeses = vendasMensais.slice(-6).filter((m) => m.vendas > 0).slice(-3);
+    if (ultimosMeses.length === 0) return null;
+    const velocidadeMensal = ultimosMeses.reduce((s, m) => s + m.vendas, 0) / ultimosMeses.length;
+    if (velocidadeMensal <= 0) return null;
+
+    const mesesRestantes = lotesRestantes / velocidadeMensal;
+    const dataTermino = new Date();
+    dataTermino.setMonth(dataTermino.getMonth() + Math.ceil(mesesRestantes));
+
+    return {
+      lotesRestantes,
+      velocidadeMensal: Math.round(velocidadeMensal * 10) / 10,
+      mesesRestantes: Math.ceil(mesesRestantes),
+      dataTermino: dataTermino.toLocaleDateString("pt-BR", { month: "long", year: "numeric" }),
+      pctVendido: estoqueTotal > 0 ? (estoqueVendido / estoqueTotal) * 100 : 0,
+    };
+  }, [estoqueTotal, estoqueVendido, vendasMensais]);
 
   // Chart data for monthly sales
   const vendasChartData = useMemo(() =>
@@ -140,6 +183,71 @@ export default function TabFinanceiro({ data }: { data: FinanceiroResponse }) {
           status={inadimStatus}
         />
       </div>
+
+      {/* Previsão de Término (baseada em velocidade de vendas) */}
+      {previsao && (
+        <div className="kpi-card">
+          <div className="flex items-center gap-2 mb-4">
+            <Target size={14} style={{ color: "#10b981" }} />
+            <h3 className="text-sm font-bold" style={{ color: "var(--text-muted)" }}>PREVISÃO DE TÉRMINO</h3>
+            <span style={{ fontSize: "0.65rem", color: "var(--text-dim)", marginLeft: "auto" }}>
+              baseado na velocidade dos últimos 3 meses
+            </span>
+          </div>
+
+          <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 mb-4">
+            <div style={{ padding: "0.875rem", borderRadius: "0.625rem", background: "var(--surface)", border: "1px solid var(--border)" }}>
+              <p className="text-xs mb-1" style={{ color: "var(--text-dim)" }}>VENDIDOS</p>
+              <p className="text-xl font-bold" style={{ color: "#10b981" }}>{estoqueVendido}</p>
+              <p className="text-xs" style={{ color: "var(--text-dim)" }}>de {estoqueTotal} ({previsao.pctVendido.toFixed(1)}%)</p>
+            </div>
+
+            <div style={{ padding: "0.875rem", borderRadius: "0.625rem", background: "var(--surface)", border: "1px solid var(--border)" }}>
+              <p className="text-xs mb-1" style={{ color: "var(--text-dim)" }}>RESTANTES</p>
+              <p className="text-xl font-bold" style={{ color: "var(--text)" }}>{previsao.lotesRestantes}</p>
+              <p className="text-xs" style={{ color: "var(--text-dim)" }}>lotes pra vender</p>
+            </div>
+
+            <div style={{ padding: "0.875rem", borderRadius: "0.625rem", background: "var(--surface)", border: "1px solid var(--border)" }}>
+              <p className="text-xs mb-1" style={{ color: "var(--text-dim)" }}>VELOCIDADE</p>
+              <p className="text-xl font-bold" style={{ color: "#4285f4" }}>{previsao.velocidadeMensal}</p>
+              <p className="text-xs" style={{ color: "var(--text-dim)" }}>lotes/mês</p>
+            </div>
+
+            <div style={{ padding: "0.875rem", borderRadius: "0.625rem", background: "var(--surface)", border: "1px solid var(--border)" }}>
+              <p className="text-xs mb-1" style={{ color: "var(--text-dim)" }}>TEMPO RESTANTE</p>
+              <p className="text-xl font-bold" style={{ color: "#f59e0b" }}>{previsao.mesesRestantes}</p>
+              <p className="text-xs" style={{ color: "var(--text-dim)" }}>{previsao.mesesRestantes === 1 ? "mês" : "meses"}</p>
+            </div>
+
+            <div style={{ padding: "0.875rem", borderRadius: "0.625rem", background: "#10b98115", border: "1px solid #10b98140" }}>
+              <p className="text-xs mb-1" style={{ color: "#10b981", fontWeight: 700 }}>TÉRMINO PREVISTO</p>
+              <p className="text-base font-bold" style={{ color: "#10b981", textTransform: "capitalize" }}>{previsao.dataTermino}</p>
+              <p className="text-xs" style={{ color: "var(--text-dim)" }}>se mantiver ritmo</p>
+            </div>
+          </div>
+
+          {/* Barra de progresso visual */}
+          <div>
+            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "0.375rem", fontSize: "0.7rem", color: "var(--text-dim)" }}>
+              <span>Progresso geral</span>
+              <span style={{ fontWeight: 700, color: "#10b981" }}>{previsao.pctVendido.toFixed(1)}%</span>
+            </div>
+            <div style={{ height: "10px", background: "var(--surface)", borderRadius: "9999px", overflow: "hidden", border: "1px solid var(--border)" }}>
+              <div style={{
+                width: `${Math.min(previsao.pctVendido, 100)}%`,
+                height: "100%",
+                background: "linear-gradient(90deg, #10b981, #34d399)",
+                transition: "width 0.5s ease",
+              }} />
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between", marginTop: "0.375rem", fontSize: "0.65rem", color: "var(--text-dim)" }}>
+              <span>0 lotes</span>
+              <span>{estoqueTotal} lotes (100%)</span>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Projecao de Vendas */}
       <div className="kpi-card">
