@@ -244,50 +244,71 @@ export default function Home() {
             {orderedTabs.map((tab, idx) => {
               const isDragging = dragIdx === idx;
               const isOver = dragOverIdx === idx && dragIdx !== null && dragIdx !== idx;
+              const isActive = activeTab === tab.id && !tabsEditMode;
               return (
-                <button
+                <div
                   key={tab.id}
                   draggable={tabsEditMode}
                   onDragStart={(e) => {
                     if (!tabsEditMode) return;
-                    setDragIdx(idx);
                     e.dataTransfer.effectAllowed = "move";
+                    e.dataTransfer.setData("text/plain", String(idx));
+                    setDragIdx(idx);
                   }}
                   onDragOver={(e) => {
-                    if (!tabsEditMode) return;
+                    if (!tabsEditMode || dragIdx === null) return;
                     e.preventDefault();
+                    e.stopPropagation();
                     e.dataTransfer.dropEffect = "move";
                     if (dragOverIdx !== idx) setDragOverIdx(idx);
                   }}
-                  onDragEnd={() => { setDragIdx(null); setDragOverIdx(null); }}
+                  onDragEnter={(e) => {
+                    if (!tabsEditMode) return;
+                    e.preventDefault();
+                    if (dragIdx !== null && dragIdx !== idx) setDragOverIdx(idx);
+                  }}
+                  onDragLeave={() => {
+                    // intentionally empty — onDragOver no próximo item já atualiza
+                  }}
+                  onDragEnd={() => {
+                    setDragIdx(null);
+                    setDragOverIdx(null);
+                  }}
                   onDrop={(e) => {
                     if (!tabsEditMode) return;
                     e.preventDefault();
-                    if (dragIdx === null || dragIdx === idx) return;
+                    e.stopPropagation();
+                    const fromStr = e.dataTransfer.getData("text/plain");
+                    const fromIdx = fromStr ? parseInt(fromStr) : dragIdx;
+                    if (fromIdx === null || fromIdx === idx) return;
                     const newOrder = [...tabOrder];
-                    const fromId = newOrder[dragIdx];
-                    newOrder.splice(dragIdx, 1);
+                    const fromId = newOrder[fromIdx];
+                    newOrder.splice(fromIdx, 1);
                     newOrder.splice(idx, 0, fromId);
                     setTabOrder(newOrder);
-                    localStorage.setItem("dashboard.tabOrder", JSON.stringify(newOrder));
+                    try { localStorage.setItem("dashboard.tabOrder", JSON.stringify(newOrder)); } catch { /* ignore */ }
                     setDragIdx(null);
                     setDragOverIdx(null);
                   }}
                   onClick={() => { if (!tabsEditMode) setActiveTab(tab.id); }}
-                  className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm whitespace-nowrap transition-all ${
-                    activeTab === tab.id && !tabsEditMode ? "tab-active" : "tab-inactive"
+                  role="button"
+                  tabIndex={0}
+                  className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm whitespace-nowrap transition-all select-none ${
+                    isActive ? "tab-active" : "tab-inactive"
                   }`}
                   style={{
-                    cursor: tabsEditMode ? "grab" : "pointer",
+                    cursor: tabsEditMode ? (isDragging ? "grabbing" : "grab") : "pointer",
                     opacity: isDragging ? 0.4 : 1,
-                    border: isOver ? "2px dashed #4285f4" : undefined,
+                    outline: isOver ? "2px dashed #4285f4" : undefined,
+                    outlineOffset: isOver ? "2px" : undefined,
                     transform: isOver ? "scale(1.05)" : undefined,
+                    userSelect: "none",
                   }}
                 >
                   {tabsEditMode && <GripVertical size={12} style={{ color: "var(--text-dim)" }} />}
                   <tab.icon size={14} />
                   {tab.label}
-                </button>
+                </div>
               );
             })}
             {/* Botão pra ativar/desativar modo edição */}
