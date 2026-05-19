@@ -9,6 +9,7 @@ import TabIntegracoes from "@/components/TabIntegracoes";
 import TabAnalytics from "@/components/TabAnalytics";
 import TabEstoque from "@/components/TabEstoque";
 import TabFinanceiro from "@/components/TabFinanceiro";
+import TabMarketing from "@/components/TabMarketing";
 import TabCRM from "@/components/TabCRM";
 import TabInstagram from "@/components/TabInstagram";
 import TabMetaAds from "@/components/TabMetaAds";
@@ -19,7 +20,7 @@ import FormSemanal from "@/components/FormSemanal";
 import LoginScreen from "@/components/LoginScreen";
 import { MetricsData, FinanceiroResponse } from "@/lib/types";
 
-type Tab = "geral" | "canais" | "qualidade" | "analytics" | "estoque" | "financeiro" | "contratos" | "crm" | "instagram" | "metaads" | "googleads" | "whatsapp" | "integracoes" | "inserir";
+type Tab = "geral" | "canais" | "qualidade" | "analytics" | "estoque" | "financeiro" | "marketing" | "contratos" | "crm" | "instagram" | "metaads" | "googleads" | "whatsapp" | "integracoes" | "inserir";
 
 const tabs: { id: Tab; label: string; icon: typeof BarChart3 }[] = [
   { id: "geral", label: "Visao Geral", icon: BarChart3 },
@@ -28,6 +29,7 @@ const tabs: { id: Tab; label: string; icon: typeof BarChart3 }[] = [
   { id: "analytics", label: "Site", icon: Globe },
   { id: "estoque", label: "Estoque", icon: HomeIcon },
   { id: "financeiro", label: "Financeiro", icon: DollarSign },
+  { id: "marketing", label: "Marketing MKT", icon: Target },
   { id: "contratos", label: "Contratos", icon: FileText },
   { id: "crm", label: "CRM", icon: Users },
   { id: "instagram", label: "Instagram", icon: Instagram },
@@ -398,6 +400,7 @@ export default function Home() {
             <TabFinanceiro data={financeiroData} />
           ) : null
         )}
+        {activeTab === "marketing" && <TabMarketing />}
         {activeTab === "crm" && <TabCRM />}
         {activeTab === "instagram" && <TabInstagram />}
         {activeTab === "metaads" && <TabMetaAds />}
