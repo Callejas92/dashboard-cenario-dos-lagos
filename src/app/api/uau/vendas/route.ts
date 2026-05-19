@@ -146,6 +146,74 @@ export async function GET(request: NextRequest) {
       baseVendas.push({ id, numVen, empresa, obra, dataVenda, valorVenda: valor });
     }
 
+    // ── ENRIQUECIMENTO COM COMPRADOR (Nome + CPF/CNPJ) ──
+    // Estratégia (descoberta via Swagger UAU):
+    // 1. Pessoas/ConsultarPessoasComVenda → lista de Cod_pes + Nome
+    // 2. Pessoas/ConsultarPessoaPorChave → CPF/CNPJ + Email
+    // 3. Venda/ConsultarUnidadesCompradasPorCPFCNPJ → unidades por CPF
+    // Resultado: map identificadorUnidade → { nome, cpf }
+    interface CompradorInfo { nome: string; cpf: string; email: string }
+    const compradorPorLote = new Map<string, CompradorInfo>();
+
+    try {
+      // 1. Lista pessoas com venda (1 call)
+      const pessoasResRaw = await uauFetch(token, "Pessoas/ConsultarPessoasComVenda", {}, 15000);
+      const pessoasFirst = Array.isArray(pessoasResRaw) ? pessoasResRaw[0] : pessoasResRaw;
+      const pessoasList = (pessoasFirst as { Pessoas?: { Cod_pes: number; Nome_pes: string }[] })?.Pessoas || [];
+      // Filtra schema row (primeiro item geralmente é tipo)
+      const pessoas = pessoasList.filter((p) => typeof p.Cod_pes === "number" && p.Cod_pes > 0);
+
+      // 2. Para cada pessoa, busca CPF (paralelo, batch de 5)
+      const pessoasComCpf: { codPes: number; nome: string; cpf: string; email: string }[] = [];
+      for (let i = 0; i < pessoas.length; i += 5) {
+        const batch = pessoas.slice(i, i + 5);
+        const results = await Promise.allSettled(
+          batch.map(async (p) => {
+            const det = await uauFetch(token, "Pessoas/ConsultarPessoaPorChave", { codigo_pessoa: p.Cod_pes }, 8000);
+            const detRows = extractMyTable(det);
+            const detData = detRows[0] || {};
+            return {
+              codPes: p.Cod_pes,
+              nome: p.Nome_pes || "",
+              cpf: (detData.cpf_pes as string) || "",
+              email: (detData.Email_pes as string) || "",
+            };
+          })
+        );
+        for (const r of results) {
+          if (r.status === "fulfilled" && r.value.cpf) pessoasComCpf.push(r.value);
+        }
+      }
+
+      // 3. Para cada pessoa com CPF, busca unidades compradas (paralelo, batch de 5)
+      for (let i = 0; i < pessoasComCpf.length; i += 5) {
+        const batch = pessoasComCpf.slice(i, i + 5);
+        const results = await Promise.allSettled(
+          batch.map(async (p) => {
+            const unitsRaw = await uauFetch(token, "Venda/ConsultarUnidadesCompradasPorCPFCNPJ", { CpfCnpj: p.cpf }, 10000);
+            const units = Array.isArray(unitsRaw) ? unitsRaw : [];
+            return { pessoa: p, units };
+          })
+        );
+        for (const r of results) {
+          if (r.status === "fulfilled") {
+            for (const u of r.value.units) {
+              const ident = (u as { IdentificadorUnid?: string }).IdentificadorUnid;
+              if (ident) {
+                compradorPorLote.set(ident, {
+                  nome: r.value.pessoa.nome,
+                  cpf: r.value.pessoa.cpf,
+                  email: r.value.pessoa.email,
+                });
+              }
+            }
+          }
+        }
+      }
+    } catch (err) {
+      console.error("Erro ao enriquecer com comprador:", err);
+    }
+
     // Enrich with ConsultarResumoVenda for each sale that has Num_Ven
     const vendasComNumero = baseVendas.filter(v => v.numVen > 0);
     const resumoMap = new Map<number, Record<string, unknown>>();
@@ -199,13 +267,16 @@ export async function GET(request: NextRequest) {
         continue;
       }
 
+      // Comprador: prioriza mapa de pessoas-com-venda, fallback resumo
+      const compradorInfo = compradorPorLote.get(base.id);
+
       vendas.push({
         chaveVenda: `${base.empresa}-${base.numVen || base.id}`,
         identificadorUnidade: base.id,
         dataVenda: dataFinal,
         valorVenda,
-        compradorNome: (resumo?.Nome_pes as string) || "",
-        compradorCpfCnpj: (resumo?.CpfCnpj_pes as string) || "",
+        compradorNome: compradorInfo?.nome || (resumo?.Nome_pes as string) || "",
+        compradorCpfCnpj: compradorInfo?.cpf || (resumo?.CpfCnpj_pes as string) || "",
         corretor: (resumo?.NomeCorretor as string) || (resumo?.Nome_Corretor as string) || (resumo?.Corretor_ven as string) || "",
         formaPagamento: (resumo?.Descr_FormaPgto as string) || (resumo?.FormaPagamento as string) || "",
         qtdParcelas: (resumo?.QtdParcelas as number) || 0,
