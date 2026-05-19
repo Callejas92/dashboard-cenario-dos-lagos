@@ -124,6 +124,7 @@ export async function GET(request: NextRequest) {
       id: string;
       numVen: number;
       empresa: number;
+      obra: string;
       dataVenda: string;
       valorVenda: number;
     }
@@ -140,8 +141,9 @@ export async function GET(request: NextRequest) {
       const valor = erpValor > 0 ? erpValor : (lote?.valorTotal || 0);
       const numVen = (r.Num_Ven as number) || 0;
       const empresa = (r.Empresa_unid as unknown as number) || 2;
+      const obra = (r as Record<string, unknown>).Obra_unid as string || "01VEN";
 
-      baseVendas.push({ id, numVen, empresa, dataVenda, valorVenda: valor });
+      baseVendas.push({ id, numVen, empresa, obra, dataVenda, valorVenda: valor });
     }
 
     // Enrich with ConsultarResumoVenda for each sale that has Num_Ven
@@ -154,9 +156,11 @@ export async function GET(request: NextRequest) {
       const batch = vendasComNumero.slice(i, i + concurrency);
       const results = await Promise.allSettled(
         batch.map(async (v) => {
+          // API UAU atualizada: codigoObra, codigoEmpresa, numeroVenda
           const res = await uauFetch(token, "Venda/ConsultarResumoVenda", {
-            empresa: v.empresa,
-            numero: v.numVen,
+            codigoObra: v.obra,
+            codigoEmpresa: v.empresa,
+            numeroVenda: v.numVen,
           }, 10000);
           return { numVen: v.numVen, raw: res };
         })
@@ -171,61 +175,6 @@ export async function GET(request: NextRequest) {
           }
         }
       }
-    }
-
-    // Debug: lista campos do espelho + resumo + tenta outros endpoints
-    const { searchParams: sp2 } = new URL(request.url);
-    if (sp2.get("debug") === "1") {
-      // TODOS os campos da primeira row do espelho
-      const espelhoFullSample = rows[0] || {};
-      const espelhoAllKeys = Object.keys(espelhoFullSample);
-
-      // Tenta o ConsultarResumoVenda explicitamente pra um numVen e captura erro
-      const firstNumVen = baseVendas.find(v => v.numVen > 0)?.numVen || 0;
-      const firstEmpresa = baseVendas.find(v => v.numVen > 0)?.empresa || 2;
-      let resumoTest: unknown = "not_tested";
-      let resumoTestError: string = "";
-      if (firstNumVen > 0) {
-        try {
-          resumoTest = await uauFetch(token, "Venda/ConsultarResumoVenda", { empresa: firstEmpresa, numero: firstNumVen }, 10000);
-        } catch (e) {
-          resumoTestError = String(e);
-        }
-      }
-
-      // Tenta outros endpoints UAU
-      const otherEndpoints: Record<string, unknown> = {};
-      if (firstNumVen > 0) {
-        for (const ep of [
-          "Venda/ConsultarVenda",
-          "Venda/BuscarVenda",
-          "Venda/BuscarVendas",
-          "Venda/BuscaVendas",
-          "Venda/Buscar",
-          "Venda/ConsultarVendaPorNumero",
-        ]) {
-          try {
-            const r = await uauFetch(token, ep, { empresa: firstEmpresa, numero: firstNumVen }, 8000);
-            otherEndpoints[ep] = r;
-          } catch (e) {
-            const errStr = String(e);
-            // Só inclui se não for 404 (pra não poluir)
-            if (!errStr.includes("404")) otherEndpoints[ep] = errStr;
-          }
-        }
-      }
-
-      return NextResponse.json({
-        debug: true,
-        baseVendasCount: baseVendas.length,
-        vendasComNumVen: baseVendas.filter(v => v.numVen > 0).length,
-        primeiros3NumVen: baseVendas.slice(0, 3).map(v => ({ numVen: v.numVen, empresa: v.empresa, id: v.id })),
-        espelhoAllFields: espelhoAllKeys,
-        espelhoFirstRow: espelhoFullSample,
-        resumoTest,
-        resumoTestError,
-        otherEndpoints,
-      });
     }
 
     // Merge base data with resumo data

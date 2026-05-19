@@ -45,6 +45,7 @@ interface VendaInfo {
   valorVenda: number;
   numVen: number;
   empresa: number;
+  obra: string;
 }
 
 function extractMyTable(raw: unknown): Record<string, unknown>[] {
@@ -122,8 +123,9 @@ export async function GET() {
       const valor = erpValor > 0 ? erpValor : (lote?.valorTotal || 0);
       const numVen = (r.Num_Ven as number) || 0;
       const empresa = (r.Empresa_unid as number) || 2;
+      const obra = (r.Obra_unid as string) || "01VEN";
 
-      baseVendas.push({ identificador: id, numVen, empresa, dataVenda, valorVenda: valor });
+      baseVendas.push({ identificador: id, numVen, empresa, obra, dataVenda, valorVenda: valor });
     }
 
     // Enrich with ConsultarResumoVenda in batches
@@ -135,9 +137,11 @@ export async function GET() {
       const batch = vendasComNumero.slice(i, i + concurrency);
       const results = await Promise.allSettled(
         batch.map(async (v) => {
+          // API UAU atualizada: codigoObra, codigoEmpresa, numeroVenda
           const res = await uauFetch(token, "Venda/ConsultarResumoVenda", {
-            empresa: v.empresa,
-            numero: v.numVen,
+            codigoObra: v.obra,
+            codigoEmpresa: v.empresa,
+            numeroVenda: v.numVen,
           }, 10000);
           return { numVen: v.numVen, raw: res };
         })
