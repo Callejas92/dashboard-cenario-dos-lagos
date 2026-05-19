@@ -177,6 +177,28 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    // Debug: ver o que o resumo retorna agora
+    const { searchParams: sp3 } = new URL(request.url);
+    if (sp3.get("debug") === "1") {
+      const samples: { numVen: number; rawKeys: string[]; fields: Record<string, unknown> }[] = [];
+      for (const [numVen, resumo] of resumoMap.entries()) {
+        const keys = Object.keys(resumo);
+        const fields: Record<string, unknown> = {};
+        for (const k of keys) {
+          const v = resumo[k];
+          if (v && typeof v !== "object" && String(v).trim()) fields[k] = v;
+        }
+        samples.push({ numVen, rawKeys: keys, fields });
+        if (samples.length >= 3) break;
+      }
+      return NextResponse.json({
+        debug: true,
+        resumosCount: resumoMap.size,
+        samples,
+        firstRaw: resumoMap.size > 0 ? Array.from(resumoMap.values())[0] : null,
+      });
+    }
+
     // Merge base data with resumo data
     let vendasInvestidor = 0;
     let valorInvestidor = 0;
