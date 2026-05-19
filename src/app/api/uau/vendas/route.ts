@@ -177,26 +177,46 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // Debug: ver o que o resumo retorna agora
+    // Debug: testa endpoints para achar o que retorna cliente
     const { searchParams: sp3 } = new URL(request.url);
     if (sp3.get("debug") === "1") {
-      const samples: { numVen: number; rawKeys: string[]; fields: Record<string, unknown> }[] = [];
-      for (const [numVen, resumo] of resumoMap.entries()) {
-        const keys = Object.keys(resumo);
-        const fields: Record<string, unknown> = {};
-        for (const k of keys) {
-          const v = resumo[k];
-          if (v && typeof v !== "object" && String(v).trim()) fields[k] = v;
+      const firstV = baseVendas.find(v => v.numVen > 0);
+      if (!firstV) return NextResponse.json({ error: "Nenhuma venda com numVen" });
+
+      const params = { codigoObra: firstV.obra, codigoEmpresa: firstV.empresa, numeroVenda: firstV.numVen };
+      const tests: Record<string, unknown> = { _params: params };
+
+      const endpoints = [
+        "Venda/ConsultarVenda",
+        "Venda/ConsultarDadosCliente",
+        "Venda/ConsultarDetalhesVenda",
+        "Venda/ConsultarCompradores",
+        "Venda/Comprador",
+        "Venda/Compradores",
+        "Venda/Cliente",
+        "Venda/ConsultarCliente",
+        "Cliente/Consultar",
+        "Cliente/ConsultarCliente",
+        "Cliente/Buscar",
+        "Pessoa/Consultar",
+        "Pessoa/ConsultarPessoa",
+        "Venda/Detalhes",
+        "Venda/ConsultarDetalhada",
+      ];
+
+      for (const ep of endpoints) {
+        try {
+          const r = await uauFetch(token, ep, params, 6000);
+          tests[ep] = r;
+        } catch (e) {
+          const errStr = String(e);
+          if (errStr.includes("404")) continue;
+          // Não-404, salva resposta resumida
+          tests[ep] = errStr.length > 200 ? errStr.slice(0, 200) + "..." : errStr;
         }
-        samples.push({ numVen, rawKeys: keys, fields });
-        if (samples.length >= 3) break;
       }
-      return NextResponse.json({
-        debug: true,
-        resumosCount: resumoMap.size,
-        samples,
-        firstRaw: resumoMap.size > 0 ? Array.from(resumoMap.values())[0] : null,
-      });
+
+      return NextResponse.json({ debug: true, tests });
     }
 
     // Merge base data with resumo data
