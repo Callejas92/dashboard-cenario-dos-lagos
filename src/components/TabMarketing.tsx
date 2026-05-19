@@ -112,10 +112,19 @@ export default function TabMarketing() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // Carrega sempre fresco do OneDrive ao montar a aba.
+  // POST clear-cache + GET = força reler o Excel.
   const load = async () => {
     setLoading(true);
     setError(null);
     try {
+      // Limpa cache silenciosamente (não bloqueia se falhar)
+      await fetch("/api/marketing-offline", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "clear-cache" }),
+      }).catch(() => { /* ignore */ });
+
       const res = await fetch("/api/marketing-offline");
       const j = await res.json();
       if (j.error) setError(j.error);
@@ -128,15 +137,6 @@ export default function TabMarketing() {
   };
 
   useEffect(() => { load(); }, []);
-
-  const refresh = async () => {
-    await fetch("/api/marketing-offline", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "clear-cache" }),
-    });
-    load();
-  };
 
   // Chart data: Plano vs Realizado
   const planoChartData = useMemo(() => {
@@ -185,7 +185,7 @@ export default function TabMarketing() {
           <h3 className="text-sm font-bold" style={{ color: "var(--text)" }}>Erro ao carregar marketing</h3>
         </div>
         <p className="text-xs" style={{ color: "var(--text-muted)" }}>{error || "Sem dados"}</p>
-        <button onClick={refresh} className="mt-3 px-3 py-1.5 text-xs rounded-md" style={{ background: "var(--primary)", color: "white" }}>
+        <button onClick={load} className="mt-3 px-3 py-1.5 text-xs rounded-md" style={{ background: "var(--primary)", color: "white" }}>
           Tentar novamente
         </button>
       </div>
@@ -208,12 +208,10 @@ export default function TabMarketing() {
       <div className="flex items-center gap-3">
         <Target size={18} style={{ color: "#10b981" }} />
         <h3 className="text-sm font-bold" style={{ color: "var(--text)" }}>Painel de Marketing</h3>
-        <span className="text-xs" style={{ color: "var(--text-dim)", marginLeft: "auto" }}>
-          atualizado: {new Date(data.fetchedAt).toLocaleString("pt-BR")}
+        <span className="text-xs flex items-center gap-1" style={{ color: "var(--text-dim)", marginLeft: "auto" }}>
+          <RefreshCw size={11} style={{ color: "#10b981" }} />
+          sync automático · atualizado às {new Date(data.fetchedAt).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
         </span>
-        <button onClick={refresh} className="text-xs flex items-center gap-1 px-2 py-1 rounded" style={{ color: "var(--text-muted)", border: "1px solid var(--border)" }}>
-          <RefreshCw size={12} /> sync OneDrive
-        </button>
       </div>
 
       {/* Premissas */}

@@ -18,8 +18,10 @@ const ONEDRIVE_FILE_PATH = (process.env.ONEDRIVE_CUSTOS_FILE_PATH ||
   "/Cenário dos Lagos/90-100 Pessoal/Cenario_Marketing.xlsx").trim().replace(/\\n/g, "");
 const TOKEN_BLOB_NAME = "onedrive-token.json";
 
-const CACHE_TTL = 5 * 60 * 1000;
+const CACHE_TTL = 60 * 1000; // 60s — TabMarketing chama clear-cache no mount, isso é só pra burst protection
 let dataCache: { data: MarketingData; timestamp: number } | null = null;
+// Cache do file ID — não muda enquanto o arquivo não for movido/renomeado
+let fileIdCache: { id: string; path: string } | null = null;
 
 // ── Tipos ──────────────────────────────────────────────────────────────────
 export interface Premissas {
@@ -539,8 +541,12 @@ async function getAccessToken(): Promise<string> {
   return newTokens.access_token;
 }
 
-async function downloadFromOneDrive(): Promise<ArrayBuffer> {
-  const accessToken = await getAccessToken();
+async function resolveFileId(accessToken: string): Promise<string> {
+  // Cache hit: arquivo continua no mesmo path
+  if (fileIdCache && fileIdCache.path === ONEDRIVE_FILE_PATH) {
+    return fileIdCache.id;
+  }
+
   const segments = ONEDRIVE_FILE_PATH.split("/").filter(Boolean);
   if (segments.length === 0) throw new Error("ONEDRIVE_CUSTOS_FILE_PATH vazio.");
 
@@ -564,11 +570,31 @@ async function downloadFromOneDrive(): Promise<ArrayBuffer> {
     currentId = match.id;
   }
 
+  fileIdCache = { id: currentId, path: ONEDRIVE_FILE_PATH };
+  return currentId;
+}
+
+async function downloadFromOneDrive(): Promise<ArrayBuffer> {
+  const accessToken = await getAccessToken();
+  let fileId: string;
+
+  try {
+    fileId = await resolveFileId(accessToken);
+  } catch (err) {
+    // Se cache estiver stale (arquivo movido/renomeado), invalida e tenta de novo
+    fileIdCache = null;
+    throw err;
+  }
+
   const contentRes = await fetch(
-    `https://graph.microsoft.com/v1.0/me/drive/items/${currentId}/content`,
+    `https://graph.microsoft.com/v1.0/me/drive/items/${fileId}/content`,
     { headers: { Authorization: `Bearer ${accessToken}` }, redirect: "follow", cache: "no-store" }
   );
-  if (!contentRes.ok) throw new Error(`Erro ao baixar arquivo (${contentRes.status})`);
+  if (!contentRes.ok) {
+    // 404 = arquivo movido/deletado, invalida cache de ID
+    if (contentRes.status === 404) fileIdCache = null;
+    throw new Error(`Erro ao baixar arquivo (${contentRes.status})`);
+  }
   return contentRes.arrayBuffer();
 }
 
