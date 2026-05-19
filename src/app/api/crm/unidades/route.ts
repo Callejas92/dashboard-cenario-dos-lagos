@@ -82,9 +82,9 @@ export async function GET() {
     const empreendimento = root?.empreendimentos?.[0];
     const unidades = empreendimento?.unidades || [];
 
-    // Status counts (excluindo investidor para os reais)
+    // Investidor (Tio Ico) é EXCLUÍDO de tudo — não existe nas métricas
+    // Total real = 174, não 213
     const statusCounts: Record<string, number> = {};
-    const statusCountsInvestidor: Record<string, number> = {};
     const lotesEnriquecidos: {
       loteId: string;
       bloco: string;
@@ -94,13 +94,18 @@ export async function GET() {
       rua: string;
       status: string;
       statusId: number;
-      isInvestidor: boolean;
     }[] = [];
 
+    let totalInvestidor = 0;
     for (const u of unidades) {
       const status = STATUS_MAP[u.id_situacao_unidade] || u.situacao_unidade || "DESCONHECIDO";
       const loteId = buildLoteId(u.bloco, u.unidade);
-      const isInvestidor = INVESTOR_LOTS.has(loteId);
+
+      // Pula lotes do investidor (não conta em nada)
+      if (INVESTOR_LOTS.has(loteId)) {
+        totalInvestidor++;
+        continue;
+      }
 
       lotesEnriquecidos.push({
         loteId,
@@ -111,20 +116,9 @@ export async function GET() {
         rua: u.rua || "",
         status,
         statusId: u.id_situacao_unidade,
-        isInvestidor,
       });
 
-      if (isInvestidor) {
-        statusCountsInvestidor[status] = (statusCountsInvestidor[status] || 0) + 1;
-      } else {
-        statusCounts[status] = (statusCounts[status] || 0) + 1;
-      }
-    }
-
-    // Total geral por status (com investidor)
-    const statusCountsTotal: Record<string, number> = {};
-    for (const s of Object.values(STATUS_MAP)) {
-      statusCountsTotal[s] = (statusCounts[s] || 0) + (statusCountsInvestidor[s] || 0);
+      statusCounts[status] = (statusCounts[status] || 0) + 1;
     }
 
     const result = {
@@ -135,16 +129,10 @@ export async function GET() {
         razaoSocial: empreendimento?.pessoaJuridica?.razao_social,
         cidade: empreendimento?.endereco?.cidade,
       },
-      total: unidades.length,
-      // Sem investidor (para KPIs reais)
+      total: lotesEnriquecidos.length, // 174 (sem investidor)
       statusCounts,
-      // Investidor à parte (39 lotes Tio Ico)
-      investidor: {
-        total: Object.values(statusCountsInvestidor).reduce((s, n) => s + n, 0),
-        statusCounts: statusCountsInvestidor,
-      },
-      // Geral (todos juntos, como o CRM mostra)
-      statusCountsTotal,
+      // Info apenas pra referência (nao usado nas metricas)
+      _investidorExcluido: totalInvestidor,
       lotes: lotesEnriquecidos,
       fetchedAt: new Date().toISOString(),
     };

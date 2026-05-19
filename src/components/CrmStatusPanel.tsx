@@ -12,7 +12,6 @@ interface Lote {
   rua: string;
   status: string;
   statusId: number;
-  isInvestidor: boolean;
 }
 
 interface Contrato {
@@ -35,8 +34,7 @@ interface UnidadesData {
   empreendimento?: { nome?: string };
   total: number;
   statusCounts: Record<string, number>;
-  investidor?: { total: number; statusCounts: Record<string, number> };
-  statusCountsTotal?: Record<string, number>;
+  _investidorExcluido?: number;
   lotes?: Lote[];
   fetchedAt?: string;
 }
@@ -60,7 +58,6 @@ export default function CrmStatusPanel() {
   const [data, setData] = useState<UnidadesData | null>(null);
   const [contratos, setContratos] = useState<Contrato[]>([]);
   const [loading, setLoading] = useState(true);
-  const [showInvestidor, setShowInvestidor] = useState(false);
   const [openStatus, setOpenStatus] = useState<string | null>(null);
 
   const fetchData = async () => {
@@ -110,9 +107,9 @@ export default function CrmStatusPanel() {
     return null;
   }
 
-  const counts = showInvestidor ? (data.statusCountsTotal || data.statusCounts) : data.statusCounts;
+  const counts = data.statusCounts;
   const total = Object.values(counts).reduce((s, n) => s + n, 0);
-  const investidorTotal = data.investidor?.total || 0;
+  const investidorExcluido = data._investidorExcluido || 0;
 
   return (
     <div style={{
@@ -135,21 +132,6 @@ export default function CrmStatusPanel() {
           </span>
         </div>
         <div className="flex items-center gap-2">
-          {investidorTotal > 0 && (
-            <button
-              onClick={() => setShowInvestidor((v) => !v)}
-              style={{
-                padding: "0.25rem 0.75rem", fontSize: "0.7rem", fontWeight: 600,
-                borderRadius: "0.375rem",
-                background: showInvestidor ? "#8b5cf6" : "var(--surface)",
-                color: showInvestidor ? "#fff" : "var(--text-muted)",
-                border: "1px solid var(--border)", cursor: "pointer",
-              }}
-              title={showInvestidor ? "Ocultar lotes do investidor" : "Incluir lotes do investidor"}
-            >
-              {showInvestidor ? `+ ${investidorTotal} investidor` : `Excluindo investidor`}
-            </button>
-          )}
           <button
             onClick={fetchData}
             disabled={loading}
@@ -224,7 +206,7 @@ export default function CrmStatusPanel() {
             {total}
           </div>
           <div style={{ fontSize: "0.65rem", color: "var(--text-dim)" }}>
-            {showInvestidor ? "geral" : "real"}
+            lotes
           </div>
         </div>
       </div>
@@ -246,7 +228,7 @@ export default function CrmStatusPanel() {
                 background: STATUS_CONFIG[openStatus]?.color || "#6b7280",
               }} />
               <h4 className="text-sm font-bold" style={{ color: "var(--text-muted)" }}>
-                LOTES {openStatus} ({data.lotes.filter((l) => l.status === openStatus && (showInvestidor || !l.isInvestidor)).length})
+                LOTES {openStatus} ({data.lotes.filter((l) => l.status === openStatus).length})
               </h4>
             </div>
             <button
@@ -273,12 +255,11 @@ export default function CrmStatusPanel() {
                   <th style={{ textAlign: "left", padding: "0.5rem 0.75rem", color: "var(--text-dim)", fontWeight: 600 }}>Cliente</th>
                   <th style={{ textAlign: "left", padding: "0.5rem 0.75rem", color: "var(--text-dim)", fontWeight: 600 }}>Corretor</th>
                   <th style={{ textAlign: "left", padding: "0.5rem 0.75rem", color: "var(--text-dim)", fontWeight: 600 }}>Contrato</th>
-                  <th style={{ textAlign: "center", padding: "0.5rem 0.75rem", color: "var(--text-dim)", fontWeight: 600 }}>Origem</th>
                 </tr>
               </thead>
               <tbody>
                 {data.lotes
-                  .filter((l) => l.status === openStatus && (showInvestidor || !l.isInvestidor))
+                  .filter((l) => l.status === openStatus)
                   .sort((a, b) => a.loteId.localeCompare(b.loteId))
                   .map((l) => {
                     const contrato = contratoPorLote.get(l.loteId);
@@ -350,19 +331,6 @@ export default function CrmStatusPanel() {
                             <span style={{ color: "var(--text-dim)", fontSize: "0.7rem" }}>—</span>
                           )}
                         </td>
-                        <td style={{ padding: "0.5rem 0.75rem", textAlign: "center" }}>
-                          {l.isInvestidor ? (
-                            <span style={{
-                              fontSize: "0.65rem", padding: "0.125rem 0.5rem",
-                              background: "#8b5cf615", color: "#8b5cf6",
-                              borderRadius: "0.375rem", fontWeight: 600,
-                            }}>
-                              Investidor
-                            </span>
-                          ) : (
-                            <span style={{ fontSize: "0.7rem", color: "var(--text-dim)" }}>Cliente</span>
-                          )}
-                        </td>
                       </tr>
                     );
                   })}
@@ -375,14 +343,14 @@ export default function CrmStatusPanel() {
                   <td style={{ padding: "0.625rem 0.75rem", textAlign: "right", color: STATUS_CONFIG[openStatus]?.color || "var(--text)" }}>
                     {formatBRL(
                       data.lotes
-                        .filter((l) => l.status === openStatus && (showInvestidor || !l.isInvestidor))
+                        .filter((l) => l.status === openStatus)
                         .reduce((s, l) => {
                           const c = contratoPorLote.get(l.loteId);
                           return s + (c?.valor || l.valor);
                         }, 0)
                     )}
                   </td>
-                  <td colSpan={4}></td>
+                  <td colSpan={3}></td>
                 </tr>
               </tfoot>
             </table>
@@ -391,14 +359,15 @@ export default function CrmStatusPanel() {
       )}
 
       {/* Footer info */}
-      {investidorTotal > 0 && (
+      {investidorExcluido > 0 && (
         <div style={{
           marginTop: "0.75rem", padding: "0.5rem 0.75rem",
           background: "var(--surface)", borderRadius: "0.375rem",
           fontSize: "0.7rem", color: "var(--text-dim)",
         }}>
-          ℹ️ <strong>{investidorTotal} lotes do investidor</strong> (Tio Ico) {showInvestidor ? "incluídos no total" : "excluídos das métricas reais"}.
-          Para gerenciar a lista, edite <code style={{ background: "var(--card-bg)", padding: "0.125rem 0.25rem", borderRadius: "0.25rem" }}>src/data/investor-lots.json</code>.
+          ℹ️ <strong>{investidorExcluido} lotes do investidor</strong> (Tio Ico) são excluídos de TODAS as métricas.
+          Total real do empreendimento: <strong>{total} lotes</strong>. Para gerenciar a lista, edite{" "}
+          <code style={{ background: "var(--card-bg)", padding: "0.125rem 0.25rem", borderRadius: "0.25rem" }}>src/data/investor-lots.json</code>.
         </div>
       )}
     </div>

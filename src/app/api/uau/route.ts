@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 import lotesData from "@/data/lotes.json";
+import investorData from "@/data/investor-lots.json";
 import { authenticate, UAU_API, isUauConfigured, uauHeaders } from "@/lib/uau-auth";
+
+const INVESTOR_LOTS = new Set<string>(investorData.lots);
 
 // Helper: busca dados do CRM Eggs (mais atualizado que ERP/JSON estático)
 interface CRMLoteInfo {
@@ -249,7 +252,10 @@ function buildEnrichedResponse(
     }
   }
 
-  const unidades = Array.from(unidadesMap.values());
+  // Lotes do investidor (Tio Ico) são EXCLUÍDOS de tudo — não existem nas métricas
+  const unidades = Array.from(unidadesMap.values()).filter(
+    (u) => !INVESTOR_LOTS.has(u.identificador)
+  );
 
   function classifyStatus(s: string): "vendido" | "emVenda" | "foraDeVenda" | "disponivel" {
     const sl = s.toLowerCase();
