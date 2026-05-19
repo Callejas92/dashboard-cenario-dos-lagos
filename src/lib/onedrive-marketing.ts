@@ -576,14 +576,33 @@ async function resolveFileId(accessToken: string): Promise<string> {
 
 async function downloadFromOneDrive(): Promise<ArrayBuffer> {
   const accessToken = await getAccessToken();
-  let fileId: string;
 
+  // Fast path: usa o endpoint Graph por path direto (1 chamada total)
+  // Formato: /me/drive/root:/path/to/file:/content
+  const encodedPath = ONEDRIVE_FILE_PATH
+    .split("/")
+    .filter(Boolean)
+    .map(encodeURIComponent)
+    .join("/");
+
+  const directUrl = `https://graph.microsoft.com/v1.0/me/drive/root:/${encodedPath}:/content`;
+  const directRes = await fetch(directUrl, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+    redirect: "follow",
+    cache: "no-store",
+  });
+
+  if (directRes.ok) {
+    return directRes.arrayBuffer();
+  }
+
+  // Fallback: se o path direto falhar (caracteres especiais raros), faz navegação manual
+  let fileId: string;
   try {
     fileId = await resolveFileId(accessToken);
   } catch (err) {
-    // Se cache estiver stale (arquivo movido/renomeado), invalida e tenta de novo
     fileIdCache = null;
-    throw err;
+    throw new Error(`Erro ao baixar arquivo (${directRes.status}): ${err instanceof Error ? err.message : String(err)}`);
   }
 
   const contentRes = await fetch(
@@ -591,7 +610,6 @@ async function downloadFromOneDrive(): Promise<ArrayBuffer> {
     { headers: { Authorization: `Bearer ${accessToken}` }, redirect: "follow", cache: "no-store" }
   );
   if (!contentRes.ok) {
-    // 404 = arquivo movido/deletado, invalida cache de ID
     if (contentRes.status === 404) fileIdCache = null;
     throw new Error(`Erro ao baixar arquivo (${contentRes.status})`);
   }
