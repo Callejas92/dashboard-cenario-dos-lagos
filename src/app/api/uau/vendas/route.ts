@@ -177,47 +177,6 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // Debug: testa endpoints para achar o que retorna cliente
-    const { searchParams: sp3 } = new URL(request.url);
-    if (sp3.get("debug") === "1") {
-      const firstV = baseVendas.find(v => v.numVen > 0);
-      if (!firstV) return NextResponse.json({ error: "Nenhuma venda com numVen" });
-
-      const params = { codigoObra: firstV.obra, codigoEmpresa: firstV.empresa, numeroVenda: firstV.numVen };
-      const tests: Record<string, unknown> = { _params: params };
-
-      const endpoints = [
-        "Venda/ConsultarVenda",
-        "Venda/ConsultarDadosCliente",
-        "Venda/ConsultarDetalhesVenda",
-        "Venda/ConsultarCompradores",
-        "Venda/Comprador",
-        "Venda/Compradores",
-        "Venda/Cliente",
-        "Venda/ConsultarCliente",
-        "Cliente/Consultar",
-        "Cliente/ConsultarCliente",
-        "Cliente/Buscar",
-        "Pessoa/Consultar",
-        "Pessoa/ConsultarPessoa",
-        "Venda/Detalhes",
-        "Venda/ConsultarDetalhada",
-      ];
-
-      for (const ep of endpoints) {
-        try {
-          const r = await uauFetch(token, ep, params, 6000);
-          tests[ep] = r;
-        } catch (e) {
-          const errStr = String(e);
-          if (errStr.includes("404")) continue;
-          // Não-404, salva resposta resumida
-          tests[ep] = errStr.length > 200 ? errStr.slice(0, 200) + "..." : errStr;
-        }
-      }
-
-      return NextResponse.json({ debug: true, tests });
-    }
 
     // Merge base data with resumo data
     let vendasInvestidor = 0;
