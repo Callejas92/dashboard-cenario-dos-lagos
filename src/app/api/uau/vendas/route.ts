@@ -176,51 +176,54 @@ export async function GET(request: NextRequest) {
     // Debug: lista campos do espelho + resumo + tenta outros endpoints
     const { searchParams: sp2 } = new URL(request.url);
     if (sp2.get("debug") === "1") {
-      const espelhoFields: Record<string, unknown>[] = [];
-      for (const row of rows.slice(0, 3)) {
-        const interesting: Record<string, unknown> = {};
-        for (const k of Object.keys(row)) {
-          const v = (row as Record<string, unknown>)[k];
-          if (v && String(v).trim() && String(v) !== "0") interesting[k] = v;
-        }
-        espelhoFields.push(interesting);
-      }
+      // TODOS os campos da primeira row do espelho
+      const espelhoFullSample = rows[0] || {};
+      const espelhoAllKeys = Object.keys(espelhoFullSample);
 
-      const resumoData: { numVen: number; fields: Record<string, unknown>; rawSample: unknown }[] = [];
-      for (const [numVen, resumo] of resumoMap.entries()) {
-        const keys = Object.keys(resumo);
-        const interesting: Record<string, unknown> = {};
-        for (const k of keys) {
-          const v = resumo[k];
-          if (v && String(v).trim()) interesting[k] = v;
+      // Tenta o ConsultarResumoVenda explicitamente pra um numVen e captura erro
+      const firstNumVen = baseVendas.find(v => v.numVen > 0)?.numVen || 0;
+      const firstEmpresa = baseVendas.find(v => v.numVen > 0)?.empresa || 2;
+      let resumoTest: unknown = "not_tested";
+      let resumoTestError: string = "";
+      if (firstNumVen > 0) {
+        try {
+          resumoTest = await uauFetch(token, "Venda/ConsultarResumoVenda", { empresa: firstEmpresa, numero: firstNumVen }, 10000);
+        } catch (e) {
+          resumoTestError = String(e);
         }
-        resumoData.push({ numVen, fields: interesting, rawSample: resumo });
-        if (resumoData.length >= 3) break;
       }
 
       // Tenta outros endpoints UAU
       const otherEndpoints: Record<string, unknown> = {};
-      const firstNumVen = baseVendas.find(v => v.numVen > 0)?.numVen || 0;
       if (firstNumVen > 0) {
-        try {
-          const r = await uauFetch(token, "Venda/Consultar", { empresa: 2, numero: firstNumVen }, 8000);
-          otherEndpoints["Venda/Consultar"] = r;
-        } catch (e) { otherEndpoints["Venda/Consultar"] = String(e); }
-
-        try {
-          const r = await uauFetch(token, "Cliente/Consultar", { empresa: 2, numero: firstNumVen }, 8000);
-          otherEndpoints["Cliente/Consultar"] = r;
-        } catch (e) { otherEndpoints["Cliente/Consultar"] = String(e); }
+        for (const ep of [
+          "Venda/ConsultarVenda",
+          "Venda/BuscarVenda",
+          "Venda/BuscarVendas",
+          "Venda/BuscaVendas",
+          "Venda/Buscar",
+          "Venda/ConsultarVendaPorNumero",
+        ]) {
+          try {
+            const r = await uauFetch(token, ep, { empresa: firstEmpresa, numero: firstNumVen }, 8000);
+            otherEndpoints[ep] = r;
+          } catch (e) {
+            const errStr = String(e);
+            // Só inclui se não for 404 (pra não poluir)
+            if (!errStr.includes("404")) otherEndpoints[ep] = errStr;
+          }
+        }
       }
 
       return NextResponse.json({
         debug: true,
         baseVendasCount: baseVendas.length,
         vendasComNumVen: baseVendas.filter(v => v.numVen > 0).length,
-        primeiros3NumVen: baseVendas.slice(0, 3).map(v => v.numVen),
-        espelhoSample: espelhoFields,
-        resumosCount: resumoMap.size,
-        resumosSample: resumoData,
+        primeiros3NumVen: baseVendas.slice(0, 3).map(v => ({ numVen: v.numVen, empresa: v.empresa, id: v.id })),
+        espelhoAllFields: espelhoAllKeys,
+        espelhoFirstRow: espelhoFullSample,
+        resumoTest,
+        resumoTestError,
         otherEndpoints,
       });
     }
