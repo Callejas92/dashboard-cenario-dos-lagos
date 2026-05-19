@@ -95,6 +95,16 @@ interface CanaisApiResponse {
 export default function TabVisaoGeral({ data }: Props) {
   const metas = data.config.metas;
   const vgv = data.config.vgv;
+  // Total real de lotes (excluindo investidor) - busca do /api/uau
+  const [totalLotesReais, setTotalLotesReais] = useState<number>(0);
+  useEffect(() => {
+    fetch("/api/uau")
+      .then((r) => r.json())
+      .then((d) => {
+        if (d?.summary?.total) setTotalLotesReais(d.summary.total);
+      })
+      .catch(() => {});
+  }, []);
 
   // ---- Date state ----
   const [globalStart, setGlobalStart] = useState("2026-04-14");
@@ -153,8 +163,8 @@ export default function TabVisaoGeral({ data }: Props) {
 
   const crmConvertidos = apiData?.crmTotal.convertidos ?? 0;
 
-  // VSO: vendas / totalUnidades * 100
-  const vso = vgv.totalUnidades > 0 ? (kpis.totalVendas / vgv.totalUnidades) * 100 : 0;
+  // VSO: vendas / totalLotesReais * 100 (174, excluindo investidor)
+  const vso = totalLotesReais > 0 ? (kpis.totalVendas / totalLotesReais) * 100 : 0;
 
   // Canal data for charts
   const allCanalData = apiData
