@@ -173,24 +173,56 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // Debug: lista todos os campos disponíveis no resumo
+    // Debug: lista campos do espelho + resumo + tenta outros endpoints
     const { searchParams: sp2 } = new URL(request.url);
     if (sp2.get("debug") === "1") {
-      const debugData = [];
+      const espelhoFields: Record<string, unknown>[] = [];
+      for (const row of rows.slice(0, 3)) {
+        const interesting: Record<string, unknown> = {};
+        for (const k of Object.keys(row)) {
+          const v = (row as Record<string, unknown>)[k];
+          if (v && String(v).trim() && String(v) !== "0") interesting[k] = v;
+        }
+        espelhoFields.push(interesting);
+      }
+
+      const resumoData: { numVen: number; fields: Record<string, unknown>; rawSample: unknown }[] = [];
       for (const [numVen, resumo] of resumoMap.entries()) {
         const keys = Object.keys(resumo);
-        const interestingFields: Record<string, unknown> = {};
+        const interesting: Record<string, unknown> = {};
         for (const k of keys) {
           const v = resumo[k];
-          // Mostra campos com valor (não nulo/vazio) ou que parecem ser nome/cpf
-          if (v && (typeof v === "string" || typeof v === "number") && String(v).trim()) {
-            interestingFields[k] = v;
-          }
+          if (v && String(v).trim()) interesting[k] = v;
         }
-        debugData.push({ numVen, totalFields: keys.length, fields: interestingFields });
-        if (debugData.length >= 3) break;
+        resumoData.push({ numVen, fields: interesting, rawSample: resumo });
+        if (resumoData.length >= 3) break;
       }
-      return NextResponse.json({ debug: true, resumos: debugData });
+
+      // Tenta outros endpoints UAU
+      const otherEndpoints: Record<string, unknown> = {};
+      const firstNumVen = baseVendas.find(v => v.numVen > 0)?.numVen || 0;
+      if (firstNumVen > 0) {
+        try {
+          const r = await uauFetch(token, "Venda/Consultar", { empresa: 2, numero: firstNumVen }, 8000);
+          otherEndpoints["Venda/Consultar"] = r;
+        } catch (e) { otherEndpoints["Venda/Consultar"] = String(e); }
+
+        try {
+          const r = await uauFetch(token, "Cliente/Consultar", { empresa: 2, numero: firstNumVen }, 8000);
+          otherEndpoints["Cliente/Consultar"] = r;
+        } catch (e) { otherEndpoints["Cliente/Consultar"] = String(e); }
+      }
+
+      return NextResponse.json({
+        debug: true,
+        baseVendasCount: baseVendas.length,
+        vendasComNumVen: baseVendas.filter(v => v.numVen > 0).length,
+        primeiros3NumVen: baseVendas.slice(0, 3).map(v => v.numVen),
+        espelhoSample: espelhoFields,
+        resumosCount: resumoMap.size,
+        resumosSample: resumoData,
+        otherEndpoints,
+      });
     }
 
     // Merge base data with resumo data
