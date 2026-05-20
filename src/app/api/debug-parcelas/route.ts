@@ -47,19 +47,22 @@ export async function GET() {
 
   const token = await authenticate();
 
-  // Testa vários endpoints UAU relacionados a parcelas/recebimentos
+  // Testa BuscarParcelasAReceber com diferentes filtros / e endpoints alternativos
   const candidates = [
-    { path: "Venda/BuscarParcelasAReceber", body: { empresa: 2 } },
-    { path: "Venda/BuscarParcelasAReceber", body: { codigoEmpresa: 2 } },
-    { path: "Venda/ConsultarParcelas", body: { codigoEmpresa: 2 } },
-    { path: "Venda/ConsultarParcelasDaVenda", body: { codigoEmpresa: 2, codigoObra: "01VEN", numeroVenda: 1 } },
-    { path: "ParcelaVenda/ConsultarParcelas", body: { codigoEmpresa: 2 } },
-    { path: "Recebimento/ConsultarRecebimentos", body: { codigoEmpresa: 2 } },
-    { path: "Receber/ConsultarContas", body: { codigoEmpresa: 2 } },
-    { path: "Financeiro/ConsultarReceberPorEmpresa", body: { codigoEmpresa: 2 } },
-    { path: "Financeiro/ConsultarParcelasReceber", body: { codigoEmpresa: 2 } },
-    { path: "ContaReceber/Consultar", body: { codigoEmpresa: 2 } },
-    { path: "Venda/ConsultarResumoVenda", body: { codigoEmpresa: 2, codigoObra: "01VEN", numeroVenda: 1 } },
+    // Variações de BuscarParcelasAReceber
+    { path: "Venda/BuscarParcelasAReceber", body: { empresa: 2, obra: "01VEN" } },
+    { path: "Venda/BuscarParcelasAReceber", body: { empresa: 2, obra: "01VEN", dataInicio: "2020-01-01", dataFim: "2030-12-31" } },
+    { path: "Venda/BuscarParcelasAReceber", body: { empresa: 2, status: "A" } },
+    { path: "Venda/BuscarParcelasAReceber", body: { empresa: 2, dataInicial: "01-01-2020", dataFinal: "31-12-2030" } },
+    { path: "Venda/BuscarParcelasAReceber", body: { codigoEmpresa: 2, codigoObra: "01VEN" } },
+    { path: "Venda/BuscarParcelasAReceber", body: { Empresa: 2, Obra: "01VEN" } },
+    // Outros endpoints
+    { path: "Venda/ConsultarParcelasReceberPorVenda", body: { codigoEmpresa: 2, codigoObra: "01VEN", numeroVenda: 1 } },
+    { path: "FluxoParcelas/ConsultarParcelas", body: { codigoEmpresa: 2 } },
+    { path: "Espelho/BuscarParcelasReceber", body: { codigoEmpresa: 2 } },
+    { path: "Espelho/ConsultarParcelasReceber", body: { codigoEmpresa: 2 } },
+    { path: "ContasReceber/Consultar", body: { codigoEmpresa: 2 } },
+    { path: "Cobranca/ConsultarParcelas", body: { codigoEmpresa: 2 } },
   ];
 
   const results = await Promise.allSettled(
