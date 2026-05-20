@@ -24,18 +24,19 @@ for (const l of lotesData as LoteStatic[]) {
 }
 
 interface ParcelaRow {
-  Numero_ven?: number;
-  Empresa_ven?: number;
-  Identificador_unid?: string;
-  NumParcela?: number;
-  DataVencimento?: string;
-  ValorParcela?: number;
-  ValorPago?: number;
-  ValorRecebido?: number;
-  StatusParcela?: string;
-  Descr_status?: string;
-  Nome_pes?: string;
-  NomeCliente?: string;
+  // Campos reais retornados por Venda/BuscarParcelasAReceber
+  Empresa_prc?: number;
+  Obra_Prc?: string;
+  NumVend_prc?: number;       // → cruzar com Espelho.Num_Ven pra pegar lote
+  NumParc_Prc?: number;
+  NumParcGer_Prc?: number;
+  Data_Prc?: string;          // data de vencimento (ISO)
+  Valor_Prc?: number;
+  Status_Prc?: number;        // 0 = aberta/a receber (não pago)
+  Tipo_Prc?: string;          // P = Principal, E = Entrada, B = Balão, S = Sinal
+  Cliente_Prc?: number;       // código pessoa
+  DataPror_Prc?: string;      // data prorrogada (se houve)
+  JurosParc_Prc?: number;
   [key: string]: unknown;
 }
 
@@ -103,9 +104,11 @@ export async function GET() {
         retorna_venda: true,
         data_tabela_preco: todayFormatted,
       }, 20000),
+      // IMPORTANTE: precisa de obra="01VEN", sem isso retorna só schema (vazio)
       uauFetch(token, "Venda/BuscarParcelasAReceber", {
         empresa: 2,
-      }, 20000).catch(() => null),
+        obra: "01VEN",
+      }, 30000).catch(() => null),
     ]);
 
     // --- Extract sold units ---
@@ -188,14 +191,28 @@ export async function GET() {
     const projecoes = calcProjecoes(vendasMensais);
 
     // --- Process Parcelas (Receivables) ---
-    const parcelaRows = parcelasRaw ? extractMyTable(parcelasRaw) : [];
-    const parcelas = parcelaRows.map((row) => {
-      const r = row as ParcelaRow;
-      const vencimento = parseDate(r.DataVencimento || "");
-      const valor = r.ValorParcela || 0;
-      const valorPago = r.ValorPago || r.ValorRecebido || 0;
-      const isPaga = valorPago >= valor && valor > 0;
-      const isVencida = !isPaga && vencimento < today && vencimento !== "";
+    // BuscarParcelasAReceber retorna APENAS parcelas em aberto (Status_Prc=0).
+    // O response é array direto: [schema, ...dados]. extractMyTable não pega esse formato.
+    // Filtra schema row (que tem valores string tipo "System.Int16, mscorlib, ...").
+    const rawParcelas: ParcelaRow[] = Array.isArray(parcelasRaw) ? (parcelasRaw as ParcelaRow[]) : [];
+    const parcelaRows = rawParcelas.filter((r) => {
+      // Schema row tem strings tipo "System.Int16, mscorlib..." em vez de número
+      return typeof r.Empresa_prc === "number" && r.Valor_Prc !== undefined;
+    });
+
+    // Mapeia NumVend_prc → IdentificadorUnid pra excluir lotes do investidor + ter o lote
+    const ventoLote = new Map<number, string>();
+    for (const base of baseVendas) {
+      if (base.numVen > 0) ventoLote.set(base.numVen, base.identificador);
+    }
+
+    const parcelas = parcelaRows.map((r) => {
+      // Vencimento: usa DataPror_Prc (data prorrogada) se existe, senão Data_Prc
+      const vencimento = parseDate((r.DataPror_Prc || r.Data_Prc) as string || "");
+      const valor = Number(r.Valor_Prc) || 0;
+      // BuscarParcelasAReceber só traz não-pagas → valorPago = 0
+      const valorPago = 0;
+      const isVencida = vencimento < today && vencimento !== "";
 
       let diasAtraso = 0;
       if (isVencida && vencimento) {
@@ -203,27 +220,35 @@ export async function GET() {
         diasAtraso = Math.floor(diff / (1000 * 60 * 60 * 24));
       }
 
+      const numVend = Number(r.NumVend_prc) || 0;
+      const identificadorUnidade = ventoLote.get(numVend) || "";
+
       return {
-        chaveVenda: `${r.Empresa_ven || 2}-${r.Numero_ven}`,
-        identificadorUnidade: r.Identificador_unid || "",
-        numeroParcela: r.NumParcela || 0,
+        chaveVenda: `${r.Empresa_prc || 2}-${numVend}`,
+        identificadorUnidade,
+        numeroParcela: Number(r.NumParc_Prc) || 0,
         dataVencimento: vencimento,
         valor,
         valorPago,
-        status: isPaga ? "paga" as const : isVencida ? "vencida" as const : "em_dia" as const,
+        status: isVencida ? "vencida" as const : "em_dia" as const,
         diasAtraso,
-        clienteNome: r.Nome_pes || r.NomeCliente || "",
+        tipoParcela: String(r.Tipo_Prc || ""), // P, E, B, S
+        clienteCodigo: Number(r.Cliente_Prc) || 0,
+        clienteNome: "", // não vem no endpoint — precisaria de outro lookup
       };
-    });
+    })
+    // Exclui parcelas de lotes do investidor (Tio Ico)
+    .filter((p) => !p.identificadorUnidade || !INVESTOR_LOTS.has(p.identificadorUnidade));
 
     // Inadimplência summary
+    // BuscarParcelasAReceber retorna SÓ parcelas em aberto (não pagas)
+    // → totalPago não é calculável aqui sem endpoint adicional
     const vencidas = parcelas.filter((p) => p.status === "vencida");
     const emDia = parcelas.filter((p) => p.status === "em_dia");
-    const pagas = parcelas.filter((p) => p.status === "paga");
 
-    const totalVencido = vencidas.reduce((s, p) => s + (p.valor - p.valorPago), 0);
+    const totalVencido = vencidas.reduce((s, p) => s + p.valor, 0);
     const totalEmDia = emDia.reduce((s, p) => s + p.valor, 0);
-    const totalPago = pagas.reduce((s, p) => s + p.valorPago, 0);
+    const totalPago = 0; // endpoint só traz não-pagas
 
     const clientesInadimplentes = new Set(vencidas.map((p) => p.chaveVenda));
     const totalRecebiveis = totalVencido + totalEmDia;
@@ -252,7 +277,7 @@ export async function GET() {
         qtdClientesInadimplentes: clientesInadimplentes.size,
         percentualInadimplencia,
       },
-      parcelasAReceber: parcelas.filter((p) => p.status !== "paga").sort((a, b) => b.diasAtraso - a.diasAtraso),
+      parcelasAReceber: parcelas.sort((a, b) => b.diasAtraso - a.diasAtraso),
       projecoes,
       vendasMensais,
     };
