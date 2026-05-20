@@ -7,6 +7,8 @@ import { getCrossSell } from "@/lib/cross-sell";
 const META_API = "https://graph.facebook.com/v21.0";
 const CRM_API = "http://leadsc2s.eggs.com.br/api/webhook/leads";
 
+export const maxDuration = 60;
+
 let cachedData: { data: unknown; timestamp: number; key: string } | null = null;
 const CACHE_TTL = 5 * 60 * 1000;
 

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from "recharts";
+import { ComposedChart, Line, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine, Legend } from "recharts";
 import { TrendingUp, RefreshCw, Calendar } from "lucide-react";
 
 interface LancamentoOffline {
@@ -12,6 +12,12 @@ interface LancamentoOffline {
   inicio_veic: string;
   fim_veic: string;
   descricao: string;
+}
+
+interface VendaPorDia {
+  data: string;
+  quantidade: number;
+  valorTotal: number;
 }
 
 interface TimelineLeadsAcoesProps {
@@ -34,6 +40,7 @@ function formatBRL(n: number): string {
 
 export default function TimelineLeadsAcoes({ startDate, endDate }: TimelineLeadsAcoesProps) {
   const [leadsPorDia, setLeadsPorDia] = useState<{ data: string; qtd: number }[]>([]);
+  const [vendasPorDia, setVendasPorDia] = useState<VendaPorDia[]>([]);
   const [acoes, setAcoes] = useState<LancamentoOffline[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -41,16 +48,21 @@ export default function TimelineLeadsAcoes({ startDate, endDate }: TimelineLeads
     const fetchAll = async () => {
       setLoading(true);
       try {
-        const [crmRes, custosRes] = await Promise.all([
+        const [crmRes, custosRes, vendasRes] = await Promise.all([
           fetch("/api/crm"),
           fetch("/api/custos-offline"),
+          fetch(`/api/uau/vendas?startDate=${startDate}&endDate=${endDate}`),
         ]);
         const crmData = await crmRes.json();
         const custosData = await custosRes.json();
+        const vendasData = await vendasRes.json();
 
         // Filtra leads por período
         const porDia: { data: string; qtd: number }[] = (crmData.porDia || [])
           .filter((d: { data: string }) => d.data >= startDate && d.data <= endDate);
+
+        // Vendas já vêm filtradas por período da própria API
+        const vendasFiltered: VendaPorDia[] = vendasData.porDia || [];
 
         // Filtra ações offline com data_pgto OU inicio_veic dentro do período
         const acoesFiltered: LancamentoOffline[] = (custosData.lancamentos || [])
@@ -60,6 +72,7 @@ export default function TimelineLeadsAcoes({ startDate, endDate }: TimelineLeads
           });
 
         setLeadsPorDia(porDia);
+        setVendasPorDia(vendasFiltered);
         setAcoes(acoesFiltered);
       } catch (err) {
         console.error("Timeline error:", err);
@@ -71,16 +84,18 @@ export default function TimelineLeadsAcoes({ startDate, endDate }: TimelineLeads
   }, [startDate, endDate]);
 
   // Construir todos os dias do período (mesmo sem leads)
-  const allDays: { data: string; qtd: number; dataLabel: string }[] = [];
+  const allDays: { data: string; qtd: number; vendas: number; dataLabel: string }[] = [];
   const start = new Date(startDate + "T00:00:00");
   const end = new Date(endDate + "T00:00:00");
   const leadsMap = new Map(leadsPorDia.map((d) => [d.data, d.qtd]));
+  const vendasMap = new Map(vendasPorDia.map((d) => [d.data, d.quantidade]));
 
   for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
     const key = d.toISOString().split("T")[0];
     allDays.push({
       data: key,
       qtd: leadsMap.get(key) ?? 0,
+      vendas: vendasMap.get(key) ?? 0,
       dataLabel: d.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" }),
     });
   }
@@ -105,6 +120,7 @@ export default function TimelineLeadsAcoes({ startDate, endDate }: TimelineLeads
   }
 
   const totalLeads = allDays.reduce((s, d) => s + d.qtd, 0);
+  const totalVendas = allDays.reduce((s, d) => s + d.vendas, 0);
   const semAcoes = acoes.length === 0;
 
   return (
@@ -113,12 +129,15 @@ export default function TimelineLeadsAcoes({ startDate, endDate }: TimelineLeads
         <div className="flex items-center gap-2">
           <TrendingUp size={16} style={{ color: "#10b981" }} />
           <h3 className="text-sm font-bold" style={{ color: "var(--text-muted)" }}>
-            TIMELINE — AÇÕES × LEADS
+            TIMELINE — AÇÕES × LEADS × VENDAS
           </h3>
         </div>
         <div className="flex items-center gap-3">
           <span style={{ fontSize: "0.7rem", color: "var(--text-dim)" }}>
-            <strong style={{ color: "var(--text)" }}>{totalLeads}</strong> leads
+            <strong style={{ color: "#10b981" }}>{totalLeads}</strong> leads
+          </span>
+          <span style={{ fontSize: "0.7rem", color: "var(--text-dim)" }}>
+            <strong style={{ color: "#4285f4" }}>{totalVendas}</strong> vendas
           </span>
           <span style={{ fontSize: "0.7rem", color: "var(--text-dim)" }}>
             <strong style={{ color: "var(--text)" }}>{acoes.length}</strong> ações marcadas
@@ -126,8 +145,8 @@ export default function TimelineLeadsAcoes({ startDate, endDate }: TimelineLeads
         </div>
       </div>
       <p className="text-xs mb-4" style={{ color: "var(--text-dim)" }}>
-        Linha = leads novos por dia. Bandeiras verticais = quando houve gasto offline (Outdoor, Rádio, etc).
-        Veja se leads sobem após cada ação.
+        Linha verde = leads novos por dia. Barras azuis = vendas no ERP UAU por dia. Bandeiras verticais = ações offline (Outdoor, Rádio, etc).
+        Veja a correlação ação → leads → venda.
       </p>
 
       {semAcoes && (
@@ -147,10 +166,12 @@ export default function TimelineLeadsAcoes({ startDate, endDate }: TimelineLeads
       )}
 
       <ResponsiveContainer width="100%" height={280}>
-        <LineChart data={allDays} margin={{ top: 30, right: 20, bottom: 5, left: 0 }}>
+        <ComposedChart data={allDays} margin={{ top: 30, right: 20, bottom: 5, left: 0 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
           <XAxis dataKey="dataLabel" tick={{ fill: "var(--text-dim)", fontSize: 10 }} interval="preserveStartEnd" />
-          <YAxis tick={{ fill: "var(--text-dim)", fontSize: 10 }} allowDecimals={false} />
+          <YAxis yAxisId="left" tick={{ fill: "var(--text-dim)", fontSize: 10 }} allowDecimals={false} />
+          <YAxis yAxisId="right" orientation="right" tick={{ fill: "var(--text-dim)", fontSize: 10 }} allowDecimals={false} />
+          <Legend wrapperStyle={{ fontSize: "0.7rem" }} />
           <Tooltip
             contentStyle={{ background: "var(--tooltip-bg)", border: "1px solid var(--border)", borderRadius: "0.5rem", fontSize: "0.75rem" }}
             labelFormatter={(_, p) => {
@@ -161,7 +182,6 @@ export default function TimelineLeadsAcoes({ startDate, endDate }: TimelineLeads
               if (acoesNoDia.length === 0) return dataFmt;
               return `${dataFmt} 🚩 ${acoesNoDia.map((a) => `${a.canal} ${formatBRL(a.valor)}`).join(", ")}`;
             }}
-            formatter={(v) => [v, "Leads"]}
           />
 
           {/* Bandeiras verticais para cada ação */}
@@ -176,6 +196,7 @@ export default function TimelineLeadsAcoes({ startDate, endDate }: TimelineLeads
             return (
               <ReferenceLine
                 key={data}
+                yAxisId="left"
                 x={dataLabel}
                 stroke={cor}
                 strokeDasharray="4 4"
@@ -191,16 +212,25 @@ export default function TimelineLeadsAcoes({ startDate, endDate }: TimelineLeads
             );
           })}
 
+          <Bar
+            yAxisId="right"
+            dataKey="vendas"
+            fill="#4285f4"
+            name="Vendas (ERP UAU)"
+            radius={[3, 3, 0, 0]}
+            barSize={10}
+          />
           <Line
+            yAxisId="left"
             type="monotone"
             dataKey="qtd"
             stroke="#10b981"
             strokeWidth={2.5}
             dot={{ fill: "#10b981", r: 3 }}
             activeDot={{ r: 5 }}
-            name="Leads"
+            name="Leads (CRM Eggs)"
           />
-        </LineChart>
+        </ComposedChart>
       </ResponsiveContainer>
 
       {/* Legenda das ações */}
