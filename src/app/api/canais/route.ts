@@ -118,37 +118,57 @@ async function fetchCRMLeads(from: string, to: string): Promise<CRMLeadsResult> 
   for (const canal of ALL_CANAIS) totals[canal] = { leads: 0, convertidos: 0 };
   totals["Outros"] = { leads: 0, convertidos: 0 };
 
+  const pageSize = 200; // dobra page size = metade do total de páginas
+  const fetchPage = async (offset: number) => {
+    const res = await fetch(`${CRM_API}?offset=${offset}&pageSize=${pageSize}`, {
+      headers: { "x-api-key": key },
+      signal: AbortSignal.timeout(15000),
+    });
+    const data = await res.json();
+    return data.data || data.leads || (Array.isArray(data) ? data : []);
+  };
+
+  const processLeads = (leads: { attributes?: { created_at?: string; lead_source?: { name?: string }; done_details?: { done?: boolean } } }[]) => {
+    for (const lead of leads) {
+      const a = lead.attributes || {};
+      const createdAt = (a.created_at || "").split("T")[0];
+      if (from && createdAt < from) continue;
+      if (to && createdAt > to) continue;
+
+      const srcName = a.lead_source?.name || "";
+      const canal = CRM_SOURCE_MAP[srcName] || "Outros";
+      if (!totals[canal]) totals[canal] = { leads: 0, convertidos: 0 };
+      totals[canal].leads++;
+      if (a.done_details?.done) totals[canal].convertidos++;
+
+      if (!daily[createdAt]) daily[createdAt] = {};
+      daily[createdAt][canal] = (daily[createdAt][canal] || 0) + 1;
+    }
+  };
+
   try {
-    let offset = 0;
-    const pageSize = 100;
+    // Paginação paralela em batches de 10 páginas (≈2000 leads por batch)
+    // Para = quando algum batch retorna menos que o esperado (última página).
+    const batchSize = 10;
+    let batchStart = 0;
     while (true) {
-      const res = await fetch(`${CRM_API}?offset=${offset}&pageSize=${pageSize}`, {
-        headers: { "x-api-key": key },
-        signal: AbortSignal.timeout(15000),
-      });
-      const data = await res.json();
-      const leads = data.data || data.leads || (Array.isArray(data) ? data : []);
-      if (leads.length === 0) break;
+      const offsets = Array.from({ length: batchSize }, (_, i) => (batchStart + i) * pageSize);
+      const pages = await Promise.all(
+        offsets.map((offset) => fetchPage(offset).catch(() => []))
+      );
 
-      for (const lead of leads) {
-        const a = lead.attributes || {};
-        const createdAt = (a.created_at || "").split("T")[0];
-        if (from && createdAt < from) continue;
-        if (to && createdAt > to) continue;
-
-        const srcName = a.lead_source?.name || "";
-        const canal = CRM_SOURCE_MAP[srcName] || "Outros";
-        if (!totals[canal]) totals[canal] = { leads: 0, convertidos: 0 };
-        totals[canal].leads++;
-        if (a.done_details?.done) totals[canal].convertidos++;
-
-        // Daily breakdown
-        if (!daily[createdAt]) daily[createdAt] = {};
-        daily[createdAt][canal] = (daily[createdAt][canal] || 0) + 1;
+      let totalThisBatch = 0;
+      for (const leads of pages) {
+        processLeads(leads);
+        totalThisBatch += leads.length;
       }
 
-      if (leads.length < pageSize) break;
-      offset += pageSize;
+      // Se algum batch retornou < pageSize, terminamos (achamos a última página)
+      const allFull = pages.every((p) => p.length === pageSize);
+      if (!allFull || totalThisBatch === 0) break;
+
+      batchStart += batchSize;
+      if (batchStart > 100) break; // safety: 100 batches × 200 = 20k leads max
     }
   } catch { /* ignore */ }
 
