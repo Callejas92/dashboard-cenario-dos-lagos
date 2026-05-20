@@ -151,10 +151,12 @@ async function fetchAllLeads(): Promise<CRMLead[]> {
 }
 
 async function fetchVendas(from: string, to: string): Promise<ERPVenda[]> {
-  // Cross-sell precisa de CPF do comprador pra matching → usa versão full (enrich = true)
+  // Contratos Eggs já têm CPF/CNPJ do cliente (matching primário).
+  // UAU vendas: usa versão lite (sem enrich Nome/CPF) — economiza ~30s no cold start.
+  // UAU-only vendas (sem contrato Eggs) ainda dá pra fazer matching por corretor/data.
   const [contratos, uauData] = await Promise.all([
     getContratosEggs().catch(() => []),
-    getVendas(from, to).catch(() => null),
+    getVendas(from, to, { skipEnrich: true }).catch(() => null),
   ]);
 
   const map: Map<string, ERPVenda> = new Map();
