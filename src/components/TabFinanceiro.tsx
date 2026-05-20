@@ -244,10 +244,16 @@ export default function TabFinanceiro({ data }: { data: FinanceiroResponse }) {
               </p>
               <p className="text-xs mt-2" style={{ color: "var(--text-muted)" }}>
                 ticket: {formatCompact(data.valoresAgregados.ticketMedioComJuros)}
-                <span style={{ marginLeft: "0.5rem", color: "#f59e0b", fontWeight: 600 }}>
-                  +{formatCompact(data.valoresAgregados.jurosFinanciamento)} juros
-                </span>
               </p>
+              {data.valoresAgregados.jurosFinanciamento > 0 ? (
+                <p className="text-xs mt-1" style={{ color: "#f59e0b", fontWeight: 600 }}>
+                  +{formatCompact(data.valoresAgregados.jurosFinanciamento)} juros · {data.valoresAgregados.qtdVendasComJuros}/{data.qtdVendas} vendas c/ juros
+                </p>
+              ) : (
+                <p className="text-xs mt-1" style={{ color: "var(--text-dim)", fontStyle: "italic" }}>
+                  0 vendas c/ juros configurado · financiamento direto
+                </p>
+              )}
             </div>
           </div>
         </div>

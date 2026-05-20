@@ -216,7 +216,8 @@ export interface ValoresAgregados {
   totalAPagarComJuros: number;  // total que cliente vai desembolsar (com juros financiamento)
   ganhoSalto: number;           // diferença Eggs vs Tabela
   pctGanhoSalto: number;        // % do ganho
-  jurosFinanciamento: number;   // diferença Total vs Eggs
+  jurosFinanciamento: number;   // soma dos juros configurados em cada venda
+  qtdVendasComJuros: number;    // quantas vendas têm juros (vs sem juros)
   ticketMedio: number;
   ticketMedioTabela: number;
   ticketMedioComJuros: number;

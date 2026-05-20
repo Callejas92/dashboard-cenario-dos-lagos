@@ -191,6 +191,8 @@ export async function GET() {
       saldoDevedor: number;
       desconto: number;
       pctDesconto: number;
+      jurosFin: number;
+      qtdVendasComJuros: number;
     }[] = [];
     let vendasInvestidor = 0;
     let valorInvestidor = 0;
@@ -201,17 +203,26 @@ export async function GET() {
 
       const contratoEggs = contratoPorLote.get(base.identificador);
       const valorTabela = base.valorVenda || 0;
-      const totalAPagar = Number(resumo?.totalAPagarComDesconto) || valorTabela;
-      // Prioridade: Eggs Contrato > totalAPagar (com juros) > tabela
-      const valorVenda = contratoEggs?.valor || totalAPagar || valorTabela;
+
+      // totaisareceber traz a SEPARAÇÃO entre principal e juros do financiamento
+      const totaisAR = resumo?.totaisareceber as { valorSaldoDevedor?: number; valorPrincipal?: number; valorJuros?: number }[] | undefined;
+      const totaisRec = resumo?.totaisrecebido as { valorTotalRecebido?: number }[] | undefined;
+      const ar0 = Array.isArray(totaisAR) && totaisAR.length > 0 ? totaisAR[0] : null;
+      const rec0 = Array.isArray(totaisRec) && totaisRec.length > 0 ? totaisRec[0] : null;
+
+      const valorPrincipal = Number(ar0?.valorPrincipal) || 0;       // valor sem juros (capital)
+      const jurosFin = Number(ar0?.valorJuros) || 0;                  // juros do financiamento
+      const saldoDevedor = Number(ar0?.valorSaldoDevedor) || 0;       // = principal + juros (ainda em aberto)
+      const valorRecebido = Number(rec0?.valorTotalRecebido) || 0;    // já pago
+
+      // Total a pagar c/juros = saldoDevedor + valorRecebido (= total bruto da venda)
+      const totalAPagar = saldoDevedor + valorRecebido || Number(resumo?.totalAPagarComDesconto) || valorTabela;
+
+      // Prioridade pra "valor de venda": Eggs Contrato > principal UAU > tabela
+      const valorVenda = contratoEggs?.valor || valorPrincipal || valorTabela;
 
       const desconto = valorTabela - valorVenda;
       const pctDesconto = valorTabela > 0 ? (desconto / valorTabela) * 100 : 0;
-
-      const totaisRec = resumo?.totaisrecebido as { valorTotalRecebido?: number }[] | undefined;
-      const totaisAR = resumo?.totaisareceber as { valorSaldoDevedor?: number }[] | undefined;
-      const valorRecebido = Array.isArray(totaisRec) && totaisRec.length > 0 ? Number(totaisRec[0]?.valorTotalRecebido) || 0 : 0;
-      const saldoDevedor = Array.isArray(totaisAR) && totaisAR.length > 0 ? Number(totaisAR[0]?.valorSaldoDevedor) || 0 : 0;
 
       if (INVESTOR_LOTS.has(base.identificador)) {
         vendasInvestidor++;
@@ -224,6 +235,8 @@ export async function GET() {
         valorVenda, valorTabela, totalAPagar,
         valorRecebido, saldoDevedor,
         desconto, pctDesconto,
+        jurosFin,
+        qtdVendasComJuros: jurosFin > 0 ? 1 : 0,
       });
     }
 
@@ -237,8 +250,10 @@ export async function GET() {
     // Ganho de salto = (contrato Eggs - tabela UAU) / tabela
     const ganhoSaltoTotal = valorVendidoTotal - valorTabelaTotal;
     const pctGanhoSalto = valorTabelaTotal > 0 ? (ganhoSaltoTotal / valorTabelaTotal) * 100 : 0;
-    // Juros financiamento = total a pagar - contrato Eggs
-    const jurosFinanciamentoTotal = totalAPagarTotal - valorVendidoTotal;
+    // Juros financiamento = soma dos juros configurados em cada venda (totaisareceber.valorJuros)
+    const jurosFinanciamentoTotal = vendas.reduce((s, v) => s + v.jurosFin, 0);
+    // Quantas vendas têm juros configurados (financiamento com juros vs sem juros)
+    const qtdVendasComJuros = vendas.reduce((s, v) => s + v.qtdVendasComJuros, 0);
 
     // Group sales by month
     const vendasMensais = groupByMonth(vendas);
@@ -322,10 +337,11 @@ export async function GET() {
       valoresAgregados: {
         tabelaUAU: valorTabelaTotal,             // sem ganho de salto
         contratoEggs: valorVendidoTotal,         // com ganho, sem juros (= autoridade)
-        totalAPagarComJuros: totalAPagarTotal,   // total que cliente vai desembolsar
+        totalAPagarComJuros: totalAPagarTotal,   // total que cliente vai desembolsar (com juros)
         ganhoSalto: ganhoSaltoTotal,             // diferença Eggs vs Tabela
         pctGanhoSalto,                           // % do ganho
-        jurosFinanciamento: jurosFinanciamentoTotal,  // diferença Total vs Eggs
+        jurosFinanciamento: jurosFinanciamentoTotal,  // soma dos juros configurados em cada venda
+        qtdVendasComJuros,                            // quantas vendas têm juros (vs sem juros)
         ticketMedio,
         ticketMedioTabela,
         ticketMedioComJuros,
