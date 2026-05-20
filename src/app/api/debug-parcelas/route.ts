@@ -9,20 +9,32 @@ async function tryEndpoint(token: string, path: string, body: Record<string, unk
     const start = Date.now();
     const res = await uauFetch(token, path, body, 15000);
     const ms = Date.now() - start;
-    const preview = JSON.stringify(res).slice(0, 500);
-    let count = 0;
+    let arrayLen = 0;
+    let myTableLen = 0;
+    let sampleKeys: string[] = [];
+    let sampleData: unknown = null;
     if (Array.isArray(res)) {
-      count = res.length;
-      // tenta extrair MyTable
+      arrayLen = res.length;
       const first = res[0] as { MyTable?: unknown[] };
       if (first?.MyTable && Array.isArray(first.MyTable)) {
-        count = first.MyTable.length;
+        myTableLen = first.MyTable.length;
+        if (first.MyTable.length > 1) sampleKeys = Object.keys(first.MyTable[1] as object);
+        if (first.MyTable.length > 1) sampleData = first.MyTable[1];
+      } else if (res.length > 1) {
+        sampleKeys = Object.keys(res[1] as object);
+        sampleData = res[1];
+      } else if (res.length === 1) {
+        sampleKeys = Object.keys(res[0] as object);
+        sampleData = res[0];
       }
     } else if (res && typeof res === "object" && "MyTable" in res) {
       const mt = (res as { MyTable?: unknown[] }).MyTable;
-      if (Array.isArray(mt)) count = mt.length;
+      if (Array.isArray(mt)) {
+        myTableLen = mt.length;
+        if (mt.length > 1) sampleKeys = Object.keys(mt[1] as object);
+      }
     }
-    return { path, body, ms, ok: true, count, preview };
+    return { path, body, ms, ok: true, arrayLen, myTableLen, sampleKeys, sampleData: sampleData ? JSON.stringify(sampleData).slice(0, 800) : null };
   } catch (e) {
     return { path, body, ms: 0, ok: false, error: e instanceof Error ? e.message : String(e) };
   }
