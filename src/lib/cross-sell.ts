@@ -2,6 +2,7 @@
  * Cross-sell: matching CRM Lead × ERP Venda (compartilhado)
  */
 import { getContratosEggs } from "@/lib/eggs-contratos";
+import { getVendas } from "@/lib/uau-vendas";
 
 const CRM_API = process.env.CRM_API_URL || "http://leadsc2s.eggs.com.br/api/webhook/leads";
 
@@ -150,13 +151,9 @@ async function fetchAllLeads(): Promise<CRMLead[]> {
 }
 
 async function fetchVendas(from: string, to: string): Promise<ERPVenda[]> {
-  const baseUrl = process.env.VERCEL_URL
-    ? `https://${process.env.VERCEL_URL}`
-    : "http://localhost:3000";
-
-  const [contratos, uauRes] = await Promise.all([
+  const [contratos, uauData] = await Promise.all([
     getContratosEggs().catch(() => []),
-    fetch(`${baseUrl}/api/uau/vendas?startDate=${from}&endDate=${to}`, { signal: AbortSignal.timeout(75000) }).catch(() => null),
+    getVendas(from, to).catch(() => null),
   ]);
 
   const map: Map<string, ERPVenda> = new Map();
@@ -174,21 +171,18 @@ async function fetchVendas(from: string, to: string): Promise<ERPVenda[]> {
       formaPagamento: "",
     });
   }
-  if (uauRes && uauRes.ok) {
-    try {
-      const uau = await uauRes.json();
-      for (const v of (uau.vendas || [])) {
-        const e = map.get(v.identificadorUnidade);
-        if (e) {
-          e.dataVenda = v.dataVenda || e.dataVenda;
-          e.compradorCpfCnpj = v.compradorCpfCnpj || e.compradorCpfCnpj;
-          e.formaPagamento = v.formaPagamento || e.formaPagamento;
-          if (v.valorVenda > 0) e.valorVenda = v.valorVenda;
-        } else {
-          map.set(v.identificadorUnidade, v);
-        }
+  if (uauData) {
+    for (const v of (uauData.vendas || [])) {
+      const e = map.get(v.identificadorUnidade);
+      if (e) {
+        e.dataVenda = v.dataVenda || e.dataVenda;
+        e.compradorCpfCnpj = v.compradorCpfCnpj || e.compradorCpfCnpj;
+        e.formaPagamento = v.formaPagamento || e.formaPagamento;
+        if (v.valorVenda > 0) e.valorVenda = v.valorVenda;
+      } else {
+        map.set(v.identificadorUnidade, v);
       }
-    } catch { /* ignore */ }
+    }
   }
 
   const result: ERPVenda[] = [];

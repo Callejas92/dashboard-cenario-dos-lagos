@@ -3,6 +3,7 @@ import { getCustosOffline, type LancamentoOffline } from "@/lib/onedrive-custos"
 import { getWhatsAppCost } from "@/lib/whatsapp-cost";
 import { getGoogleAdsCost } from "@/lib/google-ads-cost";
 import { getCrossSell } from "@/lib/cross-sell";
+import { getVendas } from "@/lib/uau-vendas";
 
 const META_API = "https://graph.facebook.com/v21.0";
 const CRM_API = "http://leadsc2s.eggs.com.br/api/webhook/leads";
@@ -176,13 +177,7 @@ async function fetchGoogleAdsCost(from: string, to: string) {
 
 async function fetchUAUVendas(from: string, to: string): Promise<{ qtdVendas: number; valorTotal: number; porDia: { data: string; quantidade: number; valorTotal: number }[] }> {
   try {
-    const baseUrl = process.env.VERCEL_URL
-      ? `https://${process.env.VERCEL_URL}`
-      : "http://localhost:3000";
-    const res = await fetch(`${baseUrl}/api/uau/vendas?startDate=${from}&endDate=${to}`, {
-      signal: AbortSignal.timeout(20000),
-    });
-    const data = await res.json();
+    const data = await getVendas(from, to);
     return {
       qtdVendas: data.total || 0,
       valorTotal: data.valorTotal || 0,
