@@ -162,14 +162,21 @@ export async function GET() {
     }
 
     // Build final vendas with enriched data (excluindo lotes do investidor)
-    const vendas: { dataVenda: string; valorVenda: number }[] = [];
+    // ConsultarResumoVenda retorna: totalAPagarComDesconto, totaisrecebido, totaisareceber, parcelasportipo
+    const vendas: { dataVenda: string; valorVenda: number; valorRecebido: number; saldoDevedor: number }[] = [];
     let vendasInvestidor = 0;
     let valorInvestidor = 0;
     for (const base of baseVendas) {
       const resumo = resumoMap.get(base.numVen);
       const dataVendaResumo = resumo ? parseDate(resumo.DataVenda_ven as string || resumo.DataVenda as string || "") : "";
       const dataFinal = dataVendaResumo || base.dataVenda;
-      const valorFinal = Number(resumo?.ValorVenda_ven) || base.valorVenda || 0;
+      // Valor efetivo: totalAPagarComDesconto (NÃO ValorVenda_ven que não existe)
+      const valorFinal = Number(resumo?.totalAPagarComDesconto) || base.valorVenda || 0;
+
+      const totaisRec = resumo?.totaisrecebido as { valorTotalRecebido?: number }[] | undefined;
+      const totaisAR = resumo?.totaisareceber as { valorSaldoDevedor?: number }[] | undefined;
+      const valorRecebido = Array.isArray(totaisRec) && totaisRec.length > 0 ? Number(totaisRec[0]?.valorTotalRecebido) || 0 : 0;
+      const saldoDevedor = Array.isArray(totaisAR) && totaisAR.length > 0 ? Number(totaisAR[0]?.valorSaldoDevedor) || 0 : 0;
 
       if (INVESTOR_LOTS.has(base.identificador)) {
         vendasInvestidor++;
@@ -177,7 +184,7 @@ export async function GET() {
         continue;
       }
 
-      vendas.push({ dataVenda: dataFinal, valorVenda: valorFinal });
+      vendas.push({ dataVenda: dataFinal, valorVenda: valorFinal, valorRecebido, saldoDevedor });
     }
 
     const valorVendidoTotal = vendas.reduce((s, v) => s + v.valorVenda, 0);
@@ -241,14 +248,13 @@ export async function GET() {
     .filter((p) => !p.identificadorUnidade || !INVESTOR_LOTS.has(p.identificadorUnidade));
 
     // Inadimplência summary
-    // BuscarParcelasAReceber retorna SÓ parcelas em aberto (não pagas)
-    // → totalPago não é calculável aqui sem endpoint adicional
     const vencidas = parcelas.filter((p) => p.status === "vencida");
     const emDia = parcelas.filter((p) => p.status === "em_dia");
 
     const totalVencido = vencidas.reduce((s, p) => s + p.valor, 0);
     const totalEmDia = emDia.reduce((s, p) => s + p.valor, 0);
-    const totalPago = 0; // endpoint só traz não-pagas
+    // Total já recebido vem de ConsultarResumoVenda.totaisrecebido por venda
+    const totalPago = vendas.reduce((s, v) => s + v.valorRecebido, 0);
 
     const clientesInadimplentes = new Set(vencidas.map((p) => p.chaveVenda));
     const totalRecebiveis = totalVencido + totalEmDia;

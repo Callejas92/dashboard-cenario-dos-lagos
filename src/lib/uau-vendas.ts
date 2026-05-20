@@ -51,7 +51,12 @@ export interface Venda {
   chaveVenda: string;
   identificadorUnidade: string;
   dataVenda: string;
-  valorVenda: number;
+  valorVenda: number;            // valor efetivo (totalAPagarComDesconto)
+  valorTabela: number;           // valor da tabela de preço (sem desconto)
+  desconto: number;              // valorTabela - valorVenda (positivo = desconto)
+  pctDesconto: number;           // % de desconto sobre tabela (negativo = acréscimo)
+  valorRecebido: number;         // já pago até hoje
+  saldoDevedor: number;          // ainda a receber
   compradorNome: string;
   compradorCpfCnpj: string;
   corretor: string;
@@ -306,7 +311,25 @@ async function doFetchVendas(startDate: string, endDate: string, opts: GetVendas
       if (dataFinal && dataFinal < startDate) continue;
       if (dataFinal && dataFinal > endDate) continue;
 
-      const valorVenda = Number(resumo?.ValorVenda_ven) || base.valorVenda || 0;
+      // Valor efetivo da venda: vem de ConsultarResumoVenda.totalAPagarComDesconto
+      // (NÃO existe campo "ValorVenda_ven" — descoberto via debug)
+      const valorVenda = Number(resumo?.totalAPagarComDesconto) || base.valorVenda || 0;
+
+      // Valor de tabela: valor do espelho (ValorTotal/ValPreco_unid) ou static JSON
+      const valorTabela = base.valorVenda || 0;
+
+      const desconto = valorTabela - valorVenda;
+      const pctDesconto = valorTabela > 0 ? (desconto / valorTabela) * 100 : 0;
+
+      // Valor recebido + saldo devedor vêm de totaisrecebido / totaisareceber
+      const totaisRecebido = resumo?.totaisrecebido as { valorTotalRecebido?: number }[] | undefined;
+      const totaisAReceber = resumo?.totaisareceber as { valorSaldoDevedor?: number }[] | undefined;
+      const valorRecebido = Array.isArray(totaisRecebido) && totaisRecebido.length > 0
+        ? Number(totaisRecebido[0]?.valorTotalRecebido) || 0
+        : 0;
+      const saldoDevedor = Array.isArray(totaisAReceber) && totaisAReceber.length > 0
+        ? Number(totaisAReceber[0]?.valorSaldoDevedor) || 0
+        : 0;
 
       if (INVESTOR_LOTS.has(base.id)) {
         vendasInvestidor++;
@@ -321,11 +344,16 @@ async function doFetchVendas(startDate: string, endDate: string, opts: GetVendas
         identificadorUnidade: base.id,
         dataVenda: dataFinal,
         valorVenda,
+        valorTabela,
+        desconto,
+        pctDesconto,
+        valorRecebido,
+        saldoDevedor,
         compradorNome: compradorInfo?.nome || (resumo?.Nome_pes as string) || "",
         compradorCpfCnpj: compradorInfo?.cpf || (resumo?.CpfCnpj_pes as string) || "",
         corretor: (resumo?.NomeCorretor as string) || (resumo?.Nome_Corretor as string) || (resumo?.Corretor_ven as string) || "",
         formaPagamento: (resumo?.Descr_FormaPgto as string) || (resumo?.FormaPagamento as string) || "",
-        qtdParcelas: (resumo?.QtdParcelas as number) || 0,
+        qtdParcelas: Number(resumo?.totalParcelas) || (resumo?.QtdParcelas as number) || 0,
       });
     }
 
