@@ -47,6 +47,25 @@ export async function GET() {
 
   const token = await authenticate();
 
+  // Inspeção detalhada: tipos de Status_Prc, distribuição de Tipo_Prc, sample dados
+  const detailRes = await uauFetch(token, "Venda/BuscarParcelasAReceber", { empresa: 2, obra: "01VEN" }, 20000);
+  const parcelas = Array.isArray(detailRes) ? detailRes.slice(1) : [];
+  // Conta por status
+  const statusCount: Record<string, number> = {};
+  const tipoCount: Record<string, number> = {};
+  const exemplosPorStatus: Record<string, unknown[]> = {};
+  for (const p of parcelas) {
+    const r = p as Record<string, unknown>;
+    const s = String(r.Status_Prc ?? "?");
+    const t = String(r.Tipo_Prc ?? "?");
+    statusCount[s] = (statusCount[s] || 0) + 1;
+    tipoCount[t] = (tipoCount[t] || 0) + 1;
+    if (!exemplosPorStatus[s] || exemplosPorStatus[s].length < 2) {
+      if (!exemplosPorStatus[s]) exemplosPorStatus[s] = [];
+      exemplosPorStatus[s].push(r);
+    }
+  }
+
   // Testa BuscarParcelasAReceber com diferentes filtros / e endpoints alternativos
   const candidates = [
     // Variações de BuscarParcelasAReceber
@@ -70,5 +89,13 @@ export async function GET() {
   );
 
   const data = results.map((r) => r.status === "fulfilled" ? r.value : { ok: false, error: String(r.reason) });
-  return NextResponse.json({ data });
+  return NextResponse.json({
+    totalParcelas: parcelas.length,
+    statusCount,
+    tipoCount,
+    exemplosPorStatus: Object.fromEntries(
+      Object.entries(exemplosPorStatus).map(([s, list]) => [s, list.slice(0, 2)])
+    ),
+    data,
+  });
 }
