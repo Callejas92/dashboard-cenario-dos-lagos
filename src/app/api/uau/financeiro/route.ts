@@ -228,8 +228,17 @@ export async function GET() {
     }
 
     const valorVendidoTotal = vendas.reduce((s, v) => s + v.valorVenda, 0);
+    const valorTabelaTotal = vendas.reduce((s, v) => s + v.valorTabela, 0);
+    const totalAPagarTotal = vendas.reduce((s, v) => s + v.totalAPagar, 0);
     const qtdVendas = vendas.length;
     const ticketMedio = qtdVendas > 0 ? valorVendidoTotal / qtdVendas : 0;
+    const ticketMedioTabela = qtdVendas > 0 ? valorTabelaTotal / qtdVendas : 0;
+    const ticketMedioComJuros = qtdVendas > 0 ? totalAPagarTotal / qtdVendas : 0;
+    // Ganho de salto = (contrato Eggs - tabela UAU) / tabela
+    const ganhoSaltoTotal = valorVendidoTotal - valorTabelaTotal;
+    const pctGanhoSalto = valorTabelaTotal > 0 ? (ganhoSaltoTotal / valorTabelaTotal) * 100 : 0;
+    // Juros financiamento = total a pagar - contrato Eggs
+    const jurosFinanciamentoTotal = totalAPagarTotal - valorVendidoTotal;
 
     // Group sales by month
     const vendasMensais = groupByMonth(vendas);
@@ -306,9 +315,21 @@ export async function GET() {
     }
 
     const response = {
-      valorVendidoTotal,
+      valorVendidoTotal,         // = contrato Eggs (com ganho de salto, sem juros)
       ticketMedio,
       qtdVendas,
+      // Múltiplas perspectivas de valor (lado a lado na UI)
+      valoresAgregados: {
+        tabelaUAU: valorTabelaTotal,             // sem ganho de salto
+        contratoEggs: valorVendidoTotal,         // com ganho, sem juros (= autoridade)
+        totalAPagarComJuros: totalAPagarTotal,   // total que cliente vai desembolsar
+        ganhoSalto: ganhoSaltoTotal,             // diferença Eggs vs Tabela
+        pctGanhoSalto,                           // % do ganho
+        jurosFinanciamento: jurosFinanciamentoTotal,  // diferença Total vs Eggs
+        ticketMedio,
+        ticketMedioTabela,
+        ticketMedioComJuros,
+      },
       // Vendas do investidor (excluídas - Tio Ico)
       investidor: {
         quantidade: vendasInvestidor,

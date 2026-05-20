@@ -210,10 +210,23 @@ export interface ProjecaoItem {
   inadimplenciaProjetada: number;
 }
 
+export interface ValoresAgregados {
+  tabelaUAU: number;            // sem ganho de salto (preço de lista)
+  contratoEggs: number;         // com ganho, sem juros (= valor de contrato)
+  totalAPagarComJuros: number;  // total que cliente vai desembolsar (com juros financiamento)
+  ganhoSalto: number;           // diferença Eggs vs Tabela
+  pctGanhoSalto: number;        // % do ganho
+  jurosFinanciamento: number;   // diferença Total vs Eggs
+  ticketMedio: number;
+  ticketMedioTabela: number;
+  ticketMedioComJuros: number;
+}
+
 export interface FinanceiroResponse {
   valorVendidoTotal: number;
   ticketMedio: number;
   qtdVendas: number;
+  valoresAgregados?: ValoresAgregados;
   inadimplencia: InadimplenciaResumo;
   parcelasAReceber: ParcelaReceber[];
   projecoes: ProjecaoItem[];

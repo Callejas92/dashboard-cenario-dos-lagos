@@ -161,7 +161,7 @@ export default function TabFinanceiro({ data }: { data: FinanceiroResponse }) {
       {/* KPI Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <KPICard
-          label="Valor Vendido Total"
+          label="Valor Vendido (Contratado)"
           value={formatCompact(data.valorVendidoTotal)}
           icon={<DollarSign size={14} style={{ color: "#10b981" }} />}
           status="good"
@@ -183,6 +183,75 @@ export default function TabFinanceiro({ data }: { data: FinanceiroResponse }) {
           status={inadimStatus}
         />
       </div>
+
+      {/* Comparativo VGV: Tabela / Contratado / Total com Juros */}
+      {data.valoresAgregados && (
+        <div className="kpi-card">
+          <div className="flex items-center gap-2 mb-4">
+            <DollarSign size={14} style={{ color: "#10b981" }} />
+            <h3 className="text-sm font-bold" style={{ color: "var(--text-muted)" }}>VALOR DAS VENDAS — 3 PERSPECTIVAS</h3>
+            <span style={{ fontSize: "0.65rem", color: "var(--text-dim)", marginLeft: "auto" }}>
+              {data.qtdVendas} vendas
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
+            {/* Tabela UAU */}
+            <div style={{ padding: "1rem", borderRadius: "0.75rem", background: "var(--surface)", border: "1px solid var(--border)" }}>
+              <p className="text-xs mb-1" style={{ color: "var(--text-dim)", fontWeight: 600, letterSpacing: "0.05em" }}>
+                TABELA ERP UAU
+              </p>
+              <p className="text-2xl font-bold" style={{ color: "#6b7280" }}>
+                {formatCompact(data.valoresAgregados.tabelaUAU)}
+              </p>
+              <p className="text-xs mt-1" style={{ color: "var(--text-dim)" }}>
+                preço de lista, sem ganho de salto
+              </p>
+              <p className="text-xs mt-2" style={{ color: "var(--text-muted)" }}>
+                ticket: {formatCompact(data.valoresAgregados.ticketMedioTabela)}
+              </p>
+            </div>
+
+            {/* Contratado Eggs */}
+            <div style={{ padding: "1rem", borderRadius: "0.75rem", background: "#10b98115", border: "2px solid #10b98140" }}>
+              <p className="text-xs mb-1" style={{ color: "#10b981", fontWeight: 700, letterSpacing: "0.05em" }}>
+                CONTRATADO (CRM EGGS) ★
+              </p>
+              <p className="text-2xl font-bold" style={{ color: "#10b981" }}>
+                {formatCompact(data.valoresAgregados.contratoEggs)}
+              </p>
+              <p className="text-xs mt-1" style={{ color: "var(--text-dim)" }}>
+                valor de venda real, com ganho de salto
+              </p>
+              <p className="text-xs mt-2" style={{ color: "var(--text-muted)" }}>
+                ticket: {formatCompact(data.valoresAgregados.ticketMedio)}
+                <span style={{ marginLeft: "0.5rem", color: "#10b981", fontWeight: 600 }}>
+                  +{data.valoresAgregados.pctGanhoSalto.toFixed(1)}% vs tabela
+                </span>
+              </p>
+            </div>
+
+            {/* Total com Juros */}
+            <div style={{ padding: "1rem", borderRadius: "0.75rem", background: "var(--surface)", border: "1px solid var(--border)" }}>
+              <p className="text-xs mb-1" style={{ color: "var(--text-dim)", fontWeight: 600, letterSpacing: "0.05em" }}>
+                TOTAL A PAGAR (C/ JUROS)
+              </p>
+              <p className="text-2xl font-bold" style={{ color: "#f59e0b" }}>
+                {formatCompact(data.valoresAgregados.totalAPagarComJuros)}
+              </p>
+              <p className="text-xs mt-1" style={{ color: "var(--text-dim)" }}>
+                desembolso total ao longo das parcelas
+              </p>
+              <p className="text-xs mt-2" style={{ color: "var(--text-muted)" }}>
+                ticket: {formatCompact(data.valoresAgregados.ticketMedioComJuros)}
+                <span style={{ marginLeft: "0.5rem", color: "#f59e0b", fontWeight: 600 }}>
+                  +{formatCompact(data.valoresAgregados.jurosFinanciamento)} juros
+                </span>
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Previsão de Término (baseada em velocidade de vendas) */}
       {previsao && (
