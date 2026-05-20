@@ -177,7 +177,8 @@ async function fetchGoogleAdsCost(from: string, to: string) {
 
 async function fetchUAUVendas(from: string, to: string): Promise<{ qtdVendas: number; valorTotal: number; porDia: { data: string; quantidade: number; valorTotal: number }[] }> {
   try {
-    const data = await getVendas(from, to);
+    // skipEnrich: /api/canais não precisa de Nome/CPF, só qtd+valor — economiza ~30s
+    const data = await getVendas(from, to, { skipEnrich: true });
     return {
       qtdVendas: data.total || 0,
       valorTotal: data.valorTotal || 0,

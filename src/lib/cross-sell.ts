@@ -151,6 +151,7 @@ async function fetchAllLeads(): Promise<CRMLead[]> {
 }
 
 async function fetchVendas(from: string, to: string): Promise<ERPVenda[]> {
+  // Cross-sell precisa de CPF do comprador pra matching → usa versão full (enrich = true)
   const [contratos, uauData] = await Promise.all([
     getContratosEggs().catch(() => []),
     getVendas(from, to).catch(() => null),

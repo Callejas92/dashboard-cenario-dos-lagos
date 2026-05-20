@@ -109,14 +109,21 @@ export function getToday(): string {
   return new Date().toISOString().split("T")[0];
 }
 
+export interface GetVendasOptions {
+  /** Se true, pula o enriquecimento Nome/CPF (mais rápido — economiza ~30s no cold).
+   * Use quando o consumidor só precisa de qtd e valor (ex: /api/canais).
+   */
+  skipEnrich?: boolean;
+}
+
 /**
  * Busca vendas do ERP UAU Senior no período [startDate, endDate].
  * Cache 5min compartilhado. Dedupe de chamadas simultâneas via inflight map.
  */
-export async function getVendas(startDate?: string, endDate?: string): Promise<VendasResponse> {
+export async function getVendas(startDate?: string, endDate?: string, opts: GetVendasOptions = {}): Promise<VendasResponse> {
   const from = startDate || getDefaultStartDate();
   const to = endDate || getToday();
-  const cacheKey = `vendas-${from}-${to}`;
+  const cacheKey = `vendas-${from}-${to}-${opts.skipEnrich ? "lite" : "full"}`;
 
   const cached = cache.get(cacheKey);
   if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
@@ -126,9 +133,14 @@ export async function getVendas(startDate?: string, endDate?: string): Promise<V
   const existing = inflight.get(cacheKey);
   if (existing) return existing;
 
-  const promise = doFetchVendas(from, to)
+  const promise = doFetchVendas(from, to, opts)
     .then((data) => {
       cache.set(cacheKey, { data, timestamp: Date.now() });
+      // Se a versão "full" estiver pronta, também cacheia a "lite" pra próxima chamada
+      if (!opts.skipEnrich) {
+        const liteKey = `vendas-${from}-${to}-lite`;
+        cache.set(liteKey, { data, timestamp: Date.now() });
+      }
       return data;
     })
     .finally(() => {
@@ -139,7 +151,7 @@ export async function getVendas(startDate?: string, endDate?: string): Promise<V
   return promise;
 }
 
-async function doFetchVendas(startDate: string, endDate: string): Promise<VendasResponse> {
+async function doFetchVendas(startDate: string, endDate: string, opts: GetVendasOptions = {}): Promise<VendasResponse> {
   if (!isUauConfigured()) {
     return {
       vendas: [],
@@ -199,15 +211,16 @@ async function doFetchVendas(startDate: string, endDate: string): Promise<Vendas
     interface CompradorInfo { nome: string; cpf: string; email: string }
     const compradorPorLote = new Map<string, CompradorInfo>();
 
-    try {
+    if (!opts.skipEnrich) try {
       const pessoasResRaw = await uauFetch(token, "Pessoas/ConsultarPessoasComVenda", {}, 15000);
       const pessoasFirst = Array.isArray(pessoasResRaw) ? pessoasResRaw[0] : pessoasResRaw;
       const pessoasList = (pessoasFirst as { Pessoas?: { Cod_pes: number; Nome_pes: string }[] })?.Pessoas || [];
       const pessoas = pessoasList.filter((p) => typeof p.Cod_pes === "number" && p.Cod_pes > 0);
 
       const pessoasComCpf: { codPes: number; nome: string; cpf: string; email: string }[] = [];
-      for (let i = 0; i < pessoas.length; i += 5) {
-        const batch = pessoas.slice(i, i + 5);
+      // Aumenta concorrência: faz 10 chamadas paralelas por batch
+      for (let i = 0; i < pessoas.length; i += 10) {
+        const batch = pessoas.slice(i, i + 10);
         const results = await Promise.allSettled(
           batch.map(async (p) => {
             const det = await uauFetch(token, "Pessoas/ConsultarPessoaPorChave", { codigo_pessoa: p.Cod_pes }, 8000);
@@ -226,8 +239,8 @@ async function doFetchVendas(startDate: string, endDate: string): Promise<Vendas
         }
       }
 
-      for (let i = 0; i < pessoasComCpf.length; i += 5) {
-        const batch = pessoasComCpf.slice(i, i + 5);
+      for (let i = 0; i < pessoasComCpf.length; i += 10) {
+        const batch = pessoasComCpf.slice(i, i + 10);
         const results = await Promise.allSettled(
           batch.map(async (p) => {
             const unitsRaw = await uauFetch(token, "Venda/ConsultarUnidadesCompradasPorCPFCNPJ", { CpfCnpj: p.cpf }, 10000);
@@ -257,7 +270,7 @@ async function doFetchVendas(startDate: string, endDate: string): Promise<Vendas
     const vendasComNumero = baseVendas.filter(v => v.numVen > 0);
     const resumoMap = new Map<number, Record<string, unknown>>();
 
-    const concurrency = 5;
+    const concurrency = 10;
     for (let i = 0; i < vendasComNumero.length; i += concurrency) {
       const batch = vendasComNumero.slice(i, i + concurrency);
       const results = await Promise.allSettled(
