@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { authenticate, isUauConfigured, uauFetch } from "@/lib/uau-auth";
+import { getContratosEggs } from "@/lib/eggs-contratos";
 import lotesData from "@/data/lotes.json";
 import investorData from "@/data/investor-lots.json";
 
@@ -97,8 +98,8 @@ export async function GET() {
     const yyyy = now.getFullYear();
     const todayFormatted = `${mm}-${dd}-${yyyy}`;
 
-    // Use the working endpoint (same as /api/uau/vendas)
-    const [espelhoRaw, parcelasRaw] = await Promise.all([
+    // Use the working endpoint (same as /api/uau/vendas) + contratos Eggs pra valor de contrato
+    const [espelhoRaw, parcelasRaw, contratos] = await Promise.all([
       uauFetch(token, "Espelho/BuscaUnidadesDeAcordoComWhereDetalhado", {
         where: "WHERE Empresa_unid = 2 AND Vendido_unid = 1",
         retorna_venda: true,
@@ -109,7 +110,22 @@ export async function GET() {
         empresa: 2,
         obra: "01VEN",
       }, 30000).catch(() => null),
+      // Eggs Contratos: valor de venda contratado (com desconto, sem juros do parcelamento)
+      getContratosEggs().catch(() => []),
     ]);
+
+    // Map loteId → contrato Eggs (pra puxar valor de contrato)
+    const contratoPorLote = new Map<string, { valor: number; cliente: string; corretor: string; cancelado: boolean; status: string }>();
+    for (const c of contratos) {
+      if (c.cancelado) continue;
+      contratoPorLote.set(c.loteId, {
+        valor: c.valor,
+        cliente: c.cliente,
+        corretor: c.corretor?.nome || "",
+        cancelado: c.cancelado,
+        status: c.status,
+      });
+    }
 
     // --- Extract sold units ---
     const rows = extractMyTable(espelhoRaw);
@@ -162,16 +178,35 @@ export async function GET() {
     }
 
     // Build final vendas with enriched data (excluindo lotes do investidor)
-    // ConsultarResumoVenda retorna: totalAPagarComDesconto, totaisrecebido, totaisareceber, parcelasportipo
-    const vendas: { dataVenda: string; valorVenda: number; valorRecebido: number; saldoDevedor: number }[] = [];
+    // Hierarquia de valores:
+    //  1. valorContrato (Eggs Contrato): valor efetivamente contratado (com desconto, sem juros) ← FONTE DE VERDADE
+    //  2. valorTabela: preço da unidade pela tabela (do espelho UAU)
+    //  3. totalAPagar: valor que o cliente vai desembolsar com juros do financiamento (UAU)
+    const vendas: {
+      dataVenda: string;
+      valorVenda: number;          // = valorContrato (Eggs)
+      valorTabela: number;
+      totalAPagar: number;
+      valorRecebido: number;
+      saldoDevedor: number;
+      desconto: number;
+      pctDesconto: number;
+    }[] = [];
     let vendasInvestidor = 0;
     let valorInvestidor = 0;
     for (const base of baseVendas) {
       const resumo = resumoMap.get(base.numVen);
       const dataVendaResumo = resumo ? parseDate(resumo.DataVenda_ven as string || resumo.DataVenda as string || "") : "";
       const dataFinal = dataVendaResumo || base.dataVenda;
-      // Valor efetivo: totalAPagarComDesconto (NÃO ValorVenda_ven que não existe)
-      const valorFinal = Number(resumo?.totalAPagarComDesconto) || base.valorVenda || 0;
+
+      const contratoEggs = contratoPorLote.get(base.identificador);
+      const valorTabela = base.valorVenda || 0;
+      const totalAPagar = Number(resumo?.totalAPagarComDesconto) || valorTabela;
+      // Prioridade: Eggs Contrato > totalAPagar (com juros) > tabela
+      const valorVenda = contratoEggs?.valor || totalAPagar || valorTabela;
+
+      const desconto = valorTabela - valorVenda;
+      const pctDesconto = valorTabela > 0 ? (desconto / valorTabela) * 100 : 0;
 
       const totaisRec = resumo?.totaisrecebido as { valorTotalRecebido?: number }[] | undefined;
       const totaisAR = resumo?.totaisareceber as { valorSaldoDevedor?: number }[] | undefined;
@@ -180,11 +215,16 @@ export async function GET() {
 
       if (INVESTOR_LOTS.has(base.identificador)) {
         vendasInvestidor++;
-        valorInvestidor += valorFinal;
+        valorInvestidor += valorVenda;
         continue;
       }
 
-      vendas.push({ dataVenda: dataFinal, valorVenda: valorFinal, valorRecebido, saldoDevedor });
+      vendas.push({
+        dataVenda: dataFinal,
+        valorVenda, valorTabela, totalAPagar,
+        valorRecebido, saldoDevedor,
+        desconto, pctDesconto,
+      });
     }
 
     const valorVendidoTotal = vendas.reduce((s, v) => s + v.valorVenda, 0);

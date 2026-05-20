@@ -5,6 +5,7 @@
  * downstream). Cache compartilhado em memória por (startDate, endDate).
  */
 import { authenticate, isUauConfigured, uauFetch } from "@/lib/uau-auth";
+import { getContratosEggs } from "@/lib/eggs-contratos";
 import lotesData from "@/data/lotes.json";
 import investorData from "@/data/investor-lots.json";
 
@@ -171,6 +172,8 @@ async function doFetchVendas(startDate: string, endDate: string, opts: GetVendas
 
   try {
     const token = await authenticate();
+    // Eggs Contratos rodando em paralelo (valor de contrato com desconto)
+    const contratosPromise = getContratosEggs().catch(() => []);
 
     const now = new Date();
     const mm = String(now.getMonth() + 1).padStart(2, "0");
@@ -300,6 +303,14 @@ async function doFetchVendas(startDate: string, endDate: string, opts: GetVendas
       }
     }
 
+    // Aguarda contratos Eggs e monta map por loteId
+    const contratos = await contratosPromise;
+    const contratoPorLote = new Map<string, { valor: number }>();
+    for (const c of contratos) {
+      if (c.cancelado) continue;
+      contratoPorLote.set(c.loteId, { valor: c.valor });
+    }
+
     const vendas: Venda[] = [];
     let vendasInvestidor = 0;
     let valorInvestidor = 0;
@@ -311,12 +322,14 @@ async function doFetchVendas(startDate: string, endDate: string, opts: GetVendas
       if (dataFinal && dataFinal < startDate) continue;
       if (dataFinal && dataFinal > endDate) continue;
 
-      // Valor efetivo da venda: vem de ConsultarResumoVenda.totalAPagarComDesconto
-      // (NÃO existe campo "ValorVenda_ven" — descoberto via debug)
-      const valorVenda = Number(resumo?.totalAPagarComDesconto) || base.valorVenda || 0;
-
-      // Valor de tabela: valor do espelho (ValorTotal/ValPreco_unid) ou static JSON
+      // Hierarquia de valores:
+      //  1. Eggs Contrato.valor = valor contratado (com desconto, sem juros) ← PRIORIDADE
+      //  2. ConsultarResumoVenda.totalAPagarComDesconto = total a pagar (com juros do financiamento)
+      //  3. Espelho.ValorTotal = valor de tabela
+      const contratoEggs = contratoPorLote.get(base.id);
       const valorTabela = base.valorVenda || 0;
+      const totalAPagar = Number(resumo?.totalAPagarComDesconto) || valorTabela;
+      const valorVenda = contratoEggs?.valor || totalAPagar || valorTabela;
 
       const desconto = valorTabela - valorVenda;
       const pctDesconto = valorTabela > 0 ? (desconto / valorTabela) * 100 : 0;
