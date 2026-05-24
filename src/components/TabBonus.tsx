@@ -105,10 +105,18 @@ export default function TabBonus() {
   const [updating, setUpdating] = useState<string | null>(null);
   const [collapsedGroups, setCollapsedGroups] = useState<Set<BonusStatus>>(new Set());
 
+  // Cada vez que a aba abre, força reler do UAU/Eggs (evita cache stale)
   const load = async () => {
     setLoading(true);
     setError(null);
     try {
+      // Clear cache silencioso (não bloqueia se falhar)
+      await fetch("/api/bonus", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "clear-cache" }),
+      }).catch(() => { /* ignore */ });
+
       const res = await fetch("/api/bonus");
       const j = await res.json();
       if (j.error) setError(j.error);
