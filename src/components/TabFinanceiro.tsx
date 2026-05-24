@@ -6,7 +6,7 @@ import {
   LineChart, Line, AreaChart, Area,
 } from "recharts";
 import KPICard from "./KPICard";
-import { DollarSign, TrendingUp, AlertTriangle, ShoppingCart, BarChart3, Target, Users } from "lucide-react";
+import { DollarSign, TrendingUp, AlertTriangle, ShoppingCart, BarChart3, Target, Users, Award } from "lucide-react";
 import { formatBRL, FinanceiroResponse } from "@/lib/types";
 
 function formatCompact(value: number): string {
@@ -40,6 +40,12 @@ export default function TabFinanceiro({ data }: { data: FinanceiroResponse }) {
   const [estoqueTotal, setEstoqueTotal] = useState<number>(0);
   const [estoqueVendido, setEstoqueVendido] = useState<number>(0);
 
+  // Resumo de bônus de corretores
+  const [bonusSummary, setBonusSummary] = useState<{
+    aPagarAgora: number; pagoTotal: number; aguardandoEntrada: number;
+    comprometidoTotal: number; qtdAPagar: number; qtdRevisar: number;
+  } | null>(null);
+
   useEffect(() => {
     fetch("/api/uau")
       .then((r) => r.json())
@@ -50,6 +56,13 @@ export default function TabFinanceiro({ data }: { data: FinanceiroResponse }) {
           setEstoqueTotal(s.total || 0);
           setEstoqueVendido(s.vendido || 0);
         }
+      })
+      .catch(() => { /* ignore */ });
+
+    fetch("/api/bonus")
+      .then((r) => r.json())
+      .then((d) => {
+        if (d?.summary) setBonusSummary(d.summary);
       })
       .catch(() => { /* ignore */ });
   }, []);
@@ -254,6 +267,47 @@ export default function TabFinanceiro({ data }: { data: FinanceiroResponse }) {
                   0 vendas c/ juros configurado · financiamento direto
                 </p>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Bônus de Corretores — resumo */}
+      {bonusSummary && (
+        <div className="kpi-card">
+          <div className="flex items-center gap-2 mb-4">
+            <Award size={14} style={{ color: "#10b981" }} />
+            <h3 className="text-sm font-bold" style={{ color: "var(--text-muted)" }}>BÔNUS CORRETORES E IMOBILIÁRIAS</h3>
+            <span className="text-xs" style={{ color: "var(--text-dim)", marginLeft: "auto" }}>
+              R$ 3k corretora + R$ 1k imobiliária por venda · após entrada quitada
+            </span>
+          </div>
+
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            <div style={{ padding: "0.875rem", borderRadius: "0.5rem", background: "#10b98115", border: "1px solid #10b98140" }}>
+              <p className="text-xs mb-1" style={{ color: "#10b981", fontWeight: 700 }}>A PAGAR AGORA</p>
+              <p className="text-xl font-bold" style={{ color: "#10b981" }}>{formatCompact(bonusSummary.aPagarAgora)}</p>
+              <p className="text-xs mt-1" style={{ color: "var(--text-dim)" }}>{bonusSummary.qtdAPagar} vendas com entrada quitada</p>
+            </div>
+            <div style={{ padding: "0.875rem", borderRadius: "0.5rem", background: "var(--surface)", border: "1px solid var(--border)" }}>
+              <p className="text-xs mb-1" style={{ color: "var(--text-dim)", fontWeight: 600 }}>JÁ PAGO</p>
+              <p className="text-xl font-bold" style={{ color: "#6b7280" }}>{formatCompact(bonusSummary.pagoTotal)}</p>
+              <p className="text-xs mt-1" style={{ color: "var(--text-dim)" }}>histórico de pagamentos</p>
+            </div>
+            <div style={{ padding: "0.875rem", borderRadius: "0.5rem", background: "var(--surface)", border: "1px solid var(--border)" }}>
+              <p className="text-xs mb-1" style={{ color: "var(--text-dim)", fontWeight: 600 }}>AGUARDANDO ENTRADA</p>
+              <p className="text-xl font-bold" style={{ color: "#4285f4" }}>{formatCompact(bonusSummary.aguardandoEntrada)}</p>
+              <p className="text-xs mt-1" style={{ color: "var(--text-dim)" }}>liberados após cliente pagar entrada</p>
+            </div>
+            <div style={{ padding: "0.875rem", borderRadius: "0.5rem", background: "var(--surface)", border: "1px solid var(--border)" }}>
+              <p className="text-xs mb-1" style={{ color: "var(--text-dim)", fontWeight: 600 }}>COMPROMETIDO TOTAL</p>
+              <p className="text-xl font-bold" style={{ color: "#8b5cf6" }}>{formatCompact(bonusSummary.comprometidoTotal)}</p>
+              <p className="text-xs mt-1" style={{ color: "var(--text-dim)" }}>
+                {bonusSummary.qtdRevisar > 0 && (
+                  <span style={{ color: "#e94560", fontWeight: 600 }}>⚠ {bonusSummary.qtdRevisar} pra revisar · </span>
+                )}
+                ver aba Bônus →
+              </p>
             </div>
           </div>
         </div>

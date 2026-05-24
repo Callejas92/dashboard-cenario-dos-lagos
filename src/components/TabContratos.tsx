@@ -72,15 +72,31 @@ export default function TabContratos() {
   const [statusFiltro, setStatusFiltro] = useState<string | null>(null);
   const [search, setSearch] = useState("");
 
+  // Mapa de status de bônus por chaveVenda (chave = `${contrato.id}-${contrato.loteId}`)
+  const [bonusStatusMap, setBonusStatusMap] = useState<Map<string, string>>(new Map());
+
   const fetchData = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch("/api/crm/contratos");
+      const [res, bonusRes] = await Promise.all([
+        fetch("/api/crm/contratos"),
+        fetch("/api/bonus").catch(() => null),
+      ]);
       const json = await res.json();
       if (!json.configured) setError(json.message || "Não configurado");
       else if (json.error) setError(json.error);
       else setData(json);
+
+      // Carrega mapa de bônus (silenciosamente)
+      if (bonusRes && bonusRes.ok) {
+        const b = await bonusRes.json();
+        const map = new Map<string, string>();
+        for (const item of (b.bonus || []) as { chaveVenda: string; status: string }[]) {
+          map.set(item.chaveVenda, item.status);
+        }
+        setBonusStatusMap(map);
+      }
     } catch (err) {
       setError(String(err));
     }
@@ -280,6 +296,7 @@ export default function TabContratos() {
               <th className="text-left py-2 px-2 font-semibold" style={{ color: "var(--text-dim)" }}>Status</th>
               <th className="text-center py-2 px-2 font-semibold" style={{ color: "var(--text-dim)" }}>Tipo</th>
               <th className="text-right py-2 px-2 font-semibold" style={{ color: "var(--text-dim)" }}>Valor</th>
+              <th className="text-center py-2 px-2 font-semibold" style={{ color: "var(--text-dim)" }}>Bônus</th>
             </tr>
           </thead>
           <tbody>
@@ -333,6 +350,30 @@ export default function TabContratos() {
                   <td className="py-2 px-2 text-right" style={{ color: "var(--text)", fontWeight: 600 }}>
                     {formatBRL(c.valor)}
                   </td>
+                  <td className="py-2 px-2 text-center">
+                    {(() => {
+                      const bs = bonusStatusMap.get(`${c.id}-${c.loteId}`);
+                      const map: Record<string, { label: string; color: string }> = {
+                        a_pagar: { label: "A pagar", color: "#10b981" },
+                        pago_total: { label: "Pago", color: "#6b7280" },
+                        pago_parcial: { label: "Parcial", color: "#f59e0b" },
+                        aguardando_entrada: { label: "Aguarda", color: "#4285f4" },
+                        revisar: { label: "⚠ Revisar", color: "#e94560" },
+                        cancelado_pago: { label: "Canc. pago", color: "#ef4444" },
+                      };
+                      const info = bs ? map[bs] : null;
+                      if (!info) return <span style={{ fontSize: "0.65rem", color: "var(--text-dim)" }}>—</span>;
+                      return (
+                        <span style={{
+                          fontSize: "0.6rem", padding: "0.1rem 0.4rem",
+                          background: info.color + "15", color: info.color,
+                          borderRadius: "0.25rem", fontWeight: 600,
+                        }}>
+                          {info.label}
+                        </span>
+                      );
+                    })()}
+                  </td>
                 </tr>
               );
             })}
@@ -346,6 +387,7 @@ export default function TabContratos() {
                 <td className="text-right py-3 px-2" style={{ color: "#3b82f6", fontWeight: 700 }}>
                   {formatBRL(contratosFiltrados.reduce((s, c) => s + c.valor, 0))}
                 </td>
+                <td className="py-3 px-2"></td>
               </tr>
             </tfoot>
           )}
