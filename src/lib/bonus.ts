@@ -26,6 +26,7 @@ export type BonusStatus =
   | "a_pagar"              // Es quitadas, ainda não pago
   | "pago_parcial"         // só corretora OU só imobiliária pago
   | "pago_total"           // ambos pagos
+  | "isento"               // marcado como não-pagar (razão registrada)
   | "revisar"              // sem corretor identificado (flag)
   | "cancelado_pago";      // contrato cancelado mas bônus já estava pago
 
@@ -34,6 +35,9 @@ export interface BonusPagamento {
   dataPagoCorretora: string;     // ISO yyyy-mm-dd
   pagoImobiliaria: boolean;
   dataPagoImobiliaria: string;
+  isento?: boolean;              // marcado como não-pagar (excepção)
+  dataIsentado?: string;
+  razaoIsentado?: string;
   observacao?: string;
 }
 
@@ -75,13 +79,15 @@ export interface BonusSummary {
   qtdAPagar: number;
   qtdPagoTotal: number;
   qtdPagoParcial: number;
+  qtdIsento: number;
   qtdRevisar: number;
   qtdCancelado: number;
-  comprometidoTotal: number;     // soma de TODOS os bônus (independente do status)
+  comprometidoTotal: number;     // soma de TODOS os bônus exceto isentos
   aPagarAgora: number;           // bônus com Es quitadas, ainda não pago
   pagoTotal: number;             // já pago (corretora + imob)
   aguardandoEntrada: number;     // futuro (Es ainda em aberto)
   pendenteRevisar: number;       // sem corretor
+  isentoTotal: number;           // bônus marcados como não-pagar
 }
 
 export interface BonusResponse {
@@ -228,6 +234,9 @@ function classifyStatus(
 
   if (entry.cancelado && algumPago) return "cancelado_pago";
 
+  // Isento tem prioridade sobre tudo (decisão manual explícita)
+  if (entry.pagamento.isento) return "isento";
+
   // Cancelados sem pagamento são filtrados antes
   if (entry.pagamento.pagoCorretora && entry.pagamento.pagoImobiliaria) return "pago_total";
   if (algumPago) return "pago_parcial";
@@ -246,15 +255,21 @@ export async function getBonusTracking(): Promise<BonusResponse> {
   ]);
 
   // Filtra contratos válidos pro cálculo:
-  // - Não cancelados (ou cancelados c/ bônus já pago — mantemos no histórico)
+  // - Status ASSINADO apenas (ENVIADO PARA ASSINATURA não conta — ainda pode mudar)
+  // - Cancelados c/ bônus já pago: mantemos no histórico
   // - Não-investidor (já filtrado em getContratosEggs)
+  const STATUS_ELEGIVEL_BONUS = new Set(["ASSINADO", "FATURADO", "ENTREGUE AO INCORPORADOR"]);
   const contratosValidos: ContratoEnriquecido[] = contratos.filter((c) => {
     if (INVESTOR_LOTS.has(c.loteId)) return false;
     const chave = `${c.id}-${c.loteId}`;
     const pago = pagamentos[chave];
-    const algumPago = pago?.pagoCorretora || pago?.pagoImobiliaria;
-    // Cancelados sem pagamento: filtra. Com pagamento: mantém pra histórico.
-    if (c.cancelado && !algumPago) return false;
+    const algumPago = pago?.pagoCorretora || pago?.pagoImobiliaria || pago?.isento;
+    // Cancelado: só mantém se já tem registro de pagamento (histórico)
+    if (c.cancelado) return !!algumPago;
+    // Só ASSINADO (e similares) entram no bônus.
+    // ENVIADO PARA ASSINATURA, RESERVADO, NEGOCIAÇÃO etc: ainda pode mudar, não entra.
+    // Exceção: se já tem registro de pagamento manual, mantém pra histórico.
+    if (!STATUS_ELEGIVEL_BONUS.has(c.statusOriginal)) return !!algumPago;
     return true;
   });
 
@@ -302,7 +317,9 @@ export async function getBonusTracking(): Promise<BonusResponse> {
   // Summary
   const sum = bonus.reduce(
     (acc, b) => {
-      acc.comprometidoTotal += b.valorTotal;
+      // Isentos NÃO contam pro comprometido (não vão sair do caixa)
+      if (b.status !== "isento") acc.comprometidoTotal += b.valorTotal;
+
       if (b.status === "aguardando_entrada") {
         acc.qtdAguardandoEntrada++;
         acc.aguardandoEntrada += b.valorTotal;
@@ -314,12 +331,13 @@ export async function getBonusTracking(): Promise<BonusResponse> {
         acc.pagoTotal += b.valorTotal;
       } else if (b.status === "pago_parcial") {
         acc.qtdPagoParcial++;
-        // soma só o que foi pago
         if (b.pagamento.pagoCorretora) acc.pagoTotal += b.valorCorretora;
         if (b.pagamento.pagoImobiliaria) acc.pagoTotal += b.valorImobiliaria;
-        // restante vira a_pagar
         if (!b.pagamento.pagoCorretora) acc.aPagarAgora += b.valorCorretora;
         if (!b.pagamento.pagoImobiliaria) acc.aPagarAgora += b.valorImobiliaria;
+      } else if (b.status === "isento") {
+        acc.qtdIsento++;
+        acc.isentoTotal += b.valorTotal;
       } else if (b.status === "revisar") {
         acc.qtdRevisar++;
         acc.pendenteRevisar += b.valorTotal;
@@ -333,18 +351,18 @@ export async function getBonusTracking(): Promise<BonusResponse> {
     {
       qtdValidas: bonus.length,
       qtdAguardandoEntrada: 0, qtdAPagar: 0, qtdPagoTotal: 0,
-      qtdPagoParcial: 0, qtdRevisar: 0, qtdCancelado: 0,
+      qtdPagoParcial: 0, qtdIsento: 0, qtdRevisar: 0, qtdCancelado: 0,
       comprometidoTotal: 0, aPagarAgora: 0, pagoTotal: 0,
-      aguardandoEntrada: 0, pendenteRevisar: 0,
+      aguardandoEntrada: 0, pendenteRevisar: 0, isentoTotal: 0,
     } as BonusSummary,
   );
 
   const response: BonusResponse = {
     bonus: bonus.sort((a, b) => {
-      // Ordena: a_pagar > pago_parcial > revisar > aguardando_entrada > pago_total > cancelado_pago
+      // Ordena: a_pagar > pago_parcial > revisar > aguardando_entrada > pago_total > isento > cancelado_pago
       const order: Record<BonusStatus, number> = {
         a_pagar: 0, pago_parcial: 1, revisar: 2,
-        aguardando_entrada: 3, pago_total: 4, cancelado_pago: 5,
+        aguardando_entrada: 3, pago_total: 4, isento: 5, cancelado_pago: 6,
       };
       const d = order[a.status] - order[b.status];
       if (d !== 0) return d;
@@ -360,4 +378,56 @@ export async function getBonusTracking(): Promise<BonusResponse> {
 
 export function clearBonusCache() {
   cache = null;
+}
+
+/**
+ * Soma de bônus pagos no período [from, to] — usado por /api/canais (CAC)
+ * e /api/uau/financeiro (fluxo de caixa).
+ *
+ * Considera as datas dos pagamentos marcados manualmente:
+ *  - dataPagoCorretora: data efetiva de pagamento da R$ 3k
+ *  - dataPagoImobiliaria: data efetiva de pagamento da R$ 1k
+ * Isentos NÃO entram (não há desembolso).
+ */
+export async function getBonusComoCustoMensal(from: string, to: string): Promise<{
+  totalPago: number;
+  detalhes: { mes: string; valor: number; qtd: number }[];
+}> {
+  const { bonus } = await getBonusTracking();
+  let total = 0;
+  const porMes = new Map<string, { valor: number; qtd: number }>();
+
+  for (const b of bonus) {
+    // Corretora
+    if (b.pagamento.pagoCorretora && b.pagamento.dataPagoCorretora) {
+      const d = b.pagamento.dataPagoCorretora;
+      if (d >= from && d <= to) {
+        total += b.valorCorretora;
+        const mes = d.slice(0, 7);
+        const row = porMes.get(mes) || { valor: 0, qtd: 0 };
+        row.valor += b.valorCorretora;
+        row.qtd += 1;
+        porMes.set(mes, row);
+      }
+    }
+    // Imobiliária
+    if (b.pagamento.pagoImobiliaria && b.pagamento.dataPagoImobiliaria) {
+      const d = b.pagamento.dataPagoImobiliaria;
+      if (d >= from && d <= to) {
+        total += b.valorImobiliaria;
+        const mes = d.slice(0, 7);
+        const row = porMes.get(mes) || { valor: 0, qtd: 0 };
+        row.valor += b.valorImobiliaria;
+        row.qtd += 1;
+        porMes.set(mes, row);
+      }
+    }
+  }
+
+  return {
+    totalPago: total,
+    detalhes: Array.from(porMes.entries())
+      .map(([mes, v]) => ({ mes, ...v }))
+      .sort((a, b) => a.mes.localeCompare(b.mes)),
+  };
 }

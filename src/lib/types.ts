@@ -223,6 +223,11 @@ export interface ValoresAgregados {
   ticketMedioComJuros: number;
 }
 
+export interface ComissoesPagas {
+  totalPago: number;
+  porMes: { mes: string; valor: number; qtd: number }[];
+}
+
 export interface FinanceiroResponse {
   valorVendidoTotal: number;
   ticketMedio: number;
@@ -232,4 +237,5 @@ export interface FinanceiroResponse {
   parcelasAReceber: ParcelaReceber[];
   projecoes: ProjecaoItem[];
   vendasMensais: { mes: string; vendas: number; valor: number }[];
+  comissoesPagas?: ComissoesPagas;
 }

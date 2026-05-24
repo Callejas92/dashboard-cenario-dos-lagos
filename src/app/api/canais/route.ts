@@ -4,6 +4,7 @@ import { getWhatsAppCost } from "@/lib/whatsapp-cost";
 import { getGoogleAdsCost } from "@/lib/google-ads-cost";
 import { getCrossSell } from "@/lib/cross-sell";
 import { getVendas } from "@/lib/uau-vendas";
+import { getBonusComoCustoMensal } from "@/lib/bonus";
 
 const META_API = "https://graph.facebook.com/v21.0";
 const CRM_API = "http://leadsc2s.eggs.com.br/api/webhook/leads";
@@ -45,7 +46,7 @@ const CRM_SOURCE_MAP: Record<string, string> = {
   "WPP": "WhatsApp",
 };
 
-const ALL_CANAIS = ["Google Ads", "Meta Ads", "WhatsApp", "Outdoor", "Rádio", "Site", "Jornal", "Evento", "Outros", "Indicação", "Contato Corretor"];
+const ALL_CANAIS = ["Google Ads", "Meta Ads", "WhatsApp", "Outdoor", "Rádio", "Site", "Jornal", "Evento", "Outros", "Indicação", "Contato Corretor", "Comissão Corretor"];
 
 interface CanalData {
   investimento: number;
@@ -312,7 +313,7 @@ export async function GET(request: Request) {
   }
 
   // Fetch all sources in parallel
-  const [metaAds, crmLeads, uauVendas, custosOffline, whatsApp, crossSell, googleAds] = await Promise.all([
+  const [metaAds, crmLeads, uauVendas, custosOffline, whatsApp, crossSell, googleAds, bonusPagos] = await Promise.all([
     fetchMetaAds(from, to),
     fetchCRMLeads(from, to),
     fetchUAUVendas(from, to),
@@ -320,6 +321,7 @@ export async function GET(request: Request) {
     fetchWhatsAppCost(from, to),
     fetchCrossSell(from, to),
     fetchGoogleAdsCost(from, to),
+    getBonusComoCustoMensal(from, to).catch(() => ({ totalPago: 0, detalhes: [] })),
   ]);
 
   // Calculate offline costs for the selected date range
@@ -343,6 +345,10 @@ export async function GET(request: Request) {
     } else if (canal === "Google Ads") {
       // Google Ads tem custo via API. Leads vêm do CRM (lead_source = "Google Ads")
       investimento += googleAds.custoBRL;
+    } else if (canal === "Comissão Corretor") {
+      // Comissões/bônus pagos no período (vem do blob bonus-payments.json).
+      // Aumenta o investimento total → impacta CAC global.
+      investimento = bonusPagos.totalPago;
     }
 
     canais[canal] = {

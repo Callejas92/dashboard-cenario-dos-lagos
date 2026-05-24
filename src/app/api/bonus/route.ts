@@ -44,7 +44,29 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: true, chaveVenda: chave, pagamento: updated });
     }
 
-    return NextResponse.json({ error: "Ação inválida. Use: mark | clear-cache" }, { status: 400 });
+    if (body.action === "isentar") {
+      const chave = String(body.chaveVenda || "");
+      if (!chave) return NextResponse.json({ error: "chaveVenda obrigatória" }, { status: 400 });
+      const razao = String(body.razao || "").trim();
+      const dataHoje = new Date().toISOString().split("T")[0];
+      const updated = await setBonusPagamento(chave, {
+        isento: true,
+        dataIsentado: dataHoje,
+        razaoIsentado: razao,
+      });
+      return NextResponse.json({ success: true, chaveVenda: chave, pagamento: updated });
+    }
+
+    if (body.action === "remover-isencao") {
+      const chave = String(body.chaveVenda || "");
+      if (!chave) return NextResponse.json({ error: "chaveVenda obrigatória" }, { status: 400 });
+      const updated = await setBonusPagamento(chave, {
+        isento: false, dataIsentado: "", razaoIsentado: "",
+      });
+      return NextResponse.json({ success: true, chaveVenda: chave, pagamento: updated });
+    }
+
+    return NextResponse.json({ error: "Ação inválida. Use: mark | isentar | remover-isencao | clear-cache" }, { status: 400 });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     console.error("POST /api/bonus error:", msg);

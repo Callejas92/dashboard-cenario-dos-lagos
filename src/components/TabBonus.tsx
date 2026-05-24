@@ -12,6 +12,7 @@ type BonusStatus =
   | "a_pagar"
   | "pago_parcial"
   | "pago_total"
+  | "isento"
   | "revisar"
   | "cancelado_pago";
 
@@ -20,6 +21,9 @@ interface BonusPagamento {
   dataPagoCorretora: string;
   pagoImobiliaria: boolean;
   dataPagoImobiliaria: string;
+  isento?: boolean;
+  dataIsentado?: string;
+  razaoIsentado?: string;
   observacao?: string;
 }
 
@@ -56,6 +60,7 @@ interface BonusSummary {
   qtdAPagar: number;
   qtdPagoTotal: number;
   qtdPagoParcial: number;
+  qtdIsento: number;
   qtdRevisar: number;
   qtdCancelado: number;
   comprometidoTotal: number;
@@ -63,6 +68,7 @@ interface BonusSummary {
   pagoTotal: number;
   aguardandoEntrada: number;
   pendenteRevisar: number;
+  isentoTotal: number;
 }
 
 interface BonusResponse {
@@ -87,7 +93,8 @@ const STATUS_INFO: Record<BonusStatus, { label: string; color: string; bg: strin
   revisar:            { label: "⚠ REVISAR MANUAL",    color: "#e94560", bg: "#e9456015", emoji: "🔴", ordem: 2, expandedDefault: true },
   aguardando_entrada: { label: "AGUARDANDO ENTRADA",  color: "#4285f4", bg: "#4285f415", emoji: "🔵", ordem: 3, expandedDefault: false },
   pago_total:         { label: "JÁ PAGO",             color: "#6b7280", bg: "#6b728015", emoji: "⚪", ordem: 4, expandedDefault: false },
-  cancelado_pago:     { label: "CANCELADO (JÁ PAGO)", color: "#ef4444", bg: "#ef444415", emoji: "❌", ordem: 5, expandedDefault: false },
+  isento:             { label: "⛔ ISENTOS",          color: "#7c3aed", bg: "#7c3aed15", emoji: "⛔", ordem: 5, expandedDefault: false },
+  cancelado_pago:     { label: "CANCELADO (JÁ PAGO)", color: "#ef4444", bg: "#ef444415", emoji: "❌", ordem: 6, expandedDefault: false },
 };
 
 export default function TabBonus() {
@@ -130,6 +137,38 @@ export default function TabBonus() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "mark", chaveVenda, patch }),
+      });
+      await load();
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setUpdating(null);
+    }
+  };
+
+  const isentar = async (chaveVenda: string, razao: string) => {
+    setUpdating(chaveVenda);
+    try {
+      await fetch("/api/bonus", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "isentar", chaveVenda, razao }),
+      });
+      await load();
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setUpdating(null);
+    }
+  };
+
+  const removerIsencao = async (chaveVenda: string) => {
+    setUpdating(chaveVenda);
+    try {
+      await fetch("/api/bonus", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "remover-isencao", chaveVenda }),
       });
       await load();
     } catch (e) {
@@ -320,6 +359,8 @@ export default function TabBonus() {
                     bonus={b}
                     updating={updating === b.chaveVenda}
                     onToggle={markPagamento}
+                    onIsentar={isentar}
+                    onRemoverIsencao={removerIsencao}
                   />
                 ))}
               </div>
@@ -333,17 +374,23 @@ export default function TabBonus() {
 
 // ── Linha (card) de bônus ────────────────────────────────────────────────
 function BonusRow({
-  bonus, updating, onToggle,
+  bonus, updating, onToggle, onIsentar, onRemoverIsencao,
 }: {
   bonus: BonusEntry;
   updating: boolean;
   onToggle: (chaveVenda: string, patch: Partial<BonusPagamento>) => void;
+  onIsentar: (chaveVenda: string, razao: string) => void;
+  onRemoverIsencao: (chaveVenda: string) => void;
 }) {
+  const [showIsentar, setShowIsentar] = useState(false);
+  const [razaoTemp, setRazaoTemp] = useState("");
+
   const pctEntrada = bonus.entradaValorTotal > 0
     ? Math.min(100, (bonus.entradaValorPago / bonus.entradaValorTotal) * 100)
     : (bonus.entradaQtdTotal === 0 ? 100 : 0); // sem parcelas configuradas = 100% (nada a pagar)
   const semDadosUAU = bonus.entradaQtdTotal === 0 && bonus.entradaValorTotal === 0;
   const podePagar = bonus.entradaQuitada && !!bonus.corretorNome;
+  const ehIsento = bonus.status === "isento";
 
   return (
     <div
@@ -409,65 +456,142 @@ function BonusRow({
 
       {/* Coluna 4: Entrada + ações */}
       <div>
-        {/* Barra de progresso */}
-        <div style={{ marginBottom: "0.5rem" }}>
-          <div className="flex justify-between items-center" style={{ fontSize: "0.65rem", marginBottom: "0.2rem" }}>
-            <span style={{ color: "var(--text-dim)", fontWeight: 600 }}>
-              ENTRADA {semDadosUAU ? "(sem dados UAU)" : ""}
-            </span>
-            {!semDadosUAU && (
-              <span style={{ color: bonus.entradaQuitada ? "#10b981" : "var(--text-muted)", fontWeight: 700 }}>
-                {pctEntrada.toFixed(0)}%
-              </span>
-            )}
-          </div>
-          {semDadosUAU ? (
-            <div style={{ fontSize: "0.7rem", color: "var(--text-dim)", fontStyle: "italic" }}>
-              venda Eggs sem parcelas no UAU
+        {/* Se isento: mostra info da isenção em destaque */}
+        {ehIsento ? (
+          <div style={{ padding: "0.5rem", background: "#7c3aed10", border: "1px solid #7c3aed40", borderRadius: "0.375rem" }}>
+            <div className="flex items-center justify-between gap-2">
+              <div>
+                <div style={{ fontSize: "0.7rem", fontWeight: 700, color: "#7c3aed" }}>
+                  ⛔ ISENTO (não será pago)
+                </div>
+                {bonus.pagamento.razaoIsentado && (
+                  <div style={{ fontSize: "0.65rem", color: "var(--text-muted)", marginTop: "0.2rem" }}>
+                    Razão: {bonus.pagamento.razaoIsentado}
+                  </div>
+                )}
+                {bonus.pagamento.dataIsentado && (
+                  <div style={{ fontSize: "0.6rem", color: "var(--text-dim)", marginTop: "0.1rem" }}>
+                    em {bonus.pagamento.dataIsentado}
+                  </div>
+                )}
+              </div>
+              <button
+                onClick={() => onRemoverIsencao(bonus.chaveVenda)}
+                style={{ fontSize: "0.65rem", color: "var(--text-dim)", padding: "0.2rem 0.5rem", border: "1px solid var(--border)", borderRadius: "0.25rem", flexShrink: 0 }}
+                title="Remover isenção"
+              >
+                desfazer
+              </button>
             </div>
-          ) : (
-            <>
-              <div style={{ height: "6px", background: "var(--border)", borderRadius: "9999px", overflow: "hidden" }}>
-                <div
-                  style={{
-                    height: "100%",
-                    width: `${pctEntrada}%`,
-                    background: bonus.entradaQuitada ? "#10b981" : "#4285f4",
-                    transition: "width 0.3s ease",
-                  }}
-                />
+          </div>
+        ) : (
+          <>
+            {/* Barra de progresso */}
+            <div style={{ marginBottom: "0.5rem" }}>
+              <div className="flex justify-between items-center" style={{ fontSize: "0.65rem", marginBottom: "0.2rem" }}>
+                <span style={{ color: "var(--text-dim)", fontWeight: 600 }}>
+                  ENTRADA {semDadosUAU ? "(sem dados UAU)" : ""}
+                </span>
+                {!semDadosUAU && (
+                  <span style={{ color: bonus.entradaQuitada ? "#10b981" : "var(--text-muted)", fontWeight: 700 }}>
+                    {pctEntrada.toFixed(0)}%
+                  </span>
+                )}
               </div>
-              <div style={{ fontSize: "0.65rem", color: "var(--text-dim)", marginTop: "0.2rem" }}>
-                {bonus.entradaQtdPaga}/{bonus.entradaQtdTotal} pagas · {formatCompact(bonus.entradaValorPago)} de {formatCompact(bonus.entradaValorTotal)}
-                {bonus.entradaQuitada
-                  ? <span style={{ color: "#10b981", fontWeight: 600, marginLeft: "0.3rem" }}>✓ quitada</span>
-                  : <span style={{ color: "#f59e0b", fontWeight: 600, marginLeft: "0.3rem" }}>falta {formatCompact(bonus.entradaValorTotal - bonus.entradaValorPago)}</span>}
-              </div>
-            </>
-          )}
-        </div>
+              {semDadosUAU ? (
+                <div style={{ fontSize: "0.7rem", color: "var(--text-dim)", fontStyle: "italic" }}>
+                  venda Eggs sem parcelas no UAU
+                </div>
+              ) : (
+                <>
+                  <div style={{ height: "6px", background: "var(--border)", borderRadius: "9999px", overflow: "hidden" }}>
+                    <div
+                      style={{
+                        height: "100%",
+                        width: `${pctEntrada}%`,
+                        background: bonus.entradaQuitada ? "#10b981" : "#4285f4",
+                        transition: "width 0.3s ease",
+                      }}
+                    />
+                  </div>
+                  <div style={{ fontSize: "0.65rem", color: "var(--text-dim)", marginTop: "0.2rem" }}>
+                    {bonus.entradaQtdPaga}/{bonus.entradaQtdTotal} pagas · {formatCompact(bonus.entradaValorPago)} de {formatCompact(bonus.entradaValorTotal)}
+                    {bonus.entradaQuitada
+                      ? <span style={{ color: "#10b981", fontWeight: 600, marginLeft: "0.3rem" }}>✓ quitada</span>
+                      : <span style={{ color: "#f59e0b", fontWeight: 600, marginLeft: "0.3rem" }}>falta {formatCompact(bonus.entradaValorTotal - bonus.entradaValorPago)}</span>}
+                  </div>
+                </>
+              )}
+            </div>
 
-        {/* Botões de pagamento */}
-        <div className="flex gap-2">
-          <PagamentoButton
-            label="Corretora"
-            valor={bonus.valorCorretora}
-            pago={bonus.pagamento.pagoCorretora}
-            data={bonus.pagamento.dataPagoCorretora}
-            podePagar={podePagar || bonus.pagamento.pagoCorretora}
-            updating={updating}
-            onConfirm={(pago, data) => onToggle(bonus.chaveVenda, { pagoCorretora: pago, dataPagoCorretora: data })}
-          />
-          <PagamentoButton
-            label="Imobiliária"
-            valor={bonus.valorImobiliaria}
-            pago={bonus.pagamento.pagoImobiliaria}
-            data={bonus.pagamento.dataPagoImobiliaria}
-            podePagar={(podePagar && !!bonus.imobiliariaRazaoSocial) || bonus.pagamento.pagoImobiliaria}
-            updating={updating}
-            onConfirm={(pago, data) => onToggle(bonus.chaveVenda, { pagoImobiliaria: pago, dataPagoImobiliaria: data })}
-          />
-        </div>
+            {/* Modal de isentar */}
+            {showIsentar ? (
+              <div style={{ padding: "0.5rem", background: "#7c3aed10", border: "2px solid #7c3aed", borderRadius: "0.375rem" }}>
+                <div style={{ fontSize: "0.7rem", fontWeight: 600, color: "#7c3aed", marginBottom: "0.3rem" }}>
+                  Por que esse bônus não será pago?
+                </div>
+                <input
+                  type="text"
+                  value={razaoTemp}
+                  onChange={(e) => setRazaoTemp(e.target.value)}
+                  placeholder="Razão (opcional)"
+                  autoFocus
+                  className="text-xs w-full px-2 py-1 rounded"
+                  style={{ background: "var(--surface)", border: "1px solid var(--border)", color: "var(--text)" }}
+                />
+                <div className="flex gap-2 mt-2">
+                  <button
+                    onClick={() => { onIsentar(bonus.chaveVenda, razaoTemp); setShowIsentar(false); setRazaoTemp(""); }}
+                    style={{ flex: 1, padding: "0.3rem", background: "#7c3aed", color: "white", fontSize: "0.7rem", fontWeight: 700, borderRadius: "0.25rem" }}
+                  >
+                    Confirmar isenção
+                  </button>
+                  <button
+                    onClick={() => { setShowIsentar(false); setRazaoTemp(""); }}
+                    style={{ padding: "0.3rem 0.6rem", color: "var(--text-dim)", fontSize: "0.7rem", border: "1px solid var(--border)", borderRadius: "0.25rem" }}
+                  >
+                    cancelar
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <>
+                {/* Botões de pagamento */}
+                <div className="flex gap-2">
+                  <PagamentoButton
+                    label="Corretora"
+                    valor={bonus.valorCorretora}
+                    pago={bonus.pagamento.pagoCorretora}
+                    data={bonus.pagamento.dataPagoCorretora}
+                    podePagar={podePagar || bonus.pagamento.pagoCorretora}
+                    updating={updating}
+                    onConfirm={(pago, data) => onToggle(bonus.chaveVenda, { pagoCorretora: pago, dataPagoCorretora: data })}
+                  />
+                  <PagamentoButton
+                    label="Imobiliária"
+                    valor={bonus.valorImobiliaria}
+                    pago={bonus.pagamento.pagoImobiliaria}
+                    data={bonus.pagamento.dataPagoImobiliaria}
+                    podePagar={(podePagar && !!bonus.imobiliariaRazaoSocial) || bonus.pagamento.pagoImobiliaria}
+                    updating={updating}
+                    onConfirm={(pago, data) => onToggle(bonus.chaveVenda, { pagoImobiliaria: pago, dataPagoImobiliaria: data })}
+                  />
+                </div>
+
+                {/* Botão Isentar (discreto, só aparece se ainda não foi pago) */}
+                {!bonus.pagamento.pagoCorretora && !bonus.pagamento.pagoImobiliaria && (
+                  <button
+                    onClick={() => setShowIsentar(true)}
+                    className="text-xs mt-1.5 px-2 py-0.5 rounded"
+                    style={{ color: "#7c3aed", border: "1px dashed #7c3aed40", background: "transparent", width: "100%", fontSize: "0.65rem" }}
+                  >
+                    ⛔ não vou pagar esse bônus
+                  </button>
+                )}
+              </>
+            )}
+          </>
+        )}
       </div>
     </div>
   );

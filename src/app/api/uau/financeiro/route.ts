@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { authenticate, isUauConfigured, uauFetch } from "@/lib/uau-auth";
 import { getContratosEggs } from "@/lib/eggs-contratos";
+import { getBonusComoCustoMensal } from "@/lib/bonus";
 import lotesData from "@/data/lotes.json";
 import investorData from "@/data/investor-lots.json";
 
@@ -99,7 +100,8 @@ export async function GET() {
     const todayFormatted = `${mm}-${dd}-${yyyy}`;
 
     // Use the working endpoint (same as /api/uau/vendas) + contratos Eggs pra valor de contrato
-    const [espelhoRaw, parcelasRaw, contratos] = await Promise.all([
+    // + comissões pagas (do blob de bonus) pra incluir no fluxo de caixa
+    const [espelhoRaw, parcelasRaw, contratos, comissoes] = await Promise.all([
       uauFetch(token, "Espelho/BuscaUnidadesDeAcordoComWhereDetalhado", {
         where: "WHERE Empresa_unid = 2 AND Vendido_unid = 1",
         retorna_venda: true,
@@ -112,6 +114,8 @@ export async function GET() {
       }, 30000).catch(() => null),
       // Eggs Contratos: valor de venda contratado (com desconto, sem juros do parcelamento)
       getContratosEggs().catch(() => []),
+      // Bônus pagos (lançamentos no blob bonus-payments.json)
+      getBonusComoCustoMensal("2026-01-01", "2030-12-31").catch(() => ({ totalPago: 0, detalhes: [] })),
     ]);
 
     // Map loteId → contrato Eggs (pra puxar valor de contrato)
@@ -363,6 +367,11 @@ export async function GET() {
       parcelasAReceber: parcelas.sort((a, b) => b.diasAtraso - a.diasAtraso),
       projecoes,
       vendasMensais,
+      // Comissões pagas (R$ 3k corretora + R$ 1k imob) — saídas do caixa
+      comissoesPagas: {
+        totalPago: comissoes.totalPago,
+        porMes: comissoes.detalhes,
+      },
     };
 
     cache.set(cacheKey, { data: response, timestamp: Date.now() });
