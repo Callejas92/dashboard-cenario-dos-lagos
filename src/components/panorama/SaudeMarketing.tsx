@@ -1,60 +1,56 @@
 "use client";
 
 /**
- * Linha 4 do Panorama — saúde do marketing (4 KPIs médios).
+ * Linha 4 do Panorama — investimento de marketing.
  *
- *  1. CAC do mês comercial vs alvo (R$ 9.874)
- *  2. Investimento do mês vs budget mensal
- *  3. Leads do mês (CRM Eggs)
- *  4. Top campanha do mês (placeholder por enquanto)
+ * Conforme feedback do Felipe: NÃO mostrar CAC nem Leads aqui (atribuição
+ * lead→venda não existe na prática). Só foco em INVESTIMENTO vs BUDGET.
+ *
+ * Detalhamento (canais, campanhas, leads) fica na aba Marketing (Fase 4).
+ *
+ * Fontes:
+ *  - Investimento do mês: /api/canais (offline do Cenario_Marketing.xlsx + Meta/Google APIs)
+ *  - Budget total/mensal alvo: constantes derivadas de PROJETO (aba PREMISSAS do Excel)
+ *  - Realizado acumulado: /api/marketing-offline (aba GASTOS)
  */
 import useSWR from "swr";
-import { Megaphone, DollarSign, Users, TrendingUp } from "lucide-react";
+import { DollarSign, Wallet } from "lucide-react";
 import KpiMedium from "@/components/shared/KpiMedium";
 import { SkeletonCard } from "@/components/shared/Skeleton";
 import { buildKey } from "@/lib/cache/tabCache";
 import { PROJETO } from "@/lib/constants/projeto";
-import { calcularCac } from "@/lib/calculations/cac";
-import { corMetaInversa, corMeta } from "@/lib/utils/cores";
-import { formatBRLCompact, formatInt } from "@/lib/utils/formatters";
+import { corMetaInversa } from "@/lib/utils/cores";
+import { formatBRLCompact, formatPct } from "@/lib/utils/formatters";
 import { getMesComercialAtual } from "@/lib/utils/mesComercial";
 
 interface CanaisResp {
-  kpis?: { totalLeads?: number; totalInvestimento?: number; totalVendas?: number };
-  canais?: Record<string, { investimento?: number; leads?: number; vendas?: number }>;
+  kpis?: { totalInvestimento?: number };
+}
+interface MktResp {
+  totalRealizado?: number;
 }
 
 const BUDGET_MENSAL = PROJETO.BUDGET_MKT_TOTAL / PROJETO.PRAZO_COMERCIALIZACAO_MESES;
 
 export default function SaudeMarketing() {
   const mc = getMesComercialAtual();
-  const key = buildKey("/api/canais", { from: mc.inicioISO, to: mc.fimISO });
+  const keyCanais = buildKey("/api/canais", { from: mc.inicioISO, to: mc.fimISO });
 
-  const { data, isLoading } = useSWR<CanaisResp>(key);
+  const { data: canais, isLoading: lC } = useSWR<CanaisResp>(keyCanais);
+  const { data: mkt, isLoading: lM } = useSWR<MktResp>("/api/marketing-offline?view=summary");
 
-  if (isLoading) {
+  if (lC || lM) {
     return (
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: "0.75rem" }}>
-        <SkeletonCard height={100} />
-        <SkeletonCard height={100} />
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "0.75rem" }}>
         <SkeletonCard height={100} />
         <SkeletonCard height={100} />
       </div>
     );
   }
 
-  const totalInvestimento = data?.kpis?.totalInvestimento ?? 0;
-  const totalVendas = data?.kpis?.totalVendas ?? 0;
-  const totalLeads = data?.kpis?.totalLeads ?? 0;
-
-  const cac = calcularCac({ investimentoTotal: totalInvestimento, qtdVendas: totalVendas });
-
-  // Top canal por investimento no mês (excluindo Comissão Corretor — que não é canal de aquisição)
-  const canais = data?.canais || {};
-  const topCanal = Object.entries(canais)
-    .filter(([nome]) => nome !== "Comissão Corretor")
-    .map(([nome, c]) => ({ nome, inv: c.investimento ?? 0, leads: c.leads ?? 0 }))
-    .sort((a, b) => b.inv - a.inv)[0];
+  const investimentoMes = canais?.kpis?.totalInvestimento ?? 0;
+  const realizadoAcumulado = mkt?.totalRealizado ?? 0;
+  const pctBudgetConsumido = realizadoAcumulado / PROJETO.BUDGET_MKT_TOTAL;
 
   return (
     <div
@@ -65,52 +61,58 @@ export default function SaudeMarketing() {
         padding: "1rem 1.25rem",
       }}
     >
-      <div style={{ fontSize: "0.75rem", color: "var(--text-dim)", fontWeight: 700, letterSpacing: "0.05em", textTransform: "uppercase", marginBottom: "0.875rem", display: "flex", alignItems: "center", gap: "0.4rem" }}>
-        <Megaphone size={12} />
-        <span>Saúde do Marketing · {mc.labelCurto}</span>
+      <div
+        style={{
+          fontSize: "0.75rem",
+          color: "var(--text-dim)",
+          fontWeight: 700,
+          letterSpacing: "0.05em",
+          textTransform: "uppercase",
+          marginBottom: "0.875rem",
+          display: "flex",
+          alignItems: "center",
+          gap: "0.4rem",
+        }}
+      >
+        <Wallet size={12} />
+        <span>Investimento de Marketing</span>
+        <span
+          style={{
+            marginLeft: "auto",
+            fontSize: "0.7rem",
+            color: "var(--text-dim)",
+            fontWeight: 400,
+            textTransform: "none",
+            letterSpacing: 0,
+          }}
+        >
+          detalhes na aba <a href="/marketing" style={{ color: "var(--text-muted)", textDecoration: "underline" }}>Marketing</a>
+        </span>
       </div>
 
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))",
+          gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
           gap: "0.75rem",
         }}
       >
         <KpiMedium
-          label="CAC do mês"
-          valor={cac.valor > 0 ? formatBRLCompact(cac.valor) : "—"}
-          severidade={cac.severidade}
-          formula={`${cac.formula}\nMeta máxima: ${formatBRLCompact(cac.meta)}`}
-          contexto={`alvo ≤ ${formatBRLCompact(cac.meta)}`}
-          icon={<TrendingUp size={11} style={{ color: "var(--text-dim)" }} />}
-        />
-
-        <KpiMedium
-          label="Investimento do mês"
-          valor={formatBRLCompact(totalInvestimento)}
-          severidade={corMetaInversa(totalInvestimento, BUDGET_MENSAL * 1.2)}
-          formula={`Soma de gastos em todos os canais no período ${mc.label}.\nBudget mensal alvo: ${formatBRLCompact(BUDGET_MENSAL)} (= R$ 1,72M ÷ 15 meses).`}
-          contexto={`budget ${formatBRLCompact(BUDGET_MENSAL)}/mês`}
+          label={`Investido em ${mc.labelCurto}`}
+          valor={formatBRLCompact(investimentoMes)}
+          severidade={corMetaInversa(investimentoMes, BUDGET_MENSAL * 1.2)}
+          formula={`Soma de gastos em TODOS os canais no período ${mc.label}.\nInclui mídia digital (Meta/Google), offline do Excel (Outdoor/Rádio/etc), comissões e eventos.\nBudget mensal alvo: ${formatBRLCompact(BUDGET_MENSAL)} (R$ 1,72M ÷ 15 meses).`}
+          contexto={`alvo ${formatBRLCompact(BUDGET_MENSAL)}/mês`}
           icon={<DollarSign size={11} style={{ color: "var(--text-dim)" }} />}
         />
 
         <KpiMedium
-          label="Leads do mês"
-          valor={formatInt(totalLeads)}
-          severidade={corMeta(totalLeads, 100)}
-          formula={`Leads registrados no CRM Eggs com created_at dentro de ${mc.label}.`}
-          contexto={`${totalVendas} venda${totalVendas === 1 ? "" : "s"} no mesmo período`}
-          icon={<Users size={11} style={{ color: "var(--text-dim)" }} />}
-        />
-
-        <KpiMedium
-          label="Top canal"
-          valor={topCanal ? topCanal.nome : "—"}
-          severidade="cinza"
-          formula={topCanal ? `Canal com maior investimento neste mês comercial.\n${topCanal.nome}: ${formatBRLCompact(topCanal.inv)} investido, ${topCanal.leads} leads.` : "Sem dados ainda neste período."}
-          contexto={topCanal ? `${formatBRLCompact(topCanal.inv)} · ${topCanal.leads} leads` : undefined}
-          icon={<Megaphone size={11} style={{ color: "var(--text-dim)" }} />}
+          label="Budget total consumido"
+          valor={formatPct(pctBudgetConsumido)}
+          severidade={corMetaInversa(pctBudgetConsumido, 1)}
+          formula={`Realizado acumulado desde o lançamento (aba GASTOS do Cenario_Marketing.xlsx) ÷ Budget total.\nRealizado: ${formatBRLCompact(realizadoAcumulado)}\nBudget total: ${formatBRLCompact(PROJETO.BUDGET_MKT_TOTAL)} (2% do VGV inicial)`}
+          contexto={`${formatBRLCompact(realizadoAcumulado)} de ${formatBRLCompact(PROJETO.BUDGET_MKT_TOTAL)}`}
+          icon={<Wallet size={11} style={{ color: "var(--text-dim)" }} />}
         />
       </div>
     </div>

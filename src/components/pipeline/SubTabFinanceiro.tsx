@@ -1,0 +1,509 @@
+"use client";
+
+/**
+ * Sub-tab Pipeline > Financeiro & Bônus.
+ *
+ *  - 3 perspectivas de valor (Tabela / Contratado / Total c/ Juros)
+ *  - Inadimplência POR CLIENTE (não por parcela)
+ *  - Lista de bônus com checkbox "Marcar como pago" + data + observação
+ *  - Exclui Eggs da listagem de bônus
+ *  - REMOVE "Projeção de Inadimplência" (era fake)
+ */
+import { useState, useMemo } from "react";
+import useSWR, { mutate as mutateGlobal } from "swr";
+import { DollarSign, AlertTriangle, Award, CheckCircle2, XCircle, RefreshCw } from "lucide-react";
+import KpiMedium from "@/components/shared/KpiMedium";
+import KpiSmall from "@/components/shared/KpiSmall";
+import { SkeletonCard } from "@/components/shared/Skeleton";
+import { formatBRL, formatBRLCompact, formatPct, formatData, truncate } from "@/lib/utils/formatters";
+import { calcularInadimplencia } from "@/lib/calculations/inadimplencia";
+import { corInadimplencia } from "@/lib/utils/cores";
+
+// ─── Tipos ─────────────────────────────────────────────────────────────────
+interface ValoresAgregados {
+  tabelaUAU: number;
+  contratoEggs: number;
+  totalAPagarComJuros: number;
+  ganhoSalto: number;
+  pctGanhoSalto: number;
+  jurosFinanciamento: number;
+  qtdVendasComJuros: number;
+}
+interface ParcelaAReceber {
+  identificadorUnidade: string;
+  chaveVenda: string;
+  numeroParcela: number;
+  dataVencimento: string;
+  valor: number;
+  diasAtraso: number;
+  tipoParcela?: string;
+  status: "em_dia" | "vencida";
+  clienteCodigo?: number;
+  clienteNome?: string;
+}
+interface FinancResp {
+  valorVendidoTotal?: number;
+  qtdVendas?: number;
+  valoresAgregados?: ValoresAgregados;
+  inadimplencia?: { totalEmDia?: number; percentualInadimplencia?: number };
+  parcelasAReceber?: ParcelaAReceber[];
+}
+interface BonusItem {
+  chaveVenda: string;
+  loteId: string;
+  valorContratado: number;
+  corretorNome: string;
+  corretorCpf: string;
+  corretorCreci: string;
+  imobiliariaRazaoSocial: string;
+  imobiliariaNomeFantasia: string;
+  entradaQtdTotal: number;
+  entradaQtdPaga: number;
+  entradaValorTotal: number;
+  entradaValorPago: number;
+  entradaQuitada: boolean;
+  valorCorretora: number;
+  valorImobiliaria: number;
+  valorTotal: number;
+  status: string;
+  pagamento: {
+    pagoCorretora: boolean;
+    dataPagoCorretora: string;
+    pagoImobiliaria: boolean;
+    dataPagoImobiliaria: string;
+    observacao?: string;
+    isento?: boolean;
+  };
+  clienteNome: string;
+}
+interface BonusResp {
+  summary?: {
+    qtdAPagar?: number; qtdPagoTotal?: number; qtdAguardandoEntrada?: number;
+    aPagarAgora?: number; pagoTotal?: number; aguardandoEntrada?: number;
+    comprometidoTotal?: number;
+  };
+  bonus?: BonusItem[];
+}
+
+const NOMES_IMOBILIARIA = ["EGGS", "GESTÃO", "GESTAO", "INTELIGENCIA EM VENDAS"];
+function isImobiliaria(nome: string): boolean {
+  const upper = (nome || "").toUpperCase();
+  return NOMES_IMOBILIARIA.some((n) => upper.includes(n));
+}
+
+export default function SubTabFinanceiro() {
+  const { data: financ, isLoading: lF } = useSWR<FinancResp>("/api/uau/financeiro");
+  const { data: bonus, isLoading: lB } = useSWR<BonusResp>("/api/bonus");
+
+  if (lF || lB) return <SkeletonCard height={400} />;
+
+  // ── Inadimplência agregada POR CLIENTE ──
+  const parcelas = financ?.parcelasAReceber || [];
+  const vencidas = parcelas.filter((p) => p.status === "vencida");
+  const inad = calcularInadimplencia({
+    parcelasVencidas: vencidas.map((p) => ({
+      identificadorUnidade: p.identificadorUnidade,
+      chaveVenda: p.chaveVenda,
+      numeroParcela: p.numeroParcela,
+      dataVencimento: p.dataVencimento,
+      valor: p.valor,
+      diasAtraso: p.diasAtraso,
+      tipoParcela: p.tipoParcela || "",
+      clienteCodigo: p.clienteCodigo || 0,
+      clienteNome: p.clienteNome || "",
+    })),
+    totalAbertoEmDia: financ?.inadimplencia?.totalEmDia || 0,
+  });
+
+  const va = financ?.valoresAgregados;
+  const bs = bonus?.summary;
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
+      {/* ════ FINANCEIRO ════ */}
+      <section>
+        <h2 style={{ fontSize: "0.95rem", fontWeight: 700, color: "var(--text)", marginBottom: "0.75rem", display: "flex", alignItems: "center", gap: "0.4rem" }}>
+          <DollarSign size={14} /> Financeiro
+        </h2>
+
+        {/* 3 perspectivas de valor */}
+        {va && (
+          <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "0.75rem", padding: "1rem 1.25rem", marginBottom: "0.875rem" }}>
+            <div style={{ fontSize: "0.7rem", color: "var(--text-dim)", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "0.75rem" }}>
+              Valor das vendas — 3 perspectivas ({financ?.qtdVendas} vendas)
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "0.625rem" }}>
+              <KpiSmall
+                label="Tabela ERP UAU"
+                valor={formatBRLCompact(va.tabelaUAU)}
+                formula="Preço de lista (ValorTotal_unid do espelho UAU), sem ganho de salto."
+                contexto="sem ganho de salto"
+              />
+              <KpiSmall
+                label="Contratado (Eggs) ★"
+                valor={formatBRLCompact(va.contratoEggs)}
+                severidade="verde"
+                formula={`Valor efetivo do contrato no CRM Eggs.\nGanho de salto: +${(va.pctGanhoSalto).toFixed(1)}% vs tabela = ${formatBRLCompact(va.ganhoSalto)}.`}
+                contexto={`+${(va.pctGanhoSalto).toFixed(1)}% vs tabela`}
+              />
+              <KpiSmall
+                label="Total a Pagar (c/ Juros)"
+                valor={formatBRLCompact(va.totalAPagarComJuros)}
+                severidade="amarelo"
+                formula={va.jurosFinanciamento > 0
+                  ? `Desembolso total ao longo das parcelas.\n${va.qtdVendasComJuros} venda${va.qtdVendasComJuros === 1 ? "" : "s"} com juros configurados.\nJuros: ${formatBRLCompact(va.jurosFinanciamento)}.`
+                  : "Soma das parcelas. Não há juros configurados nas vendas atuais."
+                }
+                contexto={va.jurosFinanciamento > 0 ? `+${formatBRLCompact(va.jurosFinanciamento)} juros` : "sem juros"}
+              />
+            </div>
+          </div>
+        )}
+
+        {/* Inadimplência */}
+        <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "0.75rem", padding: "1rem 1.25rem" }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "0.75rem", flexWrap: "wrap", gap: "0.5rem" }}>
+            <div style={{ fontSize: "0.7rem", color: "var(--text-dim)", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em" }}>
+              Inadimplência (agregada por cliente)
+            </div>
+            <KpiMedium
+              label="% inadimplência"
+              valor={formatPct(inad.percentual)}
+              severidade={inad.severidade}
+              formula={`Total vencido / total aberto = ${formatBRLCompact(inad.totalVencido)} / ${formatBRLCompact(inad.totalAberto)}.\nVerde até 3% · amarelo 3-5% · vermelho >5%.`}
+              contexto={`${inad.qtdClientesInadimplentes} cliente${inad.qtdClientesInadimplentes === 1 ? "" : "s"} · ${inad.qtdParcelasVencidas} parcela${inad.qtdParcelasVencidas === 1 ? "" : "s"}`}
+            />
+          </div>
+
+          {inad.porCliente.length === 0 ? (
+            <div style={{ padding: "1rem", textAlign: "center", color: "var(--text-dim)", fontSize: "0.85rem" }}>
+              Sem inadimplência. Todos pagamentos em dia.
+            </div>
+          ) : (
+            <div style={{ overflowX: "auto" }}>
+              <table style={{ width: "100%", fontSize: "0.8rem", borderCollapse: "collapse" }}>
+                <thead>
+                  <tr style={{ borderBottom: "1px solid var(--border)", textAlign: "left", color: "var(--text-dim)", fontSize: "0.7rem", textTransform: "uppercase", fontWeight: 600 }}>
+                    <th style={{ padding: "0.5rem 0.25rem" }}>Cliente</th>
+                    <th style={{ padding: "0.5rem 0.25rem" }}>Lotes</th>
+                    <th style={{ padding: "0.5rem 0.25rem", textAlign: "right" }}>Parcelas</th>
+                    <th style={{ padding: "0.5rem 0.25rem", textAlign: "right" }}>Total vencido</th>
+                    <th style={{ padding: "0.5rem 0.25rem", textAlign: "right" }}>Atraso máx</th>
+                    <th style={{ padding: "0.5rem 0.25rem", textAlign: "right" }}>1ª vencida</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {inad.porCliente.map((c) => (
+                    <tr key={`${c.clienteCodigo}-${c.clienteNome}`} style={{ borderBottom: "1px solid var(--border)" }}>
+                      <td style={{ padding: "0.4rem 0.25rem", color: "var(--text)", fontWeight: 600 }}>
+                        {c.clienteNome || `Cliente ${c.clienteCodigo}`}
+                      </td>
+                      <td style={{ padding: "0.4rem 0.25rem", color: "var(--text-muted)", fontSize: "0.75rem" }}>
+                        {c.lotesEnvolvidos.slice(0, 3).join(", ")}
+                        {c.lotesEnvolvidos.length > 3 ? ` +${c.lotesEnvolvidos.length - 3}` : ""}
+                      </td>
+                      <td style={{ padding: "0.4rem 0.25rem", textAlign: "right", color: "var(--text)" }}>{c.qtdParcelas}</td>
+                      <td style={{ padding: "0.4rem 0.25rem", textAlign: "right", color: "var(--text)", fontWeight: 600 }}>{formatBRL(c.valorTotal)}</td>
+                      <td style={{ padding: "0.4rem 0.25rem", textAlign: "right", color: corInadimplencia(c.diasAtrasoMaximo / 30) === "vermelho" ? "#dc2626" : "var(--text-muted)" }}>
+                        {c.diasAtrasoMaximo}d
+                      </td>
+                      <td style={{ padding: "0.4rem 0.25rem", textAlign: "right", color: "var(--text-muted)", fontSize: "0.75rem" }}>
+                        {formatData(c.primeiraVencida)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      </section>
+
+      {/* ════ BÔNUS ════ */}
+      <section>
+        <h2 style={{ fontSize: "0.95rem", fontWeight: 700, color: "var(--text)", marginBottom: "0.75rem", display: "flex", alignItems: "center", gap: "0.4rem" }}>
+          <Award size={14} /> Bônus de corretores e imobiliárias
+        </h2>
+
+        {/* KPIs */}
+        {bs && (
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: "0.625rem", marginBottom: "0.875rem" }}>
+            <KpiMedium
+              label="A pagar agora"
+              valor={formatBRLCompact(bs.aPagarAgora ?? 0)}
+              severidade={(bs.qtdAPagar ?? 0) > 0 ? "amarelo" : "cinza"}
+              contexto={`${bs.qtdAPagar ?? 0} venda${(bs.qtdAPagar ?? 0) === 1 ? "" : "s"}`}
+              formula="Bônus de vendas com entrada quitada, ainda não marcados como pagos. R$ 3k corretora + R$ 1k imobiliária por venda."
+            />
+            <KpiMedium
+              label="Pago"
+              valor={formatBRLCompact(bs.pagoTotal ?? 0)}
+              severidade="verde"
+              contexto={`${bs.qtdPagoTotal ?? 0} venda${(bs.qtdPagoTotal ?? 0) === 1 ? "" : "s"}`}
+              formula="Soma do que já foi marcado como pago (corretora + imobiliária)."
+            />
+            <KpiMedium
+              label="Aguardando entrada"
+              valor={formatBRLCompact(bs.aguardandoEntrada ?? 0)}
+              severidade="cinza"
+              contexto={`${bs.qtdAguardandoEntrada ?? 0} venda${(bs.qtdAguardandoEntrada ?? 0) === 1 ? "" : "s"}`}
+              formula="Vendas assinadas onde o ERP UAU ainda não registrou a entrada quitada."
+            />
+            <KpiMedium
+              label="Comprometido total"
+              valor={formatBRLCompact(bs.comprometidoTotal ?? 0)}
+              severidade="cinza"
+              formula="Soma de R$ 4k (R$ 3k + R$ 1k) por todas as vendas ASSINADO no Eggs (excluindo isentos)."
+            />
+          </div>
+        )}
+
+        {/* Lista de bônus a pagar */}
+        <BonusList bonus={bonus?.bonus || []} />
+      </section>
+    </div>
+  );
+}
+
+// ── Componente da lista de bônus ──────────────────────────────────────────
+function BonusList({ bonus }: { bonus: BonusItem[] }) {
+  const [updatingChave, setUpdatingChave] = useState<string | null>(null);
+
+  // Filtra: ignora isentos (não fazem parte do "a pagar")
+  // Exclui imobiliárias do listing principal — só corretor PF + ação na imobiliária no card
+  const agrupados = useMemo(() => {
+    const aPagar = bonus.filter((b) => b.status === "a_pagar" || b.status === "pago_parcial");
+    const pagos = bonus.filter((b) => b.status === "pago_total");
+    const aguardando = bonus.filter((b) => b.status === "aguardando_entrada");
+    return { aPagar, pagos, aguardando };
+  }, [bonus]);
+
+  async function marcar(b: BonusItem, tipo: "corretora" | "imobiliaria", pago: boolean, data: string, observacao?: string) {
+    setUpdatingChave(b.chaveVenda);
+    try {
+      const patch: Record<string, unknown> = observacao !== undefined ? { observacao } : {};
+      if (tipo === "corretora") {
+        patch.pagoCorretora = pago;
+        patch.dataPagoCorretora = pago ? data : "";
+      } else {
+        patch.pagoImobiliaria = pago;
+        patch.dataPagoImobiliaria = pago ? data : "";
+      }
+      await fetch("/api/bonus", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "mark", chaveVenda: b.chaveVenda, patch }),
+      });
+      // Invalida cache global do bonus pra refetch
+      await mutateGlobal("/api/bonus");
+    } finally {
+      setUpdatingChave(null);
+    }
+  }
+
+  if (agrupados.aPagar.length + agrupados.pagos.length + agrupados.aguardando.length === 0) {
+    return (
+      <div style={{ padding: "2rem", textAlign: "center", color: "var(--text-dim)", fontSize: "0.85rem", background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "0.75rem" }}>
+        Nenhum bônus ainda. Vai aparecer aqui assim que houver vendas assinadas.
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: "0.875rem" }}>
+      <Grupo titulo="🟢 A PAGAR" cor="#10b981" itens={agrupados.aPagar} ativo updatingChave={updatingChave} onMarcar={marcar} />
+      <Grupo titulo="🔵 AGUARDANDO ENTRADA" cor="#4285f4" itens={agrupados.aguardando} colapsado updatingChave={updatingChave} onMarcar={marcar} />
+      <Grupo titulo="⚪ JÁ PAGO" cor="#6b7280" itens={agrupados.pagos} colapsado updatingChave={updatingChave} onMarcar={marcar} />
+    </div>
+  );
+}
+
+function Grupo({
+  titulo, cor, itens, ativo, colapsado, updatingChave, onMarcar,
+}: {
+  titulo: string;
+  cor: string;
+  itens: BonusItem[];
+  ativo?: boolean;
+  colapsado?: boolean;
+  updatingChave: string | null;
+  onMarcar: (b: BonusItem, tipo: "corretora" | "imobiliaria", pago: boolean, data: string, observacao?: string) => Promise<void>;
+}) {
+  const [collapsed, setCollapsed] = useState(!!colapsado);
+  if (itens.length === 0) return null;
+
+  return (
+    <div style={{ background: "var(--surface)", border: `1px solid var(--border)`, borderLeft: `4px solid ${cor}`, borderRadius: "0.5rem", overflow: "hidden" }}>
+      <button
+        onClick={() => setCollapsed(!collapsed)}
+        style={{ width: "100%", padding: "0.625rem 1rem", background: cor + "08", border: 0, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "space-between", color: cor, fontSize: "0.8rem", fontWeight: 700, letterSpacing: "0.03em" }}
+      >
+        <span>{titulo} — {itens.length}</span>
+        <span style={{ fontSize: "0.75rem", fontWeight: 400, color: "var(--text-muted)" }}>
+          {formatBRLCompact(itens.reduce((s, b) => s + b.valorTotal, 0))} {collapsed ? "›" : "⌄"}
+        </span>
+      </button>
+      {!collapsed && (
+        <div style={{ display: "flex", flexDirection: "column" }}>
+          {itens.map((b) => (
+            <BonusCard
+              key={b.chaveVenda}
+              bonus={b}
+              ativo={!!ativo}
+              updating={updatingChave === b.chaveVenda}
+              onMarcar={onMarcar}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function BonusCard({
+  bonus, ativo, updating, onMarcar,
+}: {
+  bonus: BonusItem;
+  ativo: boolean;
+  updating: boolean;
+  onMarcar: (b: BonusItem, tipo: "corretora" | "imobiliaria", pago: boolean, data: string, observacao?: string) => Promise<void>;
+}) {
+  const corretorEhImob = isImobiliaria(bonus.corretorNome);
+  const podeMarcarCorretora = ativo && bonus.entradaQuitada && !corretorEhImob;
+  const podeMarcarImob = ativo && bonus.entradaQuitada && !!bonus.imobiliariaRazaoSocial && !isImobiliaria(bonus.imobiliariaRazaoSocial);
+
+  return (
+    <div style={{ padding: "0.625rem 1rem", borderTop: "1px solid var(--border)", display: "grid", gridTemplateColumns: "minmax(0, 1.4fr) minmax(0, 2fr) minmax(0, 2fr)", gap: "0.875rem", alignItems: "start" }}>
+      {/* Lote + Cliente */}
+      <div style={{ minWidth: 0 }}>
+        <div style={{ fontWeight: 700, fontSize: "0.9rem", color: "var(--text)" }}>{bonus.loteId}</div>
+        <div style={{ fontSize: "0.7rem", color: "var(--text-muted)", marginTop: "0.125rem" }}>
+          {truncate(bonus.clienteNome || "(sem nome)", 30)}
+        </div>
+        <div style={{ fontSize: "0.65rem", color: "var(--text-dim)", marginTop: "0.125rem" }}>
+          contrato {formatBRLCompact(bonus.valorContratado)}
+        </div>
+        {!bonus.entradaQuitada && (
+          <div style={{ fontSize: "0.65rem", color: "#f59e0b", marginTop: "0.125rem" }}>
+            entrada {bonus.entradaQtdPaga}/{bonus.entradaQtdTotal} pagas
+          </div>
+        )}
+      </div>
+
+      {/* Corretor */}
+      <div style={{ minWidth: 0 }}>
+        <div style={{ fontSize: "0.65rem", color: "var(--text-dim)", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.02em" }}>
+          Corretora · R$ {bonus.valorCorretora.toLocaleString("pt-BR")}
+        </div>
+        <div style={{ fontSize: "0.825rem", color: "var(--text)", marginTop: "0.125rem" }}>
+          {truncate(bonus.corretorNome || "(sem corretor)", 28)}
+        </div>
+        <BonusActionRow
+          ativo={podeMarcarCorretora}
+          pago={bonus.pagamento.pagoCorretora}
+          data={bonus.pagamento.dataPagoCorretora}
+          updating={updating}
+          onConfirm={(pago, data) => onMarcar(bonus, "corretora", pago, data)}
+        />
+      </div>
+
+      {/* Imobiliária */}
+      <div style={{ minWidth: 0 }}>
+        <div style={{ fontSize: "0.65rem", color: "var(--text-dim)", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.02em" }}>
+          Imobiliária · R$ {bonus.valorImobiliaria.toLocaleString("pt-BR")}
+        </div>
+        <div style={{ fontSize: "0.825rem", color: "var(--text)", marginTop: "0.125rem" }}>
+          {truncate(bonus.imobiliariaNomeFantasia || bonus.imobiliariaRazaoSocial || "—", 28)}
+        </div>
+        <BonusActionRow
+          ativo={podeMarcarImob}
+          pago={bonus.pagamento.pagoImobiliaria}
+          data={bonus.pagamento.dataPagoImobiliaria}
+          updating={updating}
+          onConfirm={(pago, data) => onMarcar(bonus, "imobiliaria", pago, data)}
+        />
+      </div>
+    </div>
+  );
+}
+
+function BonusActionRow({
+  ativo, pago, data, updating, onConfirm,
+}: {
+  ativo: boolean;
+  pago: boolean;
+  data: string;
+  updating: boolean;
+  onConfirm: (pago: boolean, data: string) => Promise<void>;
+}) {
+  const [edit, setEdit] = useState(false);
+  const [obs, setObs] = useState("");
+  const [dataTemp, setDataTemp] = useState(data || new Date().toISOString().split("T")[0]);
+
+  if (updating) return <RefreshCw size={12} className="animate-spin" style={{ marginTop: "0.4rem", color: "var(--text-dim)" }} />;
+
+  if (pago) {
+    return (
+      <div style={{ display: "flex", alignItems: "center", gap: "0.4rem", marginTop: "0.375rem" }}>
+        <CheckCircle2 size={12} style={{ color: "#10b981" }} />
+        <span style={{ fontSize: "0.7rem", color: "#10b981", fontWeight: 600 }}>Pago em {formatData(data)}</span>
+        <button
+          onClick={() => onConfirm(false, "")}
+          title="Desmarcar"
+          style={{ marginLeft: "auto", padding: "0.125rem", color: "var(--text-dim)", background: "transparent", border: 0, cursor: "pointer" }}
+        >
+          <XCircle size={11} />
+        </button>
+      </div>
+    );
+  }
+
+  if (!ativo) {
+    return <div style={{ fontSize: "0.7rem", color: "var(--text-dim)", marginTop: "0.375rem", fontStyle: "italic" }}>aguardando</div>;
+  }
+
+  if (edit) {
+    return (
+      <div style={{ display: "flex", flexDirection: "column", gap: "0.3rem", marginTop: "0.375rem" }}>
+        <input
+          type="date" value={dataTemp} onChange={(e) => setDataTemp(e.target.value)}
+          style={{ fontSize: "0.7rem", padding: "0.2rem 0.35rem", borderRadius: "0.25rem", background: "var(--bg, transparent)", border: "1px solid var(--border)", color: "var(--text)" }}
+        />
+        <input
+          type="text" value={obs} onChange={(e) => setObs(e.target.value)}
+          placeholder="observação (opcional)"
+          style={{ fontSize: "0.7rem", padding: "0.2rem 0.35rem", borderRadius: "0.25rem", background: "var(--bg, transparent)", border: "1px solid var(--border)", color: "var(--text)" }}
+        />
+        <div style={{ display: "flex", gap: "0.25rem" }}>
+          <button
+            onClick={async () => { await onConfirm(true, dataTemp); setEdit(false); setObs(""); }}
+            style={{ padding: "0.25rem 0.6rem", fontSize: "0.7rem", fontWeight: 700, background: "#10b981", color: "white", border: 0, borderRadius: "0.25rem", cursor: "pointer", flex: 1 }}
+          >
+            Confirmar
+          </button>
+          <button
+            onClick={() => setEdit(false)}
+            style={{ padding: "0.25rem 0.6rem", fontSize: "0.7rem", color: "var(--text-dim)", background: "transparent", border: "1px solid var(--border)", borderRadius: "0.25rem", cursor: "pointer" }}
+          >
+            ×
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <button
+      onClick={() => setEdit(true)}
+      style={{
+        marginTop: "0.375rem",
+        padding: "0.3rem 0.6rem",
+        fontSize: "0.7rem", fontWeight: 700,
+        background: "#10b981", color: "white",
+        border: 0, borderRadius: "0.25rem", cursor: "pointer", width: "100%",
+      }}
+    >
+      ✓ Marcar como pago
+    </button>
+  );
+}
