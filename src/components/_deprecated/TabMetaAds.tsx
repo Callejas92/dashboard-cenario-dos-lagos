@@ -7,7 +7,7 @@ import {
   PieChart, Pie, Cell,
 } from "recharts";
 import { formatNumber } from "@/lib/types";
-import DateRangeFilter from "@/components/DateRangeFilter";
+import DateRangeFilter from "./DateRangeFilter";
 
 interface Campaign {
   campaignId: string;

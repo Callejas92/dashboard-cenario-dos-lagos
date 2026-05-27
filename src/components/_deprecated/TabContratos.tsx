@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { RefreshCw, FileText, CheckCircle, XCircle, User, Phone, TrendingUp, Award } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, LabelList } from "recharts";
-import KPICard from "@/components/KPICard";
+import KPICard from "./KPICard";
 import { formatNumber } from "@/lib/types";
 
 interface Contrato {

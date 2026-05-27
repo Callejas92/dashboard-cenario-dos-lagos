@@ -7,7 +7,7 @@ import {
   PieChart, Pie, Cell, AreaChart, Area,
 } from "recharts";
 import { formatNumber } from "@/lib/types";
-import DateRangeFilter from "@/components/DateRangeFilter";
+import DateRangeFilter from "./DateRangeFilter";
 
 interface Lead {
   id: string;
