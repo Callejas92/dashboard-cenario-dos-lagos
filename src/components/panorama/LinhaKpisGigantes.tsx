@@ -15,6 +15,7 @@
 import useSWR from "swr";
 import KpiHero from "@/components/shared/KpiHero";
 import { SkeletonCard } from "@/components/shared/Skeleton";
+import LoadingCard from "@/components/shared/LoadingCard";
 import { PROJETO, isVenda } from "@/lib/constants/projeto";
 import { calcularVso } from "@/lib/calculations/vso";
 import { calcularVgv } from "@/lib/calculations/vgv";
@@ -33,14 +34,16 @@ export default function LinhaKpisGigantes() {
   const { data: uau, isLoading: lUau } = useSWR<UauResp>("/api/uau");
   const { data: crm, isLoading: lCrm } = useSWR<CrmContratosResp>("/api/crm/contratos");
 
-  const carregando = lUau || lCrm;
+  // Tratamos isLoading OU dados ausentes (undefined) como "ainda carregando".
+  // Evita exibir "R$ 0" quando o endpoint ainda nem respondeu.
+  const carregando = lUau || lCrm || !uau || !crm;
 
   if (carregando) {
     return (
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: "0.875rem" }}>
-        <SkeletonCard height={140} />
-        <SkeletonCard height={140} />
-        <SkeletonCard height={140} />
+        <LoadingCard height={140} label="VGV vendido" hint="lendo CRM Eggs..." />
+        <LoadingCard height={140} label="VSO acumulado" hint="lendo ERP UAU..." />
+        <LoadingCard height={140} label="Velocidade do mês" hint="cold start pode demorar até 30s" />
       </div>
     );
   }

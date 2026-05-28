@@ -15,6 +15,7 @@ import { DollarSign, AlertTriangle, Award, CheckCircle2, XCircle, RefreshCw } fr
 import KpiMedium from "@/components/shared/KpiMedium";
 import KpiSmall from "@/components/shared/KpiSmall";
 import { SkeletonCard } from "@/components/shared/Skeleton";
+import LoadingCard from "@/components/shared/LoadingCard";
 import { formatBRL, formatBRLCompact, formatPct, formatData, truncate } from "@/lib/utils/formatters";
 import { calcularInadimplencia } from "@/lib/calculations/inadimplencia";
 import { corInadimplencia } from "@/lib/utils/cores";
@@ -98,7 +99,17 @@ export default function SubTabFinanceiro() {
   const { data: bonus, isLoading: lB } = useSWR<BonusResp>("/api/bonus");
   const { data: crm, isLoading: lC } = useSWR<CrmContratosRespMin>("/api/crm/contratos");
 
-  if (lF || lB || lC) return <SkeletonCard height={400} />;
+  // Mostra loading explícito enquanto QUALQUER dado essencial não chegou.
+  // financeiro do UAU costuma demorar 30-40s no primeiro acesso (cold start).
+  if (lF || lB || lC || !financ || !bonus || !crm) {
+    return (
+      <LoadingCard
+        height={400}
+        label="Carregando financeiro e bônus"
+        hint={lF ? "ERP UAU pode levar até 40s no primeiro acesso. Aguarde…" : "Lendo CRM Eggs e bônus..."}
+      />
+    );
+  }
 
   // Mapa loteId → nome do cliente (vem do Eggs CRM, mais confiável que UAU)
   const clientePorLote = new Map<string, { cliente: string; corretor?: string }>();

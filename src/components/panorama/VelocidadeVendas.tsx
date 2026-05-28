@@ -11,7 +11,7 @@
 import useSWR from "swr";
 import { Zap } from "lucide-react";
 import KpiSmall from "@/components/shared/KpiSmall";
-import { SkeletonCard } from "@/components/shared/Skeleton";
+import LoadingCard from "@/components/shared/LoadingCard";
 import TooltipDefinicao from "@/components/shared/TooltipDefinicao";
 import { PROJETO, isVenda } from "@/lib/constants/projeto";
 import { calcularVelocidade } from "@/lib/calculations/velocidade";
@@ -24,7 +24,7 @@ interface CrmContratosResp {
 export default function VelocidadeVendas() {
   const { data, isLoading } = useSWR<CrmContratosResp>("/api/crm/contratos");
 
-  if (isLoading) return <SkeletonCard height={100} />;
+  if (isLoading || !data) return <LoadingCard height={130} label="Velocidade de vendas" hint="lendo CRM Eggs..." />;
 
   // Mapeia contratos pra formato esperado por calcularVelocidade
   const vendas = (data?.contratos || [])

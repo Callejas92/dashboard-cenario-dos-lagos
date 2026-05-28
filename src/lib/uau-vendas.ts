@@ -126,6 +126,8 @@ export interface GetVendasOptions {
  * Busca vendas do ERP UAU Senior no período [startDate, endDate].
  * Cache 5min compartilhado. Dedupe de chamadas simultâneas via inflight map.
  */
+const INFLIGHT_TIMEOUT_MS = 50_000; // 50s: depois disso libera o lock pra próxima tentar
+
 export async function getVendas(startDate?: string, endDate?: string, opts: GetVendasOptions = {}): Promise<VendasResponse> {
   const from = startDate || getDefaultStartDate();
   const to = endDate || getToday();
@@ -139,7 +141,13 @@ export async function getVendas(startDate?: string, endDate?: string, opts: GetV
   const existing = inflight.get(cacheKey);
   if (existing) return existing;
 
-  const promise = doFetchVendas(from, to, opts)
+  // Wrap em timeout: se UAU travou, libera o lock pra próxima chamada não esperar pra sempre
+  const fetchPromise = doFetchVendas(from, to, opts);
+  const timeoutPromise = new Promise<VendasResponse>((_, reject) => {
+    setTimeout(() => reject(new Error("getVendas timeout 50s")), INFLIGHT_TIMEOUT_MS);
+  });
+
+  const promise = Promise.race([fetchPromise, timeoutPromise])
     .then((data) => {
       cache.set(cacheKey, { data, timestamp: Date.now() });
       // Se a versão "full" estiver pronta, também cacheia a "lite" pra próxima chamada
@@ -148,6 +156,16 @@ export async function getVendas(startDate?: string, endDate?: string, opts: GetV
         cache.set(liteKey, { data, timestamp: Date.now() });
       }
       return data;
+    })
+    .catch((err) => {
+      console.error("getVendas falhou:", err instanceof Error ? err.message : err);
+      // Retorna response vazio em vez de propagar — evita 500 no frontend
+      return {
+        vendas: [], porDia: [], total: 0, valorTotal: 0,
+        investidor: { quantidade: 0, valorTotal: 0, lotesNaLista: 0 },
+        periodo: { inicio: from, fim: to },
+        error: err instanceof Error ? err.message : String(err),
+      } as VendasResponse;
     })
     .finally(() => {
       inflight.delete(cacheKey);

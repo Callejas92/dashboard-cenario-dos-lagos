@@ -14,6 +14,7 @@ import useSWR from "swr";
 import { Users, AlertTriangle, ArrowUpDown } from "lucide-react";
 import KpiSmall from "@/components/shared/KpiSmall";
 import { SkeletonCard } from "@/components/shared/Skeleton";
+import LoadingCard from "@/components/shared/LoadingCard";
 import { formatBRLCompact, formatInt, formatData, formatTempoRelativo, truncate } from "@/lib/utils/formatters";
 
 interface Contrato {
@@ -116,7 +117,7 @@ export default function SubTabCorretores() {
     else { setSortField(field); setSortAsc(false); }
   }
 
-  if (isLoading) return <SkeletonCard height={400} />;
+  if (isLoading || !data) return <LoadingCard height={400} label="Carregando corretores" hint="CRM Eggs pode demorar até 15s" />;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>

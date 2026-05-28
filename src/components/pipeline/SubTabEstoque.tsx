@@ -13,6 +13,7 @@ import useSWR from "swr";
 import { Home, Search } from "lucide-react";
 import KpiMedium from "@/components/shared/KpiMedium";
 import { SkeletonCard } from "@/components/shared/Skeleton";
+import LoadingCard from "@/components/shared/LoadingCard";
 import { formatBRLCompact, formatInt, truncate } from "@/lib/utils/formatters";
 import { PROJETO } from "@/lib/constants/projeto";
 import { corMeta } from "@/lib/utils/cores";
@@ -108,7 +109,7 @@ export default function SubTabEstoque() {
     });
   }, [unidades, filtroStatus, filtroClass, filtroQuadra, busca]);
 
-  if (isLoading) return <SkeletonCard height={500} />;
+  if (isLoading || !data) return <LoadingCard height={500} label="Carregando estoque" hint="ERP UAU cold start pode demorar até 15s" />;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>

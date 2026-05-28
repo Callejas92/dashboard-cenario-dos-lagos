@@ -15,6 +15,7 @@ import useSWR from "swr";
 import { Search, Download, Filter, AlertTriangle } from "lucide-react";
 import KpiSmall from "@/components/shared/KpiSmall";
 import { SkeletonCard } from "@/components/shared/Skeleton";
+import LoadingCard from "@/components/shared/LoadingCard";
 import { formatBRLCompact, formatBRL, formatInt, formatData, truncate } from "@/lib/utils/formatters";
 import ContratoDrawer from "./ContratoDrawer";
 
@@ -136,7 +137,7 @@ export default function SubTabContratos() {
     });
   }, [contratosBase, hoje]);
 
-  if (isLoading) return <SkeletonCard height={500} />;
+  if (isLoading || !data) return <LoadingCard height={500} label="Carregando contratos" hint="CRM Eggs pode demorar até 15s no primeiro acesso" />;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
