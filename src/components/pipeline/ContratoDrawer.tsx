@@ -67,31 +67,33 @@ export default function ContratoDrawer({
 
   return (
     <>
-      {/* Backdrop */}
+      {/* Backdrop — opacity mais forte pra escurecer claramente o que tá atrás */}
       <div
         onClick={onClose}
         style={{
-          position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)",
-          zIndex: 40, animation: "fadein 0.15s ease",
+          position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)",
+          zIndex: 9998, animation: "fadein 0.15s ease",
         }}
       />
 
-      {/* Drawer */}
+      {/* Drawer — background sólido (bg-secondary), NÃO surface translúcido. z-index máximo. */}
       <aside
         role="dialog"
         aria-label="Detalhe do contrato"
         style={{
           position: "fixed", right: 0, top: 0, bottom: 0,
           width: "100%", maxWidth: "440px",
-          background: "var(--surface)", borderLeft: "1px solid var(--border)",
-          zIndex: 41, overflowY: "auto",
-          boxShadow: "-8px 0 24px rgba(0,0,0,0.15)",
+          background: "var(--bg-secondary, #ffffff)",
+          borderLeft: "1px solid var(--border)",
+          zIndex: 9999, overflowY: "auto",
+          boxShadow: "-8px 0 32px rgba(0,0,0,0.35)",
           animation: "slidein 0.2s ease",
         }}
       >
-        {/* Header */}
+        {/* Header sticky dentro do drawer — background sólido pra não ficar transparente */}
         <div style={{
-          position: "sticky", top: 0, background: "var(--surface)",
+          position: "sticky", top: 0,
+          background: "var(--bg-secondary, #ffffff)",
           borderBottom: "1px solid var(--border)", padding: "0.75rem 1rem",
           display: "flex", alignItems: "center", justifyContent: "space-between", zIndex: 1,
         }}>

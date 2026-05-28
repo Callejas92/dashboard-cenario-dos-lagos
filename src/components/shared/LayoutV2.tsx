@@ -72,13 +72,15 @@ export default function LayoutV2({ children }: { children: ReactNode }) {
   return (
     <SwrProvider>
       <div style={{ minHeight: "100vh", background: "var(--bg)" }}>
-        {/* Header */}
+        {/* Header — background sólido (não --surface translúcido) + z-index alto */}
         <header
           style={{
             position: "sticky",
             top: 0,
-            zIndex: 30,
-            background: "var(--surface-elevated, var(--surface))",
+            zIndex: 100,
+            background: "var(--bg-header, var(--bg-primary, #ffffff))",
+            backdropFilter: "blur(12px)",
+            WebkitBackdropFilter: "blur(12px)",
             borderBottom: "1px solid var(--border)",
             padding: "0.625rem 1rem",
           }}
