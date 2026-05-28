@@ -2,39 +2,38 @@
 
 /**
  * Linha 1 do Panorama — 3 KPIs gigantes.
- * Decisão em 5 segundos: bati a meta?
  *
  *  1. VGV vendido / VGV total (barra de progresso)
  *  2. VSO acumulado (severidade vs meta)
  *  3. Velocidade do mês comercial (vs alvo 11,6 lotes/mês)
+ *
+ * FONTES (otimizado pra velocidade):
+ *  - /api/crm/contratos (0.4s) → VGV + Velocidade do mês (via Eggs.dataContrato)
+ *  - /api/uau (2s)            → VSO (vendidos vs disponivel)
+ *  - NÃO usa /api/uau/vendas (20s cold start) — Eggs.dataContrato é autoridade
  */
 import useSWR from "swr";
 import KpiHero from "@/components/shared/KpiHero";
 import { SkeletonCard } from "@/components/shared/Skeleton";
-import { PROJETO } from "@/lib/constants/projeto";
+import { PROJETO, isVenda } from "@/lib/constants/projeto";
 import { calcularVso } from "@/lib/calculations/vso";
-import { calcularVelocidade } from "@/lib/calculations/velocidade";
 import { calcularVgv } from "@/lib/calculations/vgv";
-import { getMesComercialAtual } from "@/lib/utils/mesComercial";
+import { getMesComercialAtual, dataNoMesComercial } from "@/lib/utils/mesComercial";
 import { formatBRLCompact, formatPct, formatInt } from "@/lib/utils/formatters";
 import { corMeta } from "@/lib/utils/cores";
 
 interface UauResp {
-  summary?: { total?: number; vendido?: number; disponivel?: number; vgvVendido?: number };
+  summary?: { total?: number; vendido?: number; disponivel?: number };
 }
 interface CrmContratosResp {
-  contratos?: { loteId: string; valor: number; status: string; cancelado: boolean }[];
-}
-interface UauVendasResp {
-  vendas?: { dataVenda: string; valorVenda: number }[];
+  contratos?: { loteId: string; valor: number; status: string; cancelado: boolean; dataContrato?: string }[];
 }
 
 export default function LinhaKpisGigantes() {
   const { data: uau, isLoading: lUau } = useSWR<UauResp>("/api/uau");
   const { data: crm, isLoading: lCrm } = useSWR<CrmContratosResp>("/api/crm/contratos");
-  const { data: vendas, isLoading: lVendas } = useSWR<UauVendasResp>("/api/uau/vendas");
 
-  const carregando = lUau || lCrm || lVendas;
+  const carregando = lUau || lCrm;
 
   if (carregando) {
     return (
@@ -46,9 +45,11 @@ export default function LinhaKpisGigantes() {
     );
   }
 
-  // ── VGV (via lib/calculations/vgv.ts) ─────────────────────────────────
+  const contratos = crm?.contratos || [];
+
+  // ── VGV ──
   const vgv = calcularVgv({
-    contratos: (crm?.contratos || []).map((c) => ({
+    contratos: contratos.map((c) => ({
       loteId: c.loteId,
       valorContratado: c.valor,
       status: c.status,
@@ -56,18 +57,27 @@ export default function LinhaKpisGigantes() {
     })),
   });
 
-  // ── VSO (via lib/calculations/vso.ts) ─────────────────────────────────
+  // ── VSO ──
   const vso = calcularVso({
     vendidos: uau?.summary?.vendido ?? 0,
     disponivel: uau?.summary?.disponivel ?? 0,
   });
 
-  // ── Velocidade (mês comercial atual) ──────────────────────────────────
+  // ── Velocidade (mês comercial atual) via Eggs ──
   const mc = getMesComercialAtual();
-  const velocidade = calcularVelocidade(
-    (vendas?.vendas || []).map((v) => ({ dataVenda: v.dataVenda, valor: v.valorVenda })),
-    mc,
+  const vendasNoMesComercial = contratos.filter(
+    (c) =>
+      !c.cancelado &&
+      isVenda(c.status) &&
+      c.dataContrato &&
+      dataNoMesComercial(c.dataContrato, mc),
   );
+  const qtdMes = vendasNoMesComercial.length;
+  const valorMes = vendasNoMesComercial.reduce((s, c) => s + (c.valor || 0), 0);
+
+  const totalAcumulado = contratos.filter((c) => !c.cancelado && isVenda(c.status));
+
+  const severidadeVel = corMeta(qtdMes, PROJETO.VELOCIDADE_ALVO_LOTES_MES);
 
   return (
     <div
@@ -80,8 +90,8 @@ export default function LinhaKpisGigantes() {
       <KpiHero
         label="VGV Vendido"
         valor={formatBRLCompact(vgv.vgvVendido)}
-        severidade={corMeta(vgv.vgvVendido, PROJETO.VGV_INICIAL * 0.5) /* meta interna ~50% no fim do projeto */}
-        formula={`VGV vendido = soma valor contratado de contratos ASSINADO/FATURADO/ENTREGUE (excluindo investidor)\nDe ${formatBRLCompact(vgv.vgvVendido)} de ${formatBRLCompact(vgv.vgvTotal)} total`}
+        severidade={corMeta(vgv.vgvVendido, PROJETO.VGV_INICIAL * 0.5)}
+        formula={`VGV vendido = soma valor contratado de contratos ASSINADO/FATURADO/ENTREGUE (excluindo investidor)\n${formatBRLCompact(vgv.vgvVendido)} de ${formatBRLCompact(vgv.vgvTotal)} total\nFonte: CRM Eggs Contratos`}
         contexto={`de ${formatBRLCompact(vgv.vgvTotal)} · ${vgv.lotesVendidos}/${vgv.lotesTotal} lotes`}
         progresso={vgv.pctVendido}
       />
@@ -90,20 +100,20 @@ export default function LinhaKpisGigantes() {
         label="VSO Acumulado"
         valor={formatPct(vso.valor)}
         severidade={vso.severidade}
-        formula={`${vso.formula}\nMeta: ≥ ${formatPct(vso.meta, { casas: 0 })}`}
+        formula={`${vso.formula}\nMeta: ≥ ${formatPct(vso.meta, { casas: 0 })}\nFonte: ERP UAU (espelho)`}
         contexto={`meta ≥ ${formatPct(vso.meta, { casas: 0 })}`}
       />
 
       <KpiHero
         label={`Velocidade · ${mc.labelCurto}`}
-        valor={`${velocidade.mesComercialAtual.qtdVendas} lotes`}
-        severidade={velocidade.mesComercialAtual.severidade}
-        formula={`Vendas no mês comercial atual (${mc.label}).\nMeta: ${PROJETO.VELOCIDADE_ALVO_LOTES_MES} lotes/mês.`}
-        contexto={`alvo ${PROJETO.VELOCIDADE_ALVO_LOTES_MES.toFixed(1)} lotes/mês · ${formatBRLCompact(velocidade.mesComercialAtual.valorTotal)} contratado`}
-        progresso={velocidade.mesComercialAtual.qtdVendas / PROJETO.VELOCIDADE_ALVO_LOTES_MES}
+        valor={`${qtdMes} lotes`}
+        severidade={severidadeVel}
+        formula={`Vendas com data de contrato no mês comercial atual (${mc.label}).\nFonte: Eggs Contratos (dataContrato).\nMeta: ${PROJETO.VELOCIDADE_ALVO_LOTES_MES} lotes/mês.`}
+        contexto={`alvo ${PROJETO.VELOCIDADE_ALVO_LOTES_MES.toFixed(1)} lotes/mês · ${formatBRLCompact(valorMes)} contratado`}
+        progresso={qtdMes / PROJETO.VELOCIDADE_ALVO_LOTES_MES}
         extra={
           <div style={{ fontSize: "0.7rem", color: "var(--text-dim)" }}>
-            <span style={{ fontWeight: 600 }}>{formatInt(velocidade.acumulado.qtdVendas)}</span> desde lançamento
+            <span style={{ fontWeight: 600 }}>{formatInt(totalAcumulado.length)}</span> desde lançamento
           </div>
         }
       />

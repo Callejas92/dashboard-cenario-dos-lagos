@@ -22,7 +22,7 @@ import { getMesComercialAtual } from "@/lib/utils/mesComercial";
 import lotesData from "@/data/lotes.json";
 
 interface CrmContratosResp {
-  contratos?: { loteId: string; valor: number; status: string; corretor?: { nome?: string }; cancelado: boolean; dataContrato?: string }[];
+  contratos?: { loteId: string; valor: number; status: string; cancelado: boolean; dataContrato?: string; corretor?: { nome?: string } }[];
 }
 interface UauResp {
   unidades?: { identificador: string; area: number; valorTotal: number; classificacao: string; status: string }[];
@@ -39,9 +39,6 @@ interface BonusResp {
     pagoTotal?: number;
   };
 }
-interface UauVendasResp {
-  vendas?: { identificadorUnidade: string; dataVenda: string; valorVenda: number }[];
-}
 
 interface LoteStatic { id: string; classificacao?: string; area?: number; }
 const lotesMap = new Map<string, LoteStatic>();
@@ -52,7 +49,7 @@ export default function BlocoInsights() {
   const { data: uau, isLoading: lUau } = useSWR<UauResp>("/api/uau");
   const { data: mkt } = useSWR<MarketingResp>("/api/marketing-offline?view=summary");
   const { data: bonus } = useSWR<BonusResp>("/api/bonus");
-  const { data: vendas } = useSWR<UauVendasResp>("/api/uau/vendas");
+  // Não usa /api/uau/vendas (20s cold start) — dataContrato do Eggs é autoridade
 
   if (lCrm || lUau) {
     return (
@@ -90,24 +87,24 @@ export default function BlocoInsights() {
     }),
   );
 
-  // 2. Velocidade do mês
-  const vendasNoMesISO = (vendas?.vendas || []).filter(
-    (v) => v.dataVenda >= mc.inicioISO && v.dataVenda <= mc.fimISO,
+  // 2. Velocidade do mês (usa Eggs.dataContrato como autoridade — rápido)
+  const vendasNoMesEggs = contratosValidos.filter(
+    (c) => c.dataContrato && c.dataContrato >= mc.inicioISO && c.dataContrato <= mc.fimISO,
   );
   insights.push(
     calcularVelocidadeMes({
-      vendasMesComercial: vendasNoMesISO.length,
+      vendasMesComercial: vendasNoMesEggs.length,
       diasDecorridosNoMesComercial: diasDecorridos,
     }),
   );
 
-  // 3. Lote médio do mês
-  const vendasComMetadata = vendasNoMesISO.map((v) => {
-    const unidade = (uau?.unidades || []).find((u) => u.identificador === v.identificadorUnidade);
-    const lote = lotesMap.get(v.identificadorUnidade);
+  // 3. Lote médio do mês (vem do Eggs + cruzamento com UAU pra metadata do lote)
+  const vendasComMetadata = vendasNoMesEggs.map((v) => {
+    const unidade = (uau?.unidades || []).find((u) => u.identificador === v.loteId);
+    const lote = lotesMap.get(v.loteId);
     return {
       area: unidade?.area ?? lote?.area ?? 0,
-      valor: v.valorVenda,
+      valor: v.valor,
       classificacao: unidade?.classificacao ?? lote?.classificacao,
     };
   });

@@ -36,22 +36,10 @@ export default function LayoutV2({ children }: { children: ReactNode }) {
     const auth = localStorage.getItem("dashboard-auth") === "true";
     setAuthenticated(auth);
 
-    // Garante dados frescos: limpa caches stale dos endpoints mais sensíveis ao carregar.
-    // Evita ver velocidade=0 ou inadimplência divergente por cache antigo na serverless.
-    if (auth) {
-      [
-        "/api/uau/vendas",
-        "/api/uau/financeiro",
-        "/api/bonus",
-        "/api/marketing-offline",
-      ].forEach((url) => {
-        fetch(url, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ action: "clear-cache" }),
-        }).catch(() => { /* ignore */ });
-      });
-    }
+    // Nota: NÃO fazemos clear-cache automático aqui. Criava race condition com os
+    // fetchs SWR dos filhos (POST e GET batiam em instâncias diferentes da lambda,
+    // GET pegava cache vazio antes do POST limpar). Cache stale é resolvido pelo
+    // SWR revalidateOnMount + dedupingInterval curto.
   }, []);
 
   function onLoginSuccess() {
