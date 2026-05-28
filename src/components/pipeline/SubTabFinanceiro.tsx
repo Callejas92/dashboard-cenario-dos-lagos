@@ -138,50 +138,66 @@ export default function SubTabFinanceiro() {
           <DollarSign size={14} /> Financeiro
         </h2>
 
-        {/* 3 perspectivas de valor */}
-        {va && (() => {
+        {/* Valor contratado (autoridade = Eggs CRM) */}
+        {(() => {
           const qtdEggs = (crm?.contratos || []).filter((c) => !!c.cliente).length;
           const qtdUau = financ?.qtdVendas ?? 0;
+          const valorContratado = va?.contratoEggs ?? financ?.valorVendidoTotal ?? 0;
+          const ticketMedio = qtdEggs > 0 ? valorContratado / qtdEggs : 0;
           const divergencia = qtdEggs - qtdUau;
           return (
             <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "0.75rem", padding: "1rem 1.25rem", marginBottom: "0.875rem" }}>
-              <div style={{ fontSize: "0.7rem", color: "var(--text-dim)", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "0.25rem" }}>
-                Valor das vendas — 3 perspectivas
+              <div style={{ fontSize: "0.7rem", color: "var(--text-dim)", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "0.75rem" }}>
+                Valor contratado das vendas
               </div>
-              <div style={{ fontSize: "0.7rem", color: "var(--text-muted)", marginBottom: "0.75rem", lineHeight: 1.4 }}>
-                Cada coluna vem de uma fonte diferente. O <strong>Contratado (Eggs)</strong> é a autoridade
-                porque reflete o que o comercial fechou.{" "}
-                {divergencia > 0 && (
-                  <span style={{ color: "#f59e0b", fontWeight: 600 }}>
-                    ⚠ Diferença: {divergencia} venda{divergencia > 1 ? "s" : ""} no Eggs ainda não foi lançada no UAU.
-                  </span>
+
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: "1rem", alignItems: "baseline" }}>
+                <div>
+                  <div style={{ fontSize: "0.65rem", color: "var(--text-dim)", textTransform: "uppercase", letterSpacing: "0.03em", marginBottom: "0.2rem" }}>
+                    Total contratado
+                  </div>
+                  <div style={{ fontSize: "1.75rem", fontWeight: 700, color: "#10b981", lineHeight: 1 }}>
+                    {formatBRLCompact(valorContratado)}
+                  </div>
+                  <div style={{ fontSize: "0.7rem", color: "var(--text-muted)", marginTop: "0.3rem" }}>
+                    {qtdEggs} venda{qtdEggs === 1 ? "" : "s"} no CRM Eggs
+                  </div>
+                </div>
+
+                <div>
+                  <div style={{ fontSize: "0.65rem", color: "var(--text-dim)", textTransform: "uppercase", letterSpacing: "0.03em", marginBottom: "0.2rem" }}>
+                    Ticket médio
+                  </div>
+                  <div style={{ fontSize: "1.2rem", fontWeight: 700, color: "var(--text)", lineHeight: 1 }}>
+                    {formatBRLCompact(ticketMedio)}
+                  </div>
+                  <div style={{ fontSize: "0.7rem", color: "var(--text-muted)", marginTop: "0.3rem" }}>
+                    valor médio por venda
+                  </div>
+                </div>
+
+                {va && va.jurosFinanciamento > 0 && (
+                  <div>
+                    <div style={{ fontSize: "0.65rem", color: "var(--text-dim)", textTransform: "uppercase", letterSpacing: "0.03em", marginBottom: "0.2rem" }}>
+                      Juros financiamento
+                    </div>
+                    <div style={{ fontSize: "1.2rem", fontWeight: 700, color: "#f59e0b", lineHeight: 1 }}>
+                      {formatBRLCompact(va.jurosFinanciamento)}
+                    </div>
+                    <div style={{ fontSize: "0.7rem", color: "var(--text-muted)", marginTop: "0.3rem" }}>
+                      em {va.qtdVendasComJuros} de {qtdUau} venda{qtdUau === 1 ? "" : "s"}
+                    </div>
+                  </div>
                 )}
               </div>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "0.625rem" }}>
-                <KpiSmall
-                  label="Tabela ERP UAU"
-                  valor={formatBRLCompact(va.tabelaUAU)}
-                  formula={`Preço de lista (ValorTotal_unid do espelho UAU), sem ganho de salto.\nFonte: ERP UAU Senior — ${qtdUau} venda${qtdUau === 1 ? "" : "s"} registrada${qtdUau === 1 ? "" : "s"}.`}
-                  contexto={`${qtdUau} vendas no UAU · sem ganho`}
-                />
-                <KpiSmall
-                  label="Contratado (Eggs) ★"
-                  valor={formatBRLCompact(va.contratoEggs)}
-                  severidade="verde"
-                  formula={`Valor efetivo do contrato no CRM Eggs (★ autoridade).\nFonte: CRM Eggs — ${qtdEggs} contrato${qtdEggs === 1 ? "" : "s"} ASSINADO${qtdEggs === 1 ? "" : "s"}.\nGanho de salto: +${(va.pctGanhoSalto).toFixed(1)}% vs tabela.`}
-                  contexto={`${qtdEggs} no Eggs · +${(va.pctGanhoSalto).toFixed(1)}% vs tabela`}
-                />
-                <KpiSmall
-                  label="Total a Pagar (c/ Juros)"
-                  valor={formatBRLCompact(va.totalAPagarComJuros)}
-                  severidade="amarelo"
-                  formula={va.jurosFinanciamento > 0
-                    ? `Desembolso total ao longo das parcelas (capital + juros).\nFonte: UAU ConsultarResumoVenda — ${qtdUau} venda${qtdUau === 1 ? "" : "s"}.\n${va.qtdVendasComJuros} com juros configurados (total juros: ${formatBRLCompact(va.jurosFinanciamento)}).`
-                    : `Soma do saldo devedor + recebido das ${qtdUau} vendas no UAU. Não há juros configurados nas vendas atuais (financiamento direto).`
-                  }
-                  contexto={va.jurosFinanciamento > 0 ? `${qtdUau} vendas · +${formatBRLCompact(va.jurosFinanciamento)} juros` : `${qtdUau} vendas · sem juros`}
-                />
-              </div>
+
+              {/* Aviso de divergência UAU vs Eggs */}
+              {divergencia > 0 && (
+                <div style={{ marginTop: "0.875rem", padding: "0.5rem 0.75rem", background: "#f59e0b15", border: "1px solid #f59e0b40", borderRadius: "0.375rem", fontSize: "0.72rem", color: "var(--text-muted)" }}>
+                  ⚠ <strong style={{ color: "#f59e0b" }}>{divergencia} venda{divergencia > 1 ? "s" : ""}</strong> no Eggs ainda não foi lançada no ERP UAU.
+                  O financeiro do escritório precisa atualizar.
+                </div>
+              )}
             </div>
           );
         })()}
