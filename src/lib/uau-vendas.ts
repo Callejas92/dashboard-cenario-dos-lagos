@@ -421,4 +421,5 @@ async function doFetchVendas(startDate: string, endDate: string, opts: GetVendas
 
 export function clearVendasCache() {
   cache.clear();
+  inflight.clear();
 }
