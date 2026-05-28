@@ -383,6 +383,15 @@ export async function GET() {
   }
 }
 
+export async function POST(request: Request) {
+  const body = await request.json().catch(() => ({}));
+  if (body.action === "clear-cache") {
+    cache.clear();
+    return NextResponse.json({ success: true });
+  }
+  return NextResponse.json({ error: "ação inválida" }, { status: 400 });
+}
+
 function groupByMonth(vendas: { dataVenda: string; valorVenda: number }[]): { mes: string; vendas: number; valor: number }[] {
   const map = new Map<string, { vendas: number; valor: number }>();
 

@@ -45,14 +45,11 @@ interface CrmContratosResp {
   porCorretor?: { nome: string; lotes: number; valorTotal: number }[];
 }
 
-// Estágios mapeados pra exibição compacta
+// Estágios reais do CRM Eggs hoje (Mai/26). FATURADO/ENTREGUE não estão sendo usados ainda.
+// Reativar conforme o ERP/comercial passar a alimentar esses estados.
 const ESTAGIOS = [
-  { key: "gerado",    label: "Gerado",         match: ["GERADO"],                      cor: "#9ca3af" },
-  { key: "conferido", label: "Conferido",      match: ["CONFERIDO"],                   cor: "#6b7280" },
   { key: "enviado",   label: "Enviado p/ Ass.", match: ["ENVIADO PARA ASSINATURA"],    cor: "#4285f4" },
   { key: "assinado",  label: "Assinado",       match: ["ASSINADO"],                    cor: "#10b981" },
-  { key: "faturado",  label: "Faturado",       match: ["FATURADO"],                    cor: "#059669" },
-  { key: "entregue",  label: "Entregue",       match: ["ENTREGUE AO INCORPORADOR"],    cor: "#047857" },
 ] as const;
 
 function statusToEstagio(status: string): typeof ESTAGIOS[number] | undefined {

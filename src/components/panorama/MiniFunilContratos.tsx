@@ -31,13 +31,10 @@ interface EstagioFunil {
   cor: string;
 }
 
+// Só estágios reais hoje. FATURADO/ENTREGUE são adicionados quando o ERP passar a usar.
 const ESTAGIOS: EstagioFunil[] = [
-  { key: "gerado",    label: "Gerado",         statusMatch: ["GERADO"],                       cor: "#9ca3af" },
-  { key: "conferido", label: "Conferido",      statusMatch: ["CONFERIDO"],                    cor: "#6b7280" },
-  { key: "enviado",   label: "Enviado p/ Ass.", statusMatch: ["ENVIADO PARA ASSINATURA"],     cor: "#4285f4" },
-  { key: "assinado",  label: "Assinado",       statusMatch: ["ASSINADO"],                     cor: "#10b981" },
-  { key: "faturado",  label: "Faturado",       statusMatch: ["FATURADO"],                     cor: "#059669" },
-  { key: "entregue",  label: "Entregue",       statusMatch: ["ENTREGUE AO INCORPORADOR"],     cor: "#047857" },
+  { key: "enviado",   label: "Enviado p/ Ass.", statusMatch: ["ENVIADO PARA ASSINATURA"], cor: "#4285f4" },
+  { key: "assinado",  label: "Assinado",       statusMatch: ["ASSINADO"],                 cor: "#10b981" },
 ];
 
 export default function MiniFunilContratos() {

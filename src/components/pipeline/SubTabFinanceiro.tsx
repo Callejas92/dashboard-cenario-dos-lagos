@@ -91,11 +91,20 @@ function isImobiliaria(nome: string): boolean {
   return NOMES_IMOBILIARIA.some((n) => upper.includes(n));
 }
 
+interface CrmContratosRespMin { contratos?: { loteId: string; cliente: string; corretor?: { nome: string }; clienteTelefone?: string }[] }
+
 export default function SubTabFinanceiro() {
   const { data: financ, isLoading: lF } = useSWR<FinancResp>("/api/uau/financeiro");
   const { data: bonus, isLoading: lB } = useSWR<BonusResp>("/api/bonus");
+  const { data: crm, isLoading: lC } = useSWR<CrmContratosRespMin>("/api/crm/contratos");
 
-  if (lF || lB) return <SkeletonCard height={400} />;
+  if (lF || lB || lC) return <SkeletonCard height={400} />;
+
+  // Mapa loteId → nome do cliente (vem do Eggs CRM, mais confiável que UAU)
+  const clientePorLote = new Map<string, { cliente: string; corretor?: string }>();
+  for (const c of crm?.contratos || []) {
+    clientePorLote.set(c.loteId, { cliente: c.cliente, corretor: c.corretor?.nome });
+  }
 
   // ── Inadimplência agregada POR CLIENTE ──
   const parcelas = financ?.parcelasAReceber || [];
@@ -110,7 +119,10 @@ export default function SubTabFinanceiro() {
       diasAtraso: p.diasAtraso,
       tipoParcela: p.tipoParcela || "",
       clienteCodigo: p.clienteCodigo || 0,
-      clienteNome: p.clienteNome || "",
+      // Prioridade: 1) nome do Eggs (via loteId), 2) clienteNome do UAU, 3) fallback código
+      clienteNome: clientePorLote.get(p.identificadorUnidade)?.cliente
+                 || p.clienteNome
+                 || `Cliente ${p.clienteCodigo || "?"}`,
     })),
     totalAbertoEmDia: financ?.inadimplencia?.totalEmDia || 0,
   });
@@ -127,38 +139,52 @@ export default function SubTabFinanceiro() {
         </h2>
 
         {/* 3 perspectivas de valor */}
-        {va && (
-          <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "0.75rem", padding: "1rem 1.25rem", marginBottom: "0.875rem" }}>
-            <div style={{ fontSize: "0.7rem", color: "var(--text-dim)", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "0.75rem" }}>
-              Valor das vendas — 3 perspectivas ({financ?.qtdVendas} vendas)
+        {va && (() => {
+          const qtdEggs = (crm?.contratos || []).filter((c) => !!c.cliente).length;
+          const qtdUau = financ?.qtdVendas ?? 0;
+          const divergencia = qtdEggs - qtdUau;
+          return (
+            <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "0.75rem", padding: "1rem 1.25rem", marginBottom: "0.875rem" }}>
+              <div style={{ fontSize: "0.7rem", color: "var(--text-dim)", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "0.25rem" }}>
+                Valor das vendas — 3 perspectivas
+              </div>
+              <div style={{ fontSize: "0.7rem", color: "var(--text-muted)", marginBottom: "0.75rem", lineHeight: 1.4 }}>
+                Cada coluna vem de uma fonte diferente. O <strong>Contratado (Eggs)</strong> é a autoridade
+                porque reflete o que o comercial fechou.{" "}
+                {divergencia > 0 && (
+                  <span style={{ color: "#f59e0b", fontWeight: 600 }}>
+                    ⚠ Diferença: {divergencia} venda{divergencia > 1 ? "s" : ""} no Eggs ainda não foi lançada no UAU.
+                  </span>
+                )}
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "0.625rem" }}>
+                <KpiSmall
+                  label="Tabela ERP UAU"
+                  valor={formatBRLCompact(va.tabelaUAU)}
+                  formula={`Preço de lista (ValorTotal_unid do espelho UAU), sem ganho de salto.\nFonte: ERP UAU Senior — ${qtdUau} venda${qtdUau === 1 ? "" : "s"} registrada${qtdUau === 1 ? "" : "s"}.`}
+                  contexto={`${qtdUau} vendas no UAU · sem ganho`}
+                />
+                <KpiSmall
+                  label="Contratado (Eggs) ★"
+                  valor={formatBRLCompact(va.contratoEggs)}
+                  severidade="verde"
+                  formula={`Valor efetivo do contrato no CRM Eggs (★ autoridade).\nFonte: CRM Eggs — ${qtdEggs} contrato${qtdEggs === 1 ? "" : "s"} ASSINADO${qtdEggs === 1 ? "" : "s"}.\nGanho de salto: +${(va.pctGanhoSalto).toFixed(1)}% vs tabela.`}
+                  contexto={`${qtdEggs} no Eggs · +${(va.pctGanhoSalto).toFixed(1)}% vs tabela`}
+                />
+                <KpiSmall
+                  label="Total a Pagar (c/ Juros)"
+                  valor={formatBRLCompact(va.totalAPagarComJuros)}
+                  severidade="amarelo"
+                  formula={va.jurosFinanciamento > 0
+                    ? `Desembolso total ao longo das parcelas (capital + juros).\nFonte: UAU ConsultarResumoVenda — ${qtdUau} venda${qtdUau === 1 ? "" : "s"}.\n${va.qtdVendasComJuros} com juros configurados (total juros: ${formatBRLCompact(va.jurosFinanciamento)}).`
+                    : `Soma do saldo devedor + recebido das ${qtdUau} vendas no UAU. Não há juros configurados nas vendas atuais (financiamento direto).`
+                  }
+                  contexto={va.jurosFinanciamento > 0 ? `${qtdUau} vendas · +${formatBRLCompact(va.jurosFinanciamento)} juros` : `${qtdUau} vendas · sem juros`}
+                />
+              </div>
             </div>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "0.625rem" }}>
-              <KpiSmall
-                label="Tabela ERP UAU"
-                valor={formatBRLCompact(va.tabelaUAU)}
-                formula="Preço de lista (ValorTotal_unid do espelho UAU), sem ganho de salto."
-                contexto="sem ganho de salto"
-              />
-              <KpiSmall
-                label="Contratado (Eggs) ★"
-                valor={formatBRLCompact(va.contratoEggs)}
-                severidade="verde"
-                formula={`Valor efetivo do contrato no CRM Eggs.\nGanho de salto: +${(va.pctGanhoSalto).toFixed(1)}% vs tabela = ${formatBRLCompact(va.ganhoSalto)}.`}
-                contexto={`+${(va.pctGanhoSalto).toFixed(1)}% vs tabela`}
-              />
-              <KpiSmall
-                label="Total a Pagar (c/ Juros)"
-                valor={formatBRLCompact(va.totalAPagarComJuros)}
-                severidade="amarelo"
-                formula={va.jurosFinanciamento > 0
-                  ? `Desembolso total ao longo das parcelas.\n${va.qtdVendasComJuros} venda${va.qtdVendasComJuros === 1 ? "" : "s"} com juros configurados.\nJuros: ${formatBRLCompact(va.jurosFinanciamento)}.`
-                  : "Soma das parcelas. Não há juros configurados nas vendas atuais."
-                }
-                contexto={va.jurosFinanciamento > 0 ? `+${formatBRLCompact(va.jurosFinanciamento)} juros` : "sem juros"}
-              />
-            </div>
-          </div>
-        )}
+          );
+        })()}
 
         {/* Inadimplência */}
         <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "0.75rem", padding: "1rem 1.25rem" }}>

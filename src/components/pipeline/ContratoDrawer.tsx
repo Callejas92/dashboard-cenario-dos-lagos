@@ -5,8 +5,9 @@
  * Click no fundo OU ESC fecha.
  */
 import { useEffect } from "react";
-import { X, Phone, Mail, User, FileText, Calendar, DollarSign, Briefcase } from "lucide-react";
-import { formatBRL, formatData } from "@/lib/utils/formatters";
+import useSWR from "swr";
+import { X, Phone, Mail, User, Calendar, DollarSign, Briefcase, AlertTriangle, CheckCircle2 } from "lucide-react";
+import { formatBRL, formatBRLCompact, formatData } from "@/lib/utils/formatters";
 
 interface Contrato {
   id: number;
@@ -30,6 +31,10 @@ interface Contrato {
   dataEmissao?: string;
 }
 
+interface FinancRespMin {
+  parcelasAReceber?: { identificadorUnidade: string; status: "vencida" | "em_dia"; valor: number; diasAtraso: number; dataVencimento: string; numeroParcela: number; tipoParcela?: string }[];
+}
+
 export default function ContratoDrawer({
   contrato,
   onClose,
@@ -37,6 +42,9 @@ export default function ContratoDrawer({
   contrato: Contrato | null;
   onClose: () => void;
 }) {
+  // Busca financeiro pra cruzar com lote (já está em cache global do SWR)
+  const { data: financ } = useSWR<FinancRespMin>("/api/uau/financeiro");
+
   // ESC fecha
   useEffect(() => {
     if (!contrato) return;
@@ -46,6 +54,16 @@ export default function ContratoDrawer({
   }, [contrato, onClose]);
 
   if (!contrato) return null;
+
+  // Filtra parcelas desse lote
+  const parcelasDoLote = (financ?.parcelasAReceber || []).filter(
+    (p) => p.identificadorUnidade === contrato.loteId,
+  );
+  const vencidasDoLote = parcelasDoLote.filter((p) => p.status === "vencida");
+  const emDiaDoLote = parcelasDoLote.filter((p) => p.status === "em_dia");
+  const totalVencido = vencidasDoLote.reduce((s, p) => s + p.valor, 0);
+  const totalEmDia = emDiaDoLote.reduce((s, p) => s + p.valor, 0);
+  const maxAtraso = vencidasDoLote.reduce((m, p) => Math.max(m, p.diasAtraso), 0);
 
   return (
     <>
@@ -168,6 +186,46 @@ export default function ContratoDrawer({
               )}
             </div>
           )}
+
+          {/* Status financeiro */}
+          <div>
+            <div style={{ fontSize: "0.65rem", color: "var(--text-dim)", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "0.5rem", display: "flex", alignItems: "center", gap: "0.3rem" }}>
+              <DollarSign size={11} /> Status financeiro
+            </div>
+            {parcelasDoLote.length === 0 ? (
+              <div style={{ fontSize: "0.75rem", color: "var(--text-dim)", fontStyle: "italic" }}>
+                Sem parcelas no UAU (venda recente — aguardando lançamento do financeiro).
+              </div>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+                {vencidasDoLote.length > 0 ? (
+                  <div style={{ padding: "0.5rem 0.75rem", background: "#dc262615", border: "1px solid #dc262640", borderRadius: "0.375rem" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "0.3rem", color: "#dc2626", fontWeight: 700, fontSize: "0.8rem" }}>
+                      <AlertTriangle size={12} /> Inadimplente
+                    </div>
+                    <div style={{ fontSize: "0.75rem", color: "var(--text-muted)", marginTop: "0.2rem" }}>
+                      {vencidasDoLote.length} parcela{vencidasDoLote.length > 1 ? "s" : ""} vencida{vencidasDoLote.length > 1 ? "s" : ""} · {formatBRLCompact(totalVencido)}
+                    </div>
+                    <div style={{ fontSize: "0.7rem", color: "var(--text-dim)", marginTop: "0.15rem" }}>
+                      atraso máximo {maxAtraso} dia{maxAtraso === 1 ? "" : "s"}
+                    </div>
+                  </div>
+                ) : (
+                  <div style={{ padding: "0.5rem 0.75rem", background: "#10b98115", border: "1px solid #10b98140", borderRadius: "0.375rem" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "0.3rem", color: "#10b981", fontWeight: 700, fontSize: "0.8rem" }}>
+                      <CheckCircle2 size={12} /> Em dia
+                    </div>
+                  </div>
+                )}
+                <div style={{ fontSize: "0.7rem", color: "var(--text-muted)", display: "grid", gap: "0.15rem" }}>
+                  <div>{parcelasDoLote.length} parcela{parcelasDoLote.length === 1 ? "" : "s"} em aberto · {formatBRLCompact(totalVencido + totalEmDia)}</div>
+                  {emDiaDoLote.length > 0 && (
+                    <div>{emDiaDoLote.length} em dia · {formatBRLCompact(totalEmDia)}</div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
 
           {/* Datas */}
           <div>
