@@ -304,11 +304,13 @@ async function doFetchVendas(startDate: string, endDate: string, opts: GetVendas
     }
 
     // Aguarda contratos Eggs e monta map por loteId
+    // Eggs.dataContrato é a data REAL da assinatura (autoridade), enquanto
+    // UAU.DataCad_unid é apenas a data de cadastro do lote (genérica, antiga).
     const contratos = await contratosPromise;
-    const contratoPorLote = new Map<string, { valor: number }>();
+    const contratoPorLote = new Map<string, { valor: number; dataContrato?: string }>();
     for (const c of contratos) {
       if (c.cancelado) continue;
-      contratoPorLote.set(c.loteId, { valor: c.valor });
+      contratoPorLote.set(c.loteId, { valor: c.valor, dataContrato: c.dataContrato });
     }
 
     const vendas: Venda[] = [];
@@ -317,7 +319,9 @@ async function doFetchVendas(startDate: string, endDate: string, opts: GetVendas
     for (const base of baseVendas) {
       const resumo = resumoMap.get(base.numVen);
       const dataVendaResumo = resumo ? parseDate(resumo.DataVenda_ven as string || resumo.DataVenda as string || "") : "";
-      const dataFinal = dataVendaResumo || base.dataVenda;
+      const contratoEggsTemp = contratoPorLote.get(base.id);
+      // Hierarquia da data: 1) Eggs (autoridade), 2) UAU resumo, 3) UAU cadastro (fallback)
+      const dataFinal = contratoEggsTemp?.dataContrato || dataVendaResumo || base.dataVenda;
 
       if (dataFinal && dataFinal < startDate) continue;
       if (dataFinal && dataFinal > endDate) continue;
