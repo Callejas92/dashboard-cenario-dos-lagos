@@ -86,9 +86,10 @@ export default function ContratoDrawer({
   onClose: () => void;
 }) {
   // Busca financeiro pra cruzar com lote
-  const { data: financ } = useSWR<FinancRespMin>("/api/uau/financeiro");
-  const { data: uauVendas } = useSWR<UauVendasResp>("/api/uau/vendas");
+  const { data: financ, isLoading: lF } = useSWR<FinancRespMin>("/api/uau/financeiro");
+  const { data: uauVendas, isLoading: lV } = useSWR<UauVendasResp>("/api/uau/vendas");
   const { data: bonusData } = useSWR<BonusResp>("/api/bonus");
+  const isLoadingUau = lF || lV;
 
   // ESC fecha
   useEffect(() => {
@@ -337,8 +338,15 @@ export default function ContratoDrawer({
             </div>
           )}
 
-          {/* Caso sem parcelas no UAU (venda recente) */}
-          {parcelasDoLote.length === 0 && valorRecebido === 0 && (
+          {/* Loading state UAU */}
+          {isLoadingUau && (
+            <div style={{ padding: "0.6rem 0.9rem", background: "var(--surface)", border: "1px dashed var(--border)", borderRadius: "0.375rem", fontSize: "0.72rem", color: "var(--text-dim)", fontStyle: "italic" }}>
+              Carregando dados do ERP UAU…
+            </div>
+          )}
+
+          {/* Sem parcelas no UAU — só mostra quando temos certeza que carregou e veio vazio */}
+          {!isLoadingUau && parcelasDoLote.length === 0 && valorRecebido === 0 && (
             <div style={{ padding: "0.6rem 0.9rem", background: "#f59e0b10", border: "1px solid #f59e0b30", borderRadius: "0.375rem", fontSize: "0.72rem", color: "var(--text-muted)", fontStyle: "italic" }}>
               ⏳ Sem parcelas no UAU (venda recente — aguardando lançamento do financeiro).
             </div>
@@ -435,17 +443,17 @@ export default function ContratoDrawer({
             </div>
           )}
 
-          {/* ═══ DATAS ═══ */}
-          <div>
-            <div style={{ fontSize: "0.65rem", color: "var(--text-dim)", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "0.5rem", display: "flex", alignItems: "center", gap: "0.3rem" }}>
-              <Calendar size={11} /> Datas
+          {/* ═══ DATA DO CONTRATO ═══ */}
+          {(contrato.dataContrato || contrato.dataEmissao) && (
+            <div>
+              <div style={{ fontSize: "0.65rem", color: "var(--text-dim)", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "0.5rem", display: "flex", alignItems: "center", gap: "0.3rem" }}>
+                <Calendar size={11} /> Data do contrato
+              </div>
+              <div style={{ fontSize: "0.85rem", color: "var(--text)", fontWeight: 600 }}>
+                {formatData(contrato.dataContrato || contrato.dataEmissao!)}
+              </div>
             </div>
-            <div style={{ fontSize: "0.75rem", color: "var(--text-muted)", display: "grid", gap: "0.25rem" }}>
-              {contrato.dataContrato && <div>Contrato: {formatData(contrato.dataContrato)}</div>}
-              {contrato.dataEmissao && <div>Emissão: {formatData(contrato.dataEmissao)}</div>}
-              {contrato.responsavelSistema && <div>Cadastrado por: {contrato.responsavelSistema}</div>}
-            </div>
-          </div>
+          )}
         </div>
       </aside>
 
