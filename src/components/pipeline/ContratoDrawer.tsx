@@ -53,6 +53,7 @@ interface VendaMin {
   saldoDevedor: number;
   formaPagamento?: string;
   qtdParcelas: number;
+  qtdParcelasPagas?: number;
 }
 interface UauVendasResp {
   vendas?: VendaMin[];
@@ -111,9 +112,6 @@ export default function ContratoDrawer({
   const valorMangaba = valorContratado * (1 - COMISSAO_TOTAL_PCT);
   const comissaoImob = valorContratado * COMISSAO_IMOB_PCT;
   const comissaoEggs = valorContratado * COMISSAO_EGGS_PCT;
-  const valorTabela = vendaUau?.valorTabela ?? 0;
-  const ganhoSalto = valorTabela > 0 ? valorContratado - valorTabela : 0;
-  const pctGanhoSalto = valorTabela > 0 ? (ganhoSalto / valorTabela) * 100 : 0;
   const valorRecebido = vendaUau?.valorRecebido ?? 0;
   const saldoDevedor = vendaUau?.saldoDevedor ?? 0;
   const formaPagamento = vendaUau?.formaPagamento || "";
@@ -124,9 +122,23 @@ export default function ContratoDrawer({
   const vencidasDoLote = parcelasDoLote.filter((p) => p.status === "vencida");
   const emDiaDoLote = parcelasDoLote.filter((p) => p.status === "em_dia");
   const totalVencido = vencidasDoLote.reduce((s, p) => s + p.valor, 0);
-  const totalEmDia = emDiaDoLote.reduce((s, p) => s + p.valor, 0);
+  const totalEmAberto = parcelasDoLote.reduce((s, p) => s + p.valor, 0); // vencidas + em dia
   const maxAtraso = vencidasDoLote.reduce((m, p) => Math.max(m, p.diasAtraso), 0);
   const proximaParcela = [...emDiaDoLote].sort((a, b) => a.dataVencimento.localeCompare(b.dataVencimento))[0];
+
+  // Parcelas BALÃO (tipoParcela contendo "BAL" ou "B" exato, case-insensitive)
+  const isBalao = (tipo?: string): boolean => {
+    if (!tipo) return false;
+    const t = tipo.toUpperCase().trim();
+    return t === "B" || t.includes("BAL");
+  };
+  const parcelasBalao = parcelasDoLote.filter((p) => isBalao(p.tipoParcela));
+  const totalBalao = parcelasBalao.reduce((s, p) => s + p.valor, 0);
+
+  // Qtd paga = total contrato - parcelas ainda em aberto
+  const qtdPagas = qtdParcelasTotal > 0
+    ? Math.max(0, qtdParcelasTotal - parcelasDoLote.length)
+    : (valorRecebido > 0 ? 1 : 0); // fallback se não soubermos qtd total
 
   // ── BÔNUS ──
   const bonusInfo = (bonusData?.bonus || []).find((b) => b.loteId === contrato.loteId);
@@ -214,48 +226,34 @@ export default function ContratoDrawer({
             <div style={{ fontSize: "0.65rem", color: "var(--text-dim)", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "0.5rem", display: "flex", alignItems: "center", gap: "0.3rem" }}>
               <DollarSign size={11} /> Resumo financeiro
             </div>
-            <div style={{ padding: "0.75rem 1rem", background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "0.5rem", display: "flex", flexDirection: "column", gap: "0.5rem" }}>
-              {/* Valor Mangaba */}
-              <div style={{ display: "flex", justifyContent: "space-between", paddingBottom: "0.5rem", borderBottom: "1px solid var(--border)" }}>
+            <div style={{ padding: "0.875rem 1rem", background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "0.5rem", display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+              {/* VGV Mangaba ★ destaque */}
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", paddingBottom: "0.625rem", borderBottom: "1px solid var(--border)" }}>
                 <div>
                   <div style={{ fontSize: "0.7rem", color: "#10b981", fontWeight: 700 }}>VGV Mangaba ★</div>
-                  <div style={{ fontSize: "0.6rem", color: "var(--text-dim)" }}>líquido após comissões</div>
+                  <div style={{ fontSize: "0.6rem", color: "var(--text-dim)" }}>líquido (após 6,5% de comissões)</div>
                 </div>
-                <div style={{ fontSize: "1.05rem", fontWeight: 700, color: "#10b981" }}>{formatBRL(valorMangaba)}</div>
+                <div className="tnum" style={{ fontSize: "1.15rem", fontWeight: 700, color: "#10b981" }}>{formatBRL(valorMangaba)}</div>
               </div>
 
-              {/* Comissões */}
+              {/* Comissões — em uma linha só */}
               <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.75rem" }}>
-                <span style={{ color: "var(--text-muted)" }}>Comissão imobiliária (5%)</span>
-                <span style={{ color: "var(--text)" }}>{formatBRL(comissaoImob)}</span>
+                <span style={{ color: "var(--text-muted)" }}>Comissões a pagar</span>
+                <span className="tnum" style={{ color: "var(--text)", fontWeight: 600 }}>
+                  {formatBRL(comissaoImob + comissaoEggs)}
+                </span>
               </div>
-              <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.75rem" }}>
-                <span style={{ color: "var(--text-muted)" }}>Comissão Eggs (1,5%)</span>
-                <span style={{ color: "var(--text)" }}>{formatBRL(comissaoEggs)}</span>
+              <div style={{ fontSize: "0.65rem", color: "var(--text-dim)", marginTop: "-0.25rem" }}>
+                imobiliária 5% ({formatBRLCompact(comissaoImob)}) + Eggs 1,5% ({formatBRLCompact(comissaoEggs)})
               </div>
 
-              {/* Ganho de salto */}
-              {valorTabela > 0 && (
-                <div style={{ display: "flex", justifyContent: "space-between", paddingTop: "0.5rem", borderTop: "1px solid var(--border)", fontSize: "0.75rem" }}>
-                  <span style={{ color: "var(--text-muted)" }}>
-                    Tabela base / Ganho de salto
-                  </span>
-                  <span style={{ color: "var(--text)" }}>
-                    {formatBRLCompact(valorTabela)}{" "}
-                    <span style={{ color: ganhoSalto >= 0 ? "#10b981" : "#dc2626", fontWeight: 600 }}>
-                      ({ganhoSalto >= 0 ? "+" : ""}{pctGanhoSalto.toFixed(1)}%)
-                    </span>
-                  </span>
-                </div>
-              )}
-
-              {/* Forma + parcelas */}
+              {/* Forma de pagamento (se UAU enviou) */}
               {(formaPagamento || qtdParcelasTotal > 0) && (
                 <div style={{ display: "flex", justifyContent: "space-between", paddingTop: "0.5rem", borderTop: "1px solid var(--border)", fontSize: "0.75rem" }}>
                   <span style={{ color: "var(--text-muted)" }}>Forma de pagamento</span>
                   <span style={{ color: "var(--text)" }}>
                     {formaPagamento || "—"}
-                    {qtdParcelasTotal > 0 && <> · {qtdParcelasTotal}x</>}
+                    {qtdParcelasTotal > 0 && <> · <span className="tnum">{qtdParcelasTotal}x</span></>}
                   </span>
                 </div>
               )}
@@ -268,50 +266,78 @@ export default function ContratoDrawer({
               <div style={{ fontSize: "0.65rem", color: "var(--text-dim)", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "0.5rem", display: "flex", alignItems: "center", gap: "0.3rem" }}>
                 <TrendingUp size={11} /> Pagamentos
               </div>
-              <div style={{ padding: "0.75rem 1rem", background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "0.5rem", display: "flex", flexDirection: "column", gap: "0.5rem" }}>
-                {valorRecebido > 0 && (
-                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.75rem" }}>
-                    <span style={{ color: "var(--text-muted)" }}>Já recebido</span>
-                    <span style={{ color: "#10b981", fontWeight: 600 }}>{formatBRL(valorRecebido)}</span>
+              <div style={{ padding: "0.875rem 1rem", background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "0.5rem", display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+
+                {/* Linha 1: paga · em aberto · balão */}
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.5rem" }}>
+                  {/* Pagas */}
+                  <div style={{ padding: "0.5rem 0.625rem", background: "#10b98110", border: "1px solid #10b98130", borderRadius: "0.375rem" }}>
+                    <div style={{ fontSize: "0.6rem", color: "#10b981", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.03em" }}>
+                      {qtdPagas} paga{qtdPagas === 1 ? "" : "s"}
+                    </div>
+                    <div className="tnum" style={{ fontSize: "0.9rem", fontWeight: 700, color: "#10b981" }}>
+                      {formatBRL(valorRecebido)}
+                    </div>
+                  </div>
+
+                  {/* Em aberto */}
+                  <div style={{ padding: "0.5rem 0.625rem", background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "0.375rem" }}>
+                    <div style={{ fontSize: "0.6rem", color: "var(--text-dim)", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.03em" }}>
+                      Falta · {parcelasDoLote.length}
+                    </div>
+                    <div className="tnum" style={{ fontSize: "0.9rem", fontWeight: 700, color: "var(--text)" }}>
+                      {formatBRL(saldoDevedor > 0 ? saldoDevedor : totalEmAberto)}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Balão (se houver) */}
+                {parcelasBalao.length > 0 && (
+                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.75rem", padding: "0.3rem 0.5rem", background: "#4285f410", border: "1px solid #4285f430", borderRadius: "0.375rem" }}>
+                    <span style={{ color: "#4285f4", fontWeight: 700 }}>
+                      🎈 Balão · {parcelasBalao.length}
+                    </span>
+                    <span className="tnum" style={{ color: "#4285f4", fontWeight: 600 }}>{formatBRL(totalBalao)}</span>
                   </div>
                 )}
-                {saldoDevedor > 0 && (
-                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.75rem" }}>
-                    <span style={{ color: "var(--text-muted)" }}>Saldo a receber</span>
-                    <span style={{ color: "var(--text)", fontWeight: 600 }}>{formatBRL(saldoDevedor)}</span>
-                  </div>
-                )}
+
+                {/* Próxima parcela */}
                 {proximaParcela && (
                   <div style={{ display: "flex", justifyContent: "space-between", paddingTop: "0.5rem", borderTop: "1px solid var(--border)", fontSize: "0.75rem" }}>
                     <div>
-                      <div style={{ color: "var(--text-muted)" }}>Próxima parcela</div>
+                      <div style={{ color: "var(--text-muted)" }}>Próxima a vencer</div>
                       <div style={{ color: "var(--text-dim)", fontSize: "0.65rem" }}>
-                        venc. {formatData(proximaParcela.dataVencimento)} · {proximaParcela.tipoParcela || "P"}
+                        {formatData(proximaParcela.dataVencimento)}
+                        {proximaParcela.tipoParcela && <> · {proximaParcela.tipoParcela}</>}
                       </div>
                     </div>
-                    <div style={{ color: "var(--text)", fontWeight: 600 }}>{formatBRL(proximaParcela.valor)}</div>
+                    <div className="tnum" style={{ color: "var(--text)", fontWeight: 600 }}>{formatBRL(proximaParcela.valor)}</div>
                   </div>
                 )}
+
+                {/* Alerta vencidas */}
                 {vencidasDoLote.length > 0 && (
                   <div style={{ padding: "0.5rem 0.75rem", background: "#dc262615", border: "1px solid #dc262640", borderRadius: "0.375rem", fontSize: "0.72rem" }}>
                     <div style={{ display: "flex", alignItems: "center", gap: "0.3rem", color: "#dc2626", fontWeight: 700, marginBottom: "0.2rem" }}>
                       <AlertTriangle size={11} /> {vencidasDoLote.length} parcela{vencidasDoLote.length > 1 ? "s" : ""} vencida{vencidasDoLote.length > 1 ? "s" : ""}
                     </div>
-                    <div style={{ color: "var(--text-muted)" }}>
+                    <div className="tnum" style={{ color: "var(--text-muted)" }}>
                       {formatBRL(totalVencido)} · atraso máx {maxAtraso}d
                     </div>
                   </div>
                 )}
+
+                {/* OK status */}
                 {parcelasDoLote.length > 0 && vencidasDoLote.length === 0 && (
                   <div style={{ fontSize: "0.7rem", color: "#10b981", display: "flex", alignItems: "center", gap: "0.3rem" }}>
-                    <CheckCircle2 size={11} /> Pagamentos em dia ({emDiaDoLote.length} parcela{emDiaDoLote.length > 1 ? "s" : ""} pendente, {formatBRL(totalEmDia)})
+                    <CheckCircle2 size={11} /> Em dia — sem vencidos
                   </div>
                 )}
               </div>
             </div>
           )}
 
-          {/* Caso sem parcelas no UAU */}
+          {/* Caso sem parcelas no UAU (venda recente) */}
           {parcelasDoLote.length === 0 && valorRecebido === 0 && (
             <div style={{ padding: "0.6rem 0.9rem", background: "#f59e0b10", border: "1px solid #f59e0b30", borderRadius: "0.375rem", fontSize: "0.72rem", color: "var(--text-muted)", fontStyle: "italic" }}>
               ⏳ Sem parcelas no UAU (venda recente — aguardando lançamento do financeiro).
@@ -324,22 +350,31 @@ export default function ContratoDrawer({
               <div style={{ fontSize: "0.65rem", color: "var(--text-dim)", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "0.5rem", display: "flex", alignItems: "center", gap: "0.3rem" }}>
                 <Award size={11} /> Bônus de Comissão
               </div>
-              <div style={{ padding: "0.75rem 1rem", background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "0.5rem" }}>
-                <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.75rem", marginBottom: "0.4rem" }}>
-                  <span style={{ color: "var(--text-muted)" }}>Bônus corretor (R$ 3k)</span>
-                  <span style={{ color: bonusInfo.pagamento.pagoCorretora ? "#10b981" : "var(--text)", fontWeight: 600 }}>
-                    {bonusInfo.pagamento.pagoCorretora ? `pago ${formatData(bonusInfo.pagamento.dataPagoCorretora)}` : (bonusInfo.entradaQuitada ? "a pagar" : "aguardando entrada")}
-                  </span>
-                </div>
-                <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.75rem", marginBottom: "0.4rem" }}>
-                  <span style={{ color: "var(--text-muted)" }}>Bônus imobiliária (R$ 1k)</span>
-                  <span style={{ color: bonusInfo.pagamento.pagoImobiliaria ? "#10b981" : "var(--text)", fontWeight: 600 }}>
-                    {bonusInfo.pagamento.pagoImobiliaria ? `pago ${formatData(bonusInfo.pagamento.dataPagoImobiliaria)}` : (bonusInfo.entradaQuitada ? "a pagar" : "aguardando entrada")}
-                  </span>
-                </div>
+              <div style={{ padding: "0.875rem 1rem", background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "0.5rem", display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+                {/* Bônus corretor */}
+                <BonusLinha
+                  label="Bônus corretor"
+                  valor={bonusInfo.valorCorretora || 3000}
+                  pago={bonusInfo.pagamento.pagoCorretora}
+                  dataPago={bonusInfo.pagamento.dataPagoCorretora}
+                  entradaQuitada={bonusInfo.entradaQuitada}
+                  isento={bonusInfo.pagamento.isento}
+                />
+
+                {/* Bônus imobiliária */}
+                <BonusLinha
+                  label="Bônus imobiliária"
+                  valor={bonusInfo.valorImobiliaria || 1000}
+                  pago={bonusInfo.pagamento.pagoImobiliaria}
+                  dataPago={bonusInfo.pagamento.dataPagoImobiliaria}
+                  entradaQuitada={bonusInfo.entradaQuitada}
+                  isento={bonusInfo.pagamento.isento}
+                />
+
+                {/* Progresso entrada (se ainda não quitou) */}
                 {!bonusInfo.entradaQuitada && bonusInfo.entradaQtdTotal > 0 && (
                   <div style={{ fontSize: "0.65rem", color: "var(--text-dim)", paddingTop: "0.4rem", borderTop: "1px solid var(--border)" }}>
-                    Entrada: {bonusInfo.entradaQtdPaga}/{bonusInfo.entradaQtdTotal} parcelas pagas. Bônus libera quando quitar todas.
+                    Entrada: <span className="tnum">{bonusInfo.entradaQtdPaga}/{bonusInfo.entradaQtdTotal}</span> parcelas pagas — bônus libera quando quitar todas.
                   </div>
                 )}
               </div>
@@ -419,5 +454,63 @@ export default function ContratoDrawer({
         @keyframes slidein { from { transform: translateX(100%) } to { transform: translateX(0) } }
       `}</style>
     </>
+  );
+}
+
+/**
+ * BonusLinha — linha de bônus com badge de status.
+ *
+ * Estados possíveis:
+ *  - Isento (cinza)
+ *  - Pago dd/mm (verde)
+ *  - A pagar (amarelo) — entrada quitada, esperando pagamento
+ *  - Aguardando entrada (azul) — entrada ainda não quitada
+ */
+function BonusLinha({
+  label, valor, pago, dataPago, entradaQuitada, isento,
+}: {
+  label: string;
+  valor: number;
+  pago: boolean;
+  dataPago: string;
+  entradaQuitada: boolean;
+  isento?: boolean;
+}) {
+  let badgeText: string;
+  let badgeColor: string;
+  let badgeBg: string;
+
+  if (isento) {
+    badgeText = "Isento";
+    badgeColor = "var(--text-muted)";
+    badgeBg = "var(--surface-hover, rgba(0,0,0,0.05))";
+  } else if (pago) {
+    badgeText = `Pago ${formatData(dataPago)}`;
+    badgeColor = "#10b981";
+    badgeBg = "#10b98115";
+  } else if (entradaQuitada) {
+    badgeText = "A pagar";
+    badgeColor = "#f59e0b";
+    badgeBg = "#f59e0b15";
+  } else {
+    badgeText = "Aguardando entrada";
+    badgeColor = "#4285f4";
+    badgeBg = "#4285f415";
+  }
+
+  return (
+    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: "0.75rem" }}>
+      <div>
+        <div style={{ color: "var(--text)", fontWeight: 600 }}>{label}</div>
+        <div className="tnum" style={{ color: "var(--text-dim)", fontSize: "0.65rem" }}>{formatBRL(valor)}</div>
+      </div>
+      <span style={{
+        fontSize: "0.65rem", fontWeight: 700, padding: "0.2rem 0.55rem",
+        background: badgeBg, color: badgeColor, borderRadius: "9999px",
+        whiteSpace: "nowrap",
+      }}>
+        {badgeText}
+      </span>
+    </div>
   );
 }
