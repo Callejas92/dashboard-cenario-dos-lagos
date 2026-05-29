@@ -249,11 +249,29 @@ export async function GET() {
     const valorVendidoTotal = vendas.reduce((s, v) => s + v.valorVenda, 0);
     const valorTabelaTotal = vendas.reduce((s, v) => s + v.valorTabela, 0);
     const totalAPagarTotal = vendas.reduce((s, v) => s + v.totalAPagar, 0);
-    // Valor principal SEM juros (= LÍQUIDO ERP, bate quase exato com a planilha)
+    // Valor principal SEM juros do UAU (vendas lançadas no ERP)
     const valorPrincipalTotal = vendas.reduce((s, v) => s + v.valorPrincipal, 0);
-    // Valor LÍQUIDO Mangaba (= valorVenda contratado - 6,5% comissões)
     const COMISSAO_PCT = 0.05 + 0.015; // 5% imob + 1,5% Eggs
-    const valorLiquidoMangabaTotal = valorVendidoTotal * (1 - COMISSAO_PCT);
+
+    // VGV Mangaba HÍBRIDO (mais preciso):
+    //  - Para vendas COM correspondente UAU: usa valorPrincipal direto do ERP
+    //  - Para vendas SÓ no Eggs (não lançadas no UAU ainda): aplica -6,5% sobre Eggs.valor
+    const lotesUauSet = new Set(baseVendas.filter((b) => b.numVen > 0).map((b) => b.identificador));
+    let liquidoVendaUau = 0;       // soma valorPrincipal das vendas no UAU
+    let liquidoVendaEggsExclusivo = 0; // soma Eggs×0.935 das vendas SÓ no Eggs
+    let qtdSoEggs = 0;
+    for (const c of contratos) {
+      if (INVESTOR_LOTS.has(c.loteId)) continue;
+      if (c.cancelado) continue;
+      if (!["ASSINADO", "FATURADO", "ENTREGUE AO INCORPORADOR"].includes(c.statusOriginal || "")) continue;
+      if (!lotesUauSet.has(c.loteId)) {
+        // venda só no Eggs (UAU não lançou ainda) — aplica desconto estimado de comissões
+        liquidoVendaEggsExclusivo += c.valor * (1 - COMISSAO_PCT);
+        qtdSoEggs++;
+      }
+    }
+    liquidoVendaUau = valorPrincipalTotal; // já calculado acima
+    const valorLiquidoMangabaTotal = liquidoVendaUau + liquidoVendaEggsExclusivo;
     const comissoesTotal = valorVendidoTotal * COMISSAO_PCT;
     const qtdVendas = vendas.length;
     const ticketMedio = qtdVendas > 0 ? valorVendidoTotal / qtdVendas : 0;

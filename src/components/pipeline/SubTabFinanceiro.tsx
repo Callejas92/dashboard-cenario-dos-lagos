@@ -152,15 +152,15 @@ export default function SubTabFinanceiro() {
           <DollarSign size={14} /> Financeiro
         </h2>
 
-        {/* VGV Bruto vs Líquido Mangaba (com tooltip explicando comissões) */}
+        {/* VGV Total e VGV Mangaba — só 2 valores (princípio Few/Knaflic) */}
         {(() => {
           const qtdEggs = (crm?.contratos || []).filter((c) => !!c.cliente).length;
           const qtdUau = financ?.qtdVendas ?? 0;
-          const bruto = va?.contratoEggs ?? financ?.valorVendidoTotal ?? 0;
-          const liquido = va?.liquidoMangaba ?? bruto * 0.935;
-          const comissoes = va?.comissoesEstimadas ?? bruto * 0.065;
-          const principalErp = va?.valorPrincipalErp ?? 0;
-          const ticketMedio = qtdEggs > 0 ? bruto / qtdEggs : 0;
+          const vgvTotal = va?.contratoEggs ?? financ?.valorVendidoTotal ?? 0;
+          const vgvMangaba = va?.liquidoMangaba ?? vgvTotal * 0.935;
+          const comissoes = vgvTotal - vgvMangaba;
+          const ticketMedio = qtdEggs > 0 ? vgvTotal / qtdEggs : 0;
+          const ticketMangaba = qtdEggs > 0 ? vgvMangaba / qtdEggs : 0;
           const divergencia = qtdEggs - qtdUau;
           return (
             <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "0.75rem", padding: "1rem 1.25rem", marginBottom: "0.875rem" }}>
@@ -168,47 +168,35 @@ export default function SubTabFinanceiro() {
                 Valor das vendas
               </div>
 
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: "1rem", alignItems: "baseline" }}>
-                {/* VGV BRUTO */}
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "1.5rem", alignItems: "baseline" }}>
+                {/* VGV TOTAL */}
                 <div>
-                  <div style={{ fontSize: "0.65rem", color: "var(--text-dim)", textTransform: "uppercase", letterSpacing: "0.03em", marginBottom: "0.2rem" }}>
-                    VGV Bruto (contratado)
+                  <div style={{ fontSize: "0.65rem", color: "var(--text-dim)", textTransform: "uppercase", letterSpacing: "0.03em", marginBottom: "0.25rem" }}>
+                    VGV Total (contratado)
                   </div>
-                  <div style={{ fontSize: "1.75rem", fontWeight: 700, color: "#10b981", lineHeight: 1 }}>
-                    {formatBRLCompact(bruto)}
+                  <div style={{ fontSize: "2rem", fontWeight: 700, color: "var(--text)", lineHeight: 1 }}>
+                    {formatBRLCompact(vgvTotal)}
                   </div>
-                  <div style={{ fontSize: "0.7rem", color: "var(--text-muted)", marginTop: "0.3rem" }}>
-                    {qtdEggs} venda{qtdEggs === 1 ? "" : "s"} · ticket {formatBRLCompact(ticketMedio)}
+                  <div style={{ fontSize: "0.75rem", color: "var(--text-muted)", marginTop: "0.4rem" }}>
+                    {qtdEggs} vendas · ticket {formatBRLCompact(ticketMedio)}
                   </div>
                 </div>
 
-                {/* LÍQUIDO MANGABA */}
+                {/* VGV MANGABA */}
                 <div>
-                  <div style={{ fontSize: "0.65rem", color: "var(--text-dim)", textTransform: "uppercase", letterSpacing: "0.03em", marginBottom: "0.2rem" }}>
-                    Líquido Mangaba ★
+                  <div style={{ fontSize: "0.65rem", color: "#10b981", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.03em", marginBottom: "0.25rem" }}>
+                    VGV Mangaba ★
                   </div>
-                  <div style={{ fontSize: "1.5rem", fontWeight: 700, color: "#10b981", lineHeight: 1 }}>
-                    {formatBRLCompact(liquido)}
+                  <div style={{ fontSize: "2rem", fontWeight: 700, color: "#10b981", lineHeight: 1 }}>
+                    {formatBRLCompact(vgvMangaba)}
                   </div>
-                  <div style={{ fontSize: "0.7rem", color: "var(--text-muted)", marginTop: "0.3rem" }}>
-                    bruto - {formatBRLCompact(comissoes)} comissões (5% imob + 1,5% Eggs)
+                  <div style={{ fontSize: "0.75rem", color: "var(--text-muted)", marginTop: "0.4rem" }}>
+                    líquido após comissões · ticket {formatBRLCompact(ticketMangaba)}
+                  </div>
+                  <div style={{ fontSize: "0.7rem", color: "var(--text-dim)", marginTop: "0.2rem" }}>
+                    - {formatBRLCompact(comissoes)} (5% imob + 1,5% Eggs)
                   </div>
                 </div>
-
-                {/* ERP UAU (principal sem juros) */}
-                {principalErp > 0 && (
-                  <div>
-                    <div style={{ fontSize: "0.65rem", color: "var(--text-dim)", textTransform: "uppercase", letterSpacing: "0.03em", marginBottom: "0.2rem" }}>
-                      Valor no ERP UAU
-                    </div>
-                    <div style={{ fontSize: "1.5rem", fontWeight: 700, color: "var(--text)", lineHeight: 1 }}>
-                      {formatBRLCompact(principalErp)}
-                    </div>
-                    <div style={{ fontSize: "0.7rem", color: "var(--text-muted)", marginTop: "0.3rem" }}>
-                      principal sem juros · {qtdUau} vendas lançadas
-                    </div>
-                  </div>
-                )}
               </div>
 
               {/* Aviso de divergência UAU vs Eggs */}
