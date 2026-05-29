@@ -24,6 +24,9 @@ import { corInadimplencia } from "@/lib/utils/cores";
 interface ValoresAgregados {
   tabelaUAU: number;
   contratoEggs: number;
+  valorPrincipalErp?: number;
+  liquidoMangaba?: number;
+  comissoesEstimadas?: number;
   totalAPagarComJuros: number;
   ganhoSalto: number;
   pctGanhoSalto: number;
@@ -149,54 +152,60 @@ export default function SubTabFinanceiro() {
           <DollarSign size={14} /> Financeiro
         </h2>
 
-        {/* Valor contratado (autoridade = Eggs CRM) */}
+        {/* VGV Bruto vs Líquido Mangaba (com tooltip explicando comissões) */}
         {(() => {
           const qtdEggs = (crm?.contratos || []).filter((c) => !!c.cliente).length;
           const qtdUau = financ?.qtdVendas ?? 0;
-          const valorContratado = va?.contratoEggs ?? financ?.valorVendidoTotal ?? 0;
-          const ticketMedio = qtdEggs > 0 ? valorContratado / qtdEggs : 0;
+          const bruto = va?.contratoEggs ?? financ?.valorVendidoTotal ?? 0;
+          const liquido = va?.liquidoMangaba ?? bruto * 0.935;
+          const comissoes = va?.comissoesEstimadas ?? bruto * 0.065;
+          const principalErp = va?.valorPrincipalErp ?? 0;
+          const ticketMedio = qtdEggs > 0 ? bruto / qtdEggs : 0;
           const divergencia = qtdEggs - qtdUau;
           return (
             <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "0.75rem", padding: "1rem 1.25rem", marginBottom: "0.875rem" }}>
               <div style={{ fontSize: "0.7rem", color: "var(--text-dim)", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "0.75rem" }}>
-                Valor contratado das vendas
+                Valor das vendas
               </div>
 
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: "1rem", alignItems: "baseline" }}>
+                {/* VGV BRUTO */}
                 <div>
                   <div style={{ fontSize: "0.65rem", color: "var(--text-dim)", textTransform: "uppercase", letterSpacing: "0.03em", marginBottom: "0.2rem" }}>
-                    Total contratado
+                    VGV Bruto (contratado)
                   </div>
                   <div style={{ fontSize: "1.75rem", fontWeight: 700, color: "#10b981", lineHeight: 1 }}>
-                    {formatBRLCompact(valorContratado)}
+                    {formatBRLCompact(bruto)}
                   </div>
                   <div style={{ fontSize: "0.7rem", color: "var(--text-muted)", marginTop: "0.3rem" }}>
-                    {qtdEggs} venda{qtdEggs === 1 ? "" : "s"} no CRM Eggs
+                    {qtdEggs} venda{qtdEggs === 1 ? "" : "s"} · ticket {formatBRLCompact(ticketMedio)}
                   </div>
                 </div>
 
+                {/* LÍQUIDO MANGABA */}
                 <div>
                   <div style={{ fontSize: "0.65rem", color: "var(--text-dim)", textTransform: "uppercase", letterSpacing: "0.03em", marginBottom: "0.2rem" }}>
-                    Ticket médio
+                    Líquido Mangaba ★
                   </div>
-                  <div style={{ fontSize: "1.2rem", fontWeight: 700, color: "var(--text)", lineHeight: 1 }}>
-                    {formatBRLCompact(ticketMedio)}
+                  <div style={{ fontSize: "1.5rem", fontWeight: 700, color: "#10b981", lineHeight: 1 }}>
+                    {formatBRLCompact(liquido)}
                   </div>
                   <div style={{ fontSize: "0.7rem", color: "var(--text-muted)", marginTop: "0.3rem" }}>
-                    valor médio por venda
+                    bruto - {formatBRLCompact(comissoes)} comissões (5% imob + 1,5% Eggs)
                   </div>
                 </div>
 
-                {va && va.jurosFinanciamento > 0 && (
+                {/* ERP UAU (principal sem juros) */}
+                {principalErp > 0 && (
                   <div>
                     <div style={{ fontSize: "0.65rem", color: "var(--text-dim)", textTransform: "uppercase", letterSpacing: "0.03em", marginBottom: "0.2rem" }}>
-                      Juros financiamento
+                      Valor no ERP UAU
                     </div>
-                    <div style={{ fontSize: "1.2rem", fontWeight: 700, color: "#f59e0b", lineHeight: 1 }}>
-                      {formatBRLCompact(va.jurosFinanciamento)}
+                    <div style={{ fontSize: "1.5rem", fontWeight: 700, color: "var(--text)", lineHeight: 1 }}>
+                      {formatBRLCompact(principalErp)}
                     </div>
                     <div style={{ fontSize: "0.7rem", color: "var(--text-muted)", marginTop: "0.3rem" }}>
-                      em {va.qtdVendasComJuros} de {qtdUau} venda{qtdUau === 1 ? "" : "s"}
+                      principal sem juros · {qtdUau} vendas lançadas
                     </div>
                   </div>
                 )}
@@ -205,8 +214,7 @@ export default function SubTabFinanceiro() {
               {/* Aviso de divergência UAU vs Eggs */}
               {divergencia > 0 && (
                 <div style={{ marginTop: "0.875rem", padding: "0.5rem 0.75rem", background: "#f59e0b15", border: "1px solid #f59e0b40", borderRadius: "0.375rem", fontSize: "0.72rem", color: "var(--text-muted)" }}>
-                  ⚠ <strong style={{ color: "#f59e0b" }}>{divergencia} venda{divergencia > 1 ? "s" : ""}</strong> no Eggs ainda não foi lançada no ERP UAU.
-                  O financeiro do escritório precisa atualizar.
+                  ⚠ <strong style={{ color: "#f59e0b" }}>{divergencia} venda{divergencia > 1 ? "s" : ""}</strong> contratada{divergencia > 1 ? "s" : ""} no Eggs ainda não foi lançada no ERP UAU. O financeiro do escritório precisa atualizar.
                 </div>
               )}
             </div>

@@ -56,8 +56,9 @@ export interface Venda {
   valorTabela: number;           // valor da tabela de preço (sem desconto)
   desconto: number;              // valorTabela - valorVenda (positivo = desconto)
   pctDesconto: number;           // % de desconto sobre tabela (negativo = acréscimo)
-  valorRecebido: number;         // já pago até hoje
-  saldoDevedor: number;          // ainda a receber
+  valorRecebido: number;         // já pago até hoje (com juros)
+  saldoDevedor: number;          // ainda a receber (com juros futuros)
+  valorPrincipal: number;        // capital SEM juros (= recebido principal + a receber principal)
   compradorNome: string;
   compradorCpfCnpj: string;
   corretor: string;
@@ -357,14 +358,24 @@ async function doFetchVendas(startDate: string, endDate: string, opts: GetVendas
       const pctDesconto = valorTabela > 0 ? (desconto / valorTabela) * 100 : 0;
 
       // Valor recebido + saldo devedor vêm de totaisrecebido / totaisareceber
-      const totaisRecebido = resumo?.totaisrecebido as { valorTotalRecebido?: number }[] | undefined;
-      const totaisAReceber = resumo?.totaisareceber as { valorSaldoDevedor?: number }[] | undefined;
+      // valorPrincipal (sem juros) = principal já recebido + principal a receber
+      // valorSaldoDevedor (com juros futuros) = principal a receber + juros
+      const totaisRecebido = resumo?.totaisrecebido as { valorTotalRecebido?: number; valorPrincipal?: number }[] | undefined;
+      const totaisAReceber = resumo?.totaisareceber as { valorSaldoDevedor?: number; valorPrincipal?: number }[] | undefined;
       const valorRecebido = Array.isArray(totaisRecebido) && totaisRecebido.length > 0
         ? Number(totaisRecebido[0]?.valorTotalRecebido) || 0
         : 0;
       const saldoDevedor = Array.isArray(totaisAReceber) && totaisAReceber.length > 0
         ? Number(totaisAReceber[0]?.valorSaldoDevedor) || 0
         : 0;
+      // Soma principal SEM juros (= valor LÍQUIDO Mangaba, bate com ERP)
+      const principalRecebido = Array.isArray(totaisRecebido) && totaisRecebido.length > 0
+        ? Number(totaisRecebido[0]?.valorPrincipal) || 0
+        : 0;
+      const principalAReceber = Array.isArray(totaisAReceber) && totaisAReceber.length > 0
+        ? Number(totaisAReceber[0]?.valorPrincipal) || 0
+        : 0;
+      const valorPrincipal = principalRecebido + principalAReceber;
 
       if (INVESTOR_LOTS.has(base.id)) {
         vendasInvestidor++;
@@ -384,6 +395,7 @@ async function doFetchVendas(startDate: string, endDate: string, opts: GetVendas
         pctDesconto,
         valorRecebido,
         saldoDevedor,
+        valorPrincipal,
         compradorNome: compradorInfo?.nome || (resumo?.Nome_pes as string) || "",
         compradorCpfCnpj: compradorInfo?.cpf || (resumo?.CpfCnpj_pes as string) || "",
         corretor: (resumo?.NomeCorretor as string) || (resumo?.Nome_Corretor as string) || (resumo?.Corretor_ven as string) || "",

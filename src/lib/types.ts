@@ -212,7 +212,10 @@ export interface ProjecaoItem {
 
 export interface ValoresAgregados {
   tabelaUAU: number;            // sem ganho de salto (preço de lista)
-  contratoEggs: number;         // com ganho, sem juros (= valor de contrato)
+  contratoEggs: number;         // VGV BRUTO contratado (com ganho de salto)
+  valorPrincipalErp?: number;   // ERP UAU sem juros (= valor que aparece no ERP)
+  liquidoMangaba?: number;      // Bruto - 6,5% comissões (= líquido pra Mangaba)
+  comissoesEstimadas?: number;  // 5% imobiliária + 1,5% Eggs
   totalAPagarComJuros: number;  // total que cliente vai desembolsar (com juros financiamento)
   ganhoSalto: number;           // diferença Eggs vs Tabela
   pctGanhoSalto: number;        // % do ganho

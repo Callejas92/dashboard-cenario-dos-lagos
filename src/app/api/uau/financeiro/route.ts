@@ -193,6 +193,7 @@ export async function GET() {
       totalAPagar: number;
       valorRecebido: number;
       saldoDevedor: number;
+      valorPrincipal: number;      // = capital sem juros (= ERP "líquido")
       desconto: number;
       pctDesconto: number;
       jurosFin: number;
@@ -238,6 +239,7 @@ export async function GET() {
         dataVenda: dataFinal,
         valorVenda, valorTabela, totalAPagar,
         valorRecebido, saldoDevedor,
+        valorPrincipal,
         desconto, pctDesconto,
         jurosFin,
         qtdVendasComJuros: jurosFin > 0 ? 1 : 0,
@@ -247,6 +249,12 @@ export async function GET() {
     const valorVendidoTotal = vendas.reduce((s, v) => s + v.valorVenda, 0);
     const valorTabelaTotal = vendas.reduce((s, v) => s + v.valorTabela, 0);
     const totalAPagarTotal = vendas.reduce((s, v) => s + v.totalAPagar, 0);
+    // Valor principal SEM juros (= LÍQUIDO ERP, bate quase exato com a planilha)
+    const valorPrincipalTotal = vendas.reduce((s, v) => s + v.valorPrincipal, 0);
+    // Valor LÍQUIDO Mangaba (= valorVenda contratado - 6,5% comissões)
+    const COMISSAO_PCT = 0.05 + 0.015; // 5% imob + 1,5% Eggs
+    const valorLiquidoMangabaTotal = valorVendidoTotal * (1 - COMISSAO_PCT);
+    const comissoesTotal = valorVendidoTotal * COMISSAO_PCT;
     const qtdVendas = vendas.length;
     const ticketMedio = qtdVendas > 0 ? valorVendidoTotal / qtdVendas : 0;
     const ticketMedioTabela = qtdVendas > 0 ? valorTabelaTotal / qtdVendas : 0;
@@ -340,7 +348,10 @@ export async function GET() {
       // Múltiplas perspectivas de valor (lado a lado na UI)
       valoresAgregados: {
         tabelaUAU: valorTabelaTotal,             // sem ganho de salto
-        contratoEggs: valorVendidoTotal,         // com ganho, sem juros (= autoridade)
+        contratoEggs: valorVendidoTotal,         // = VGV BRUTO contratado (R$ 21,5M)
+        valorPrincipalErp: valorPrincipalTotal,  // ERP UAU sem juros (R$ 18,5M, bate com tela do ERP)
+        liquidoMangaba: valorLiquidoMangabaTotal,// Bruto - 6,5% comissões (R$ 20,1M, bate planilha LÍQUIDA)
+        comissoesEstimadas: comissoesTotal,      // 5% imobiliária + 1,5% Eggs
         totalAPagarComJuros: totalAPagarTotal,   // total que cliente vai desembolsar (com juros)
         ganhoSalto: ganhoSaltoTotal,             // diferença Eggs vs Tabela
         pctGanhoSalto,                           // % do ganho
