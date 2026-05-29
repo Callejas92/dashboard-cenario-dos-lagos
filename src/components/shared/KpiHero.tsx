@@ -74,6 +74,7 @@ export default function KpiHero({
       </div>
 
       <div
+        className="kpi-hero-value"
         style={{
           fontSize: "2.25rem",
           fontWeight: 700,

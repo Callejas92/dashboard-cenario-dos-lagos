@@ -274,7 +274,7 @@ export default function SubTabContratos() {
             Nenhum contrato com esses filtros.
           </div>
         ) : (
-          <div style={{ overflowX: "auto" }}>
+          <div className="mobile-scroll-x" style={{ overflowX: "auto" }}>
             <table style={{ width: "100%", fontSize: "0.8rem", borderCollapse: "collapse" }}>
               <thead>
                 <tr style={{ borderBottom: "1px solid var(--border)", textAlign: "left", color: "var(--text-dim)", fontSize: "0.7rem", textTransform: "uppercase", fontWeight: 600 }}>

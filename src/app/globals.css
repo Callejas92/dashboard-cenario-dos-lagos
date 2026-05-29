@@ -128,3 +128,56 @@ input[type="number"]::-webkit-outer-spin-button {
 .status-neutral {
   color: var(--text-muted);
 }
+
+/* ── Mobile responsive (≤ 640px) ─────────────────────────────────────────── */
+@media (max-width: 640px) {
+  /* Layout principal: padding menor */
+  main {
+    padding: 0.625rem !important;
+  }
+
+  /* Tabelas: scroll horizontal nativo, indicador visual */
+  .mobile-scroll-x {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scroll-snap-type: x proximity;
+  }
+
+  /* KPI Hero/Medium: reduzir font-size do número grande */
+  .kpi-hero-value {
+    font-size: 1.5rem !important;
+  }
+
+  /* Drawer: aproveita 100% da tela */
+  .drawer-mobile {
+    max-width: 100% !important;
+  }
+
+  /* Tipografia geral: reduzir um pouco */
+  body {
+    font-size: 0.92rem;
+  }
+}
+
+/* ── Mobile pequeno (≤ 380px) ────────────────────────────────────────────── */
+@media (max-width: 380px) {
+  /* Header: esconder texto, só ícones */
+  .header-tab-label {
+    display: none !important;
+  }
+
+  /* Logo encurtado */
+  .header-logo-full {
+    display: none !important;
+  }
+  .header-logo-short {
+    display: inline !important;
+  }
+}
+
+/* ── Safe area iPhone notch ──────────────────────────────────────────────── */
+@supports (padding: env(safe-area-inset-bottom)) {
+  main {
+    padding-bottom: max(1rem, env(safe-area-inset-bottom)) !important;
+  }
+}

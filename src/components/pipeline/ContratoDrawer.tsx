@@ -146,6 +146,7 @@ export default function ContratoDrawer({
       <aside
         role="dialog"
         aria-label="Detalhe do contrato"
+        className="drawer-mobile"
         style={{
           position: "fixed", right: 0, top: 0, bottom: 0,
           width: "100%", maxWidth: "460px",
@@ -154,6 +155,7 @@ export default function ContratoDrawer({
           zIndex: 9999, overflowY: "auto",
           boxShadow: "-8px 0 32px rgba(0,0,0,0.35)",
           animation: "slidein 0.2s ease",
+          paddingBottom: "env(safe-area-inset-bottom, 0)",
         }}
       >
         {/* Header sticky */}

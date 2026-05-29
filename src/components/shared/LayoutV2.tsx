@@ -96,7 +96,8 @@ export default function LayoutV2({ children }: { children: ReactNode }) {
             }}
           >
             <div style={{ fontWeight: 700, fontSize: "0.95rem", color: "var(--text)", marginRight: "0.5rem" }}>
-              Cenário dos Lagos
+              <span className="header-logo-full">Cenário dos Lagos</span>
+              <span className="header-logo-short" style={{ display: "none" }}>CDL</span>
             </div>
 
             <nav style={{ display: "flex", gap: "0.25rem", flex: 1, overflowX: "auto" }}>
@@ -123,7 +124,7 @@ export default function LayoutV2({ children }: { children: ReactNode }) {
                     }}
                   >
                     <Icon size={14} />
-                    {label}
+                    <span className="header-tab-label">{label}</span>
                   </button>
                 );
               })}
