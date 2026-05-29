@@ -74,7 +74,7 @@ export default function SaudeMarketing() {
     `· Cenario_Marketing.xlsx aba GASTOS: Outdoor (${formatBRLCompact(inv.outdoor)}), Rádio (${formatBRLCompact(inv.radio)}), Jornal (${formatBRLCompact(inv.jornal)}), Evento (${formatBRLCompact(inv.evento)}), Outros (${formatBRLCompact(inv.outros)})`,
     `· Bônus pagos (Vercel Blob): ${formatBRLCompact(inv.comissao)}`,
     "",
-    `Budget mensal alvo: ${formatBRLCompact(BUDGET_MENSAL)} (R$ 1,72M ÷ 15 meses).`,
+    `Budget mensal alvo: ${formatBRLCompact(BUDGET_MENSAL)} (R$ 1,72M ÷ ${PROJETO.PRAZO_COMERCIALIZACAO_MESES} meses).`,
   ].join("\n");
   const formulaBudget = [
     `Realizado acumulado desde o lançamento ÷ Budget total.`,
