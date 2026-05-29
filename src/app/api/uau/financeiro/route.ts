@@ -193,6 +193,7 @@ export async function GET() {
       totalAPagar: number;
       valorRecebido: number;
       saldoDevedor: number;
+      valorPrincipal: number;      // = capital sem juros (= ERP "líquido")
       desconto: number;
       pctDesconto: number;
       jurosFin: number;
@@ -238,6 +239,7 @@ export async function GET() {
         dataVenda: dataFinal,
         valorVenda, valorTabela, totalAPagar,
         valorRecebido, saldoDevedor,
+        valorPrincipal,
         desconto, pctDesconto,
         jurosFin,
         qtdVendasComJuros: jurosFin > 0 ? 1 : 0,
@@ -247,6 +249,30 @@ export async function GET() {
     const valorVendidoTotal = vendas.reduce((s, v) => s + v.valorVenda, 0);
     const valorTabelaTotal = vendas.reduce((s, v) => s + v.valorTabela, 0);
     const totalAPagarTotal = vendas.reduce((s, v) => s + v.totalAPagar, 0);
+    // Valor principal SEM juros do UAU (vendas lançadas no ERP)
+    const valorPrincipalTotal = vendas.reduce((s, v) => s + v.valorPrincipal, 0);
+    const COMISSAO_PCT = 0.05 + 0.015; // 5% imob + 1,5% Eggs
+
+    // VGV Mangaba HÍBRIDO (mais preciso):
+    //  - Para vendas COM correspondente UAU: usa valorPrincipal direto do ERP
+    //  - Para vendas SÓ no Eggs (não lançadas no UAU ainda): aplica -6,5% sobre Eggs.valor
+    const lotesUauSet = new Set(baseVendas.filter((b) => b.numVen > 0).map((b) => b.identificador));
+    let liquidoVendaUau = 0;       // soma valorPrincipal das vendas no UAU
+    let liquidoVendaEggsExclusivo = 0; // soma Eggs×0.935 das vendas SÓ no Eggs
+    let qtdSoEggs = 0;
+    for (const c of contratos) {
+      if (INVESTOR_LOTS.has(c.loteId)) continue;
+      if (c.cancelado) continue;
+      if (!["ASSINADO", "FATURADO", "ENTREGUE AO INCORPORADOR"].includes(c.statusOriginal || "")) continue;
+      if (!lotesUauSet.has(c.loteId)) {
+        // venda só no Eggs (UAU não lançou ainda) — aplica desconto estimado de comissões
+        liquidoVendaEggsExclusivo += c.valor * (1 - COMISSAO_PCT);
+        qtdSoEggs++;
+      }
+    }
+    liquidoVendaUau = valorPrincipalTotal; // já calculado acima
+    const valorLiquidoMangabaTotal = liquidoVendaUau + liquidoVendaEggsExclusivo;
+    const comissoesTotal = valorVendidoTotal * COMISSAO_PCT;
     const qtdVendas = vendas.length;
     const ticketMedio = qtdVendas > 0 ? valorVendidoTotal / qtdVendas : 0;
     const ticketMedioTabela = qtdVendas > 0 ? valorTabelaTotal / qtdVendas : 0;
@@ -340,7 +366,10 @@ export async function GET() {
       // Múltiplas perspectivas de valor (lado a lado na UI)
       valoresAgregados: {
         tabelaUAU: valorTabelaTotal,             // sem ganho de salto
-        contratoEggs: valorVendidoTotal,         // com ganho, sem juros (= autoridade)
+        contratoEggs: valorVendidoTotal,         // = VGV BRUTO contratado (R$ 21,5M)
+        valorPrincipalErp: valorPrincipalTotal,  // ERP UAU sem juros (R$ 18,5M, bate com tela do ERP)
+        liquidoMangaba: valorLiquidoMangabaTotal,// Bruto - 6,5% comissões (R$ 20,1M, bate planilha LÍQUIDA)
+        comissoesEstimadas: comissoesTotal,      // 5% imobiliária + 1,5% Eggs
         totalAPagarComJuros: totalAPagarTotal,   // total que cliente vai desembolsar (com juros)
         ganhoSalto: ganhoSaltoTotal,             // diferença Eggs vs Tabela
         pctGanhoSalto,                           // % do ganho
@@ -381,6 +410,15 @@ export async function GET() {
     console.error("UAU Financeiro API error:", errMsg);
     return NextResponse.json({ error: errMsg }, { status: 500 });
   }
+}
+
+export async function POST(request: Request) {
+  const body = await request.json().catch(() => ({}));
+  if (body.action === "clear-cache") {
+    cache.clear();
+    return NextResponse.json({ success: true });
+  }
+  return NextResponse.json({ error: "ação inválida" }, { status: 400 });
 }
 
 function groupByMonth(vendas: { dataVenda: string; valorVenda: number }[]): { mes: string; vendas: number; valor: number }[] {

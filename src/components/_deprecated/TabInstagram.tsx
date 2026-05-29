@@ -7,7 +7,7 @@ import {
   PieChart, Pie, Cell, AreaChart, Area, LineChart, Line,
 } from "recharts";
 import { formatNumber } from "@/lib/types";
-import DateRangeFilter from "@/components/DateRangeFilter";
+import DateRangeFilter from "./DateRangeFilter";
 
 interface Post {
   id: string;

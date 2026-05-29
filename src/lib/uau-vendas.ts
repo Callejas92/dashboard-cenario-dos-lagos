@@ -56,8 +56,9 @@ export interface Venda {
   valorTabela: number;           // valor da tabela de preço (sem desconto)
   desconto: number;              // valorTabela - valorVenda (positivo = desconto)
   pctDesconto: number;           // % de desconto sobre tabela (negativo = acréscimo)
-  valorRecebido: number;         // já pago até hoje
-  saldoDevedor: number;          // ainda a receber
+  valorRecebido: number;         // já pago até hoje (com juros)
+  saldoDevedor: number;          // ainda a receber (com juros futuros)
+  valorPrincipal: number;        // capital SEM juros (= recebido principal + a receber principal)
   compradorNome: string;
   compradorCpfCnpj: string;
   corretor: string;
@@ -126,6 +127,8 @@ export interface GetVendasOptions {
  * Busca vendas do ERP UAU Senior no período [startDate, endDate].
  * Cache 5min compartilhado. Dedupe de chamadas simultâneas via inflight map.
  */
+const INFLIGHT_TIMEOUT_MS = 50_000; // 50s: depois disso libera o lock pra próxima tentar
+
 export async function getVendas(startDate?: string, endDate?: string, opts: GetVendasOptions = {}): Promise<VendasResponse> {
   const from = startDate || getDefaultStartDate();
   const to = endDate || getToday();
@@ -139,7 +142,13 @@ export async function getVendas(startDate?: string, endDate?: string, opts: GetV
   const existing = inflight.get(cacheKey);
   if (existing) return existing;
 
-  const promise = doFetchVendas(from, to, opts)
+  // Wrap em timeout: se UAU travou, libera o lock pra próxima chamada não esperar pra sempre
+  const fetchPromise = doFetchVendas(from, to, opts);
+  const timeoutPromise = new Promise<VendasResponse>((_, reject) => {
+    setTimeout(() => reject(new Error("getVendas timeout 50s")), INFLIGHT_TIMEOUT_MS);
+  });
+
+  const promise = Promise.race([fetchPromise, timeoutPromise])
     .then((data) => {
       cache.set(cacheKey, { data, timestamp: Date.now() });
       // Se a versão "full" estiver pronta, também cacheia a "lite" pra próxima chamada
@@ -148,6 +157,16 @@ export async function getVendas(startDate?: string, endDate?: string, opts: GetV
         cache.set(liteKey, { data, timestamp: Date.now() });
       }
       return data;
+    })
+    .catch((err) => {
+      console.error("getVendas falhou:", err instanceof Error ? err.message : err);
+      // Retorna response vazio em vez de propagar — evita 500 no frontend
+      return {
+        vendas: [], porDia: [], total: 0, valorTotal: 0,
+        investidor: { quantidade: 0, valorTotal: 0, lotesNaLista: 0 },
+        periodo: { inicio: from, fim: to },
+        error: err instanceof Error ? err.message : String(err),
+      } as VendasResponse;
     })
     .finally(() => {
       inflight.delete(cacheKey);
@@ -304,11 +323,13 @@ async function doFetchVendas(startDate: string, endDate: string, opts: GetVendas
     }
 
     // Aguarda contratos Eggs e monta map por loteId
+    // Eggs.dataContrato é a data REAL da assinatura (autoridade), enquanto
+    // UAU.DataCad_unid é apenas a data de cadastro do lote (genérica, antiga).
     const contratos = await contratosPromise;
-    const contratoPorLote = new Map<string, { valor: number }>();
+    const contratoPorLote = new Map<string, { valor: number; dataContrato?: string }>();
     for (const c of contratos) {
       if (c.cancelado) continue;
-      contratoPorLote.set(c.loteId, { valor: c.valor });
+      contratoPorLote.set(c.loteId, { valor: c.valor, dataContrato: c.dataContrato });
     }
 
     const vendas: Venda[] = [];
@@ -317,7 +338,9 @@ async function doFetchVendas(startDate: string, endDate: string, opts: GetVendas
     for (const base of baseVendas) {
       const resumo = resumoMap.get(base.numVen);
       const dataVendaResumo = resumo ? parseDate(resumo.DataVenda_ven as string || resumo.DataVenda as string || "") : "";
-      const dataFinal = dataVendaResumo || base.dataVenda;
+      const contratoEggsTemp = contratoPorLote.get(base.id);
+      // Hierarquia da data: 1) Eggs (autoridade), 2) UAU resumo, 3) UAU cadastro (fallback)
+      const dataFinal = contratoEggsTemp?.dataContrato || dataVendaResumo || base.dataVenda;
 
       if (dataFinal && dataFinal < startDate) continue;
       if (dataFinal && dataFinal > endDate) continue;
@@ -335,14 +358,24 @@ async function doFetchVendas(startDate: string, endDate: string, opts: GetVendas
       const pctDesconto = valorTabela > 0 ? (desconto / valorTabela) * 100 : 0;
 
       // Valor recebido + saldo devedor vêm de totaisrecebido / totaisareceber
-      const totaisRecebido = resumo?.totaisrecebido as { valorTotalRecebido?: number }[] | undefined;
-      const totaisAReceber = resumo?.totaisareceber as { valorSaldoDevedor?: number }[] | undefined;
+      // valorPrincipal (sem juros) = principal já recebido + principal a receber
+      // valorSaldoDevedor (com juros futuros) = principal a receber + juros
+      const totaisRecebido = resumo?.totaisrecebido as { valorTotalRecebido?: number; valorPrincipal?: number }[] | undefined;
+      const totaisAReceber = resumo?.totaisareceber as { valorSaldoDevedor?: number; valorPrincipal?: number }[] | undefined;
       const valorRecebido = Array.isArray(totaisRecebido) && totaisRecebido.length > 0
         ? Number(totaisRecebido[0]?.valorTotalRecebido) || 0
         : 0;
       const saldoDevedor = Array.isArray(totaisAReceber) && totaisAReceber.length > 0
         ? Number(totaisAReceber[0]?.valorSaldoDevedor) || 0
         : 0;
+      // Soma principal SEM juros (= valor LÍQUIDO Mangaba, bate com ERP)
+      const principalRecebido = Array.isArray(totaisRecebido) && totaisRecebido.length > 0
+        ? Number(totaisRecebido[0]?.valorPrincipal) || 0
+        : 0;
+      const principalAReceber = Array.isArray(totaisAReceber) && totaisAReceber.length > 0
+        ? Number(totaisAReceber[0]?.valorPrincipal) || 0
+        : 0;
+      const valorPrincipal = principalRecebido + principalAReceber;
 
       if (INVESTOR_LOTS.has(base.id)) {
         vendasInvestidor++;
@@ -362,6 +395,7 @@ async function doFetchVendas(startDate: string, endDate: string, opts: GetVendas
         pctDesconto,
         valorRecebido,
         saldoDevedor,
+        valorPrincipal,
         compradorNome: compradorInfo?.nome || (resumo?.Nome_pes as string) || "",
         compradorCpfCnpj: compradorInfo?.cpf || (resumo?.CpfCnpj_pes as string) || "",
         corretor: (resumo?.NomeCorretor as string) || (resumo?.Nome_Corretor as string) || (resumo?.Corretor_ven as string) || "",
@@ -421,4 +455,5 @@ async function doFetchVendas(startDate: string, endDate: string, opts: GetVendas
 
 export function clearVendasCache() {
   cache.clear();
+  inflight.clear();
 }

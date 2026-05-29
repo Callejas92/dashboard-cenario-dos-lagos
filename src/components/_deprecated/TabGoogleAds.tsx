@@ -7,8 +7,8 @@ import {
   LineChart, Line, ComposedChart,
 } from "recharts";
 import { formatNumber } from "@/lib/types";
-import DateRangeFilter from "@/components/DateRangeFilter";
-import KPICard from "@/components/KPICard";
+import DateRangeFilter from "./DateRangeFilter";
+import KPICard from "./KPICard";
 
 interface Campaign {
   campaignId: string;

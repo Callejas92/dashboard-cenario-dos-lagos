@@ -39,10 +39,10 @@
   --bg-secondary: #0f1525;
   --bg-header: rgba(10, 10, 20, 0.85);
   --bg-tabs: rgba(10, 10, 20, 0.7);
-  --surface: rgba(255, 255, 255, 0.03);
-  --surface-hover: rgba(255, 255, 255, 0.06);
-  --border: rgba(255, 255, 255, 0.06);
-  --border-hover: rgba(255, 255, 255, 0.12);
+  --surface: rgba(255, 255, 255, 0.04);
+  --surface-hover: rgba(255, 255, 255, 0.07);
+  --border: rgba(255, 255, 255, 0.09);
+  --border-hover: rgba(255, 255, 255, 0.16);
   --text: #e2e8f0;
   --text-muted: #94a3b8;
   --text-dim: #64748b;
@@ -63,6 +63,20 @@ body {
   font-family: "Inter", "Segoe UI", system-ui, sans-serif;
   min-height: 100vh;
   transition: background 0.3s, color 0.3s;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+/* Números KPI usam tabular-nums pra alinhamento perfeito.
+   Aplica a qualquer elemento com classe .kpi-hero-value / .kpi-medium-value /
+   .kpi-small-value, e a qualquer span com classe .tnum. */
+.kpi-hero-value,
+.kpi-medium-value,
+.kpi-small-value,
+.tnum {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
 }
 
 .dark body {
@@ -127,4 +141,57 @@ input[type="number"]::-webkit-outer-spin-button {
 }
 .status-neutral {
   color: var(--text-muted);
+}
+
+/* ── Mobile responsive (≤ 640px) ─────────────────────────────────────────── */
+@media (max-width: 640px) {
+  /* Layout principal: padding menor */
+  main {
+    padding: 0.625rem !important;
+  }
+
+  /* Tabelas: scroll horizontal nativo, indicador visual */
+  .mobile-scroll-x {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scroll-snap-type: x proximity;
+  }
+
+  /* KPI Hero/Medium: reduzir font-size do número grande */
+  .kpi-hero-value {
+    font-size: 1.5rem !important;
+  }
+
+  /* Drawer: aproveita 100% da tela */
+  .drawer-mobile {
+    max-width: 100% !important;
+  }
+
+  /* Tipografia geral: reduzir um pouco */
+  body {
+    font-size: 0.92rem;
+  }
+}
+
+/* ── Mobile pequeno (≤ 380px) ────────────────────────────────────────────── */
+@media (max-width: 380px) {
+  /* Header: esconder texto, só ícones */
+  .header-tab-label {
+    display: none !important;
+  }
+
+  /* Logo encurtado */
+  .header-logo-full {
+    display: none !important;
+  }
+  .header-logo-short {
+    display: inline !important;
+  }
+}
+
+/* ── Safe area iPhone notch ──────────────────────────────────────────────── */
+@supports (padding: env(safe-area-inset-bottom)) {
+  main {
+    padding-bottom: max(1rem, env(safe-area-inset-bottom)) !important;
+  }
 }
