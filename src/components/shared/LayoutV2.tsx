@@ -42,6 +42,18 @@ export default function LayoutV2({ children }: { children: ReactNode }) {
     // SWR revalidateOnMount + dedupingInterval curto.
   }, []);
 
+  // Pré-aquecimento: quando autenticado, dispara os fetches pesados do ERP UAU em
+  // background. Sem cron (plano Hobby não permite). Quando o usuário navegar pro
+  // Estoque/Pipeline, o cache do servidor (10min) já estará quente.
+  useEffect(() => {
+    if (!authenticated) return;
+    const warmUrls = ["/api/uau", "/api/uau/vendas", "/api/uau/financeiro"];
+    for (const url of warmUrls) {
+      // keepalive + no-await: dispara e esquece, não bloqueia a UI
+      fetch(url, { keepalive: true }).catch(() => { /* silencioso */ });
+    }
+  }, [authenticated]);
+
   function onLoginSuccess() {
     localStorage.setItem("dashboard-auth", "true");
     setAuthenticated(true);

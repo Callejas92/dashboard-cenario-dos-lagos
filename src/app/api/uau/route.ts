@@ -374,6 +374,13 @@ function buildEnrichedResponse(
 
 export const maxDuration = 60;
 
+// ── Cache em memória (10min) ───────────────────────────────────────────────
+// O Estoque é pesado (2x UAU 25s + 1x CRM 15s). Sem cache, TODA visita esperava
+// ~40s. Com cache, só a 1ª chamada após expirar paga o custo.
+let estoqueCache: { data: Record<string, unknown>; timestamp: number } | null = null;
+const ESTOQUE_CACHE_TTL = 10 * 60 * 1000; // 10 minutos
+let estoqueInflight: Promise<Record<string, unknown>> | null = null;
+
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const debug = searchParams.get("debug") === "1";
@@ -382,7 +389,19 @@ export async function GET(request: Request) {
     return NextResponse.json(buildEnrichedResponse(null, "not_configured"));
   }
 
-  try {
+  // Cache hit (pula debug — debug sempre fresco)
+  if (!debug && estoqueCache && Date.now() - estoqueCache.timestamp < ESTOQUE_CACHE_TTL) {
+    return NextResponse.json({ ...estoqueCache.data, cached: true });
+  }
+
+  // Dedupe: se já tem uma requisição em vôo, espera ela em vez de disparar outra
+  if (!debug && estoqueInflight) {
+    const data = await estoqueInflight;
+    return NextResponse.json({ ...data, cached: true });
+  }
+
+  // ── Fetch fresco (com inflight dedup + cache) ──
+  const fetchPromise = (async (): Promise<Record<string, unknown>> => {
     const token = await authenticate();
     const integrationToken = process.env.UAU_INTEGRATION_TOKEN!;
 
@@ -401,11 +420,12 @@ export async function GET(request: Request) {
 
     const crmLotes = crmLotesResult.status === "fulfilled" ? crmLotesResult.value : new Map<string, CRMLoteInfo>();
 
-    // Debug mode
+    // Debug mode (sempre fresco, nunca cacheado)
     if (debug) {
       const allLots = allLotsResult.status === "fulfilled" ? allLotsResult.value : [];
       const sold = soldEnrichResult.status === "fulfilled" ? soldEnrichResult.value : [];
-      return NextResponse.json({
+      return {
+        _debug: true,
         totalCount: allLots.length,
         soldCount: sold.length,
         allLotsError: allLotsResult.status === "rejected" ? String(allLotsResult.reason) : null,
@@ -415,7 +435,7 @@ export async function GET(request: Request) {
         distinctVendido: [...new Set(allLots.map(r => r.Vendido_unid))],
         amostra: allLots.slice(0, 2),
         amostraVendida: sold.slice(0, 1),
-      });
+      };
     }
 
     const allLots = allLotsResult.status === "fulfilled" ? allLotsResult.value : [];
@@ -442,15 +462,28 @@ export async function GET(request: Request) {
 
       const response = buildEnrichedResponse(null, "offline");
       if (errMsgs) response.uauError = errMsgs;
-      return NextResponse.json(response);
+      return response;
     }
 
-    return NextResponse.json(buildEnrichedResponse(mergedRows, undefined, crmLotes));
+    return buildEnrichedResponse(mergedRows, undefined, crmLotes);
+  })();
+
+  if (!debug) estoqueInflight = fetchPromise;
+
+  try {
+    const data = await fetchPromise;
+    // Cacheia só respostas "connected" (sucesso real). Offline/erro não cacheia.
+    if (!debug && data.status === "connected") {
+      estoqueCache = { data, timestamp: Date.now() };
+    }
+    return NextResponse.json(data);
   } catch (error) {
     const errMsg = error instanceof Error ? error.message : String(error);
     console.error("UAU API error:", errMsg);
     const response = buildEnrichedResponse(null, "offline");
     response.uauError = errMsg;
     return NextResponse.json(response);
+  } finally {
+    if (!debug) estoqueInflight = null;
   }
 }

@@ -14,7 +14,7 @@ import { Home, Search } from "lucide-react";
 import KpiMedium from "@/components/shared/KpiMedium";
 import { SkeletonCard } from "@/components/shared/Skeleton";
 import LoadingCard from "@/components/shared/LoadingCard";
-import { formatBRLCompact, formatInt, truncate } from "@/lib/utils/formatters";
+import { formatBRL, formatBRLCompact, formatInt, truncate } from "@/lib/utils/formatters";
 import { PROJETO } from "@/lib/constants/projeto";
 import { corMeta } from "@/lib/utils/cores";
 
@@ -225,8 +225,9 @@ export default function SubTabEstoque() {
           </select>
         </div>
 
-        <div style={{ fontSize: "0.7rem", color: "var(--text-dim)", marginBottom: "0.5rem" }}>
-          {formatInt(lotesFiltrados.length)} lote{lotesFiltrados.length === 1 ? "" : "s"}
+        <div style={{ fontSize: "0.7rem", color: "var(--text-dim)", marginBottom: "0.5rem", display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: "0.5rem" }}>
+          <span>{formatInt(lotesFiltrados.length)} lote{lotesFiltrados.length === 1 ? "" : "s"}</span>
+          <span style={{ fontStyle: "italic" }}>valor = preço atual do CRM Eggs (espelho de vendas)</span>
         </div>
 
         <div style={{ overflowX: "auto" }}>
@@ -259,7 +260,7 @@ export default function SubTabEstoque() {
                       </span>
                     </td>
                     <td style={{ padding: "0.4rem 0.25rem", textAlign: "right", color: "var(--text-muted)", fontSize: "0.75rem" }}>{u.area.toFixed(0)} m²</td>
-                    <td style={{ padding: "0.4rem 0.25rem", textAlign: "right", color: "var(--text)", fontWeight: 600 }}>{formatBRLCompact(u.valorTotal)}</td>
+                    <td className="tnum" style={{ padding: "0.4rem 0.25rem", textAlign: "right", color: "var(--text)", fontWeight: 600 }}>{formatBRL(u.valorTotal)}</td>
                   </tr>
                 );
               })}
