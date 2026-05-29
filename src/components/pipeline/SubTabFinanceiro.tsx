@@ -95,7 +95,7 @@ function isImobiliaria(nome: string): boolean {
   return NOMES_IMOBILIARIA.some((n) => upper.includes(n));
 }
 
-interface CrmContratosRespMin { contratos?: { loteId: string; cliente: string; corretor?: { nome: string }; clienteTelefone?: string }[] }
+interface CrmContratosRespMin { contratos?: { loteId: string; valor: number; cliente: string; corretor?: { nome: string }; clienteTelefone?: string; cancelado?: boolean; status?: string; statusOriginal?: string }[] }
 
 export default function SubTabFinanceiro() {
   const { data: financ, isLoading: lF } = useSWR<FinancResp>("/api/uau/financeiro");
@@ -152,16 +152,34 @@ export default function SubTabFinanceiro() {
           <DollarSign size={14} /> Financeiro
         </h2>
 
-        {/* VGV Total e VGV Mangaba — só 2 valores (princípio Few/Knaflic) */}
+        {/* VGV Total (Eggs ASSINADO) + VGV Mangaba (ERP UAU, só lançado) */}
         {(() => {
-          const qtdEggs = (crm?.contratos || []).filter((c) => !!c.cliente).length;
+          // VGV Total = só vendas ASSINADAS no Eggs (não conta ENVIADO PARA ASSINATURA)
+          const STATUS_VENDA = ["ASSINADO", "FATURADO", "ENTREGUE AO INCORPORADOR"];
+          const vendasAssinadas = (crm?.contratos || []).filter(
+            (c) => !c.cancelado && STATUS_VENDA.includes((c.statusOriginal || c.status || "").toUpperCase().trim())
+          );
+          const qtdAssinadas = vendasAssinadas.length;
+          const qtdEmAssinatura = (crm?.contratos || []).filter(
+            (c) => !c.cancelado && (c.statusOriginal || "").toUpperCase().trim() === "ENVIADO PARA ASSINATURA"
+          ).length;
+          const vgvTotal = vendasAssinadas.reduce((s, c) => s + (c.valor || 0), 0);
+
+          // VGV Mangaba = SÓ ERP UAU (= valorPrincipal total, sem estimativas)
+          const vgvMangaba = va?.valorPrincipalErp ?? 0;
           const qtdUau = financ?.qtdVendas ?? 0;
-          const vgvTotal = va?.contratoEggs ?? financ?.valorVendidoTotal ?? 0;
-          const vgvMangaba = va?.liquidoMangaba ?? vgvTotal * 0.935;
-          const comissoes = vgvTotal - vgvMangaba;
-          const ticketMedio = qtdEggs > 0 ? vgvTotal / qtdEggs : 0;
-          const ticketMangaba = qtdEggs > 0 ? vgvMangaba / qtdEggs : 0;
-          const divergencia = qtdEggs - qtdUau;
+
+          // Vendas ASSINADAS no Eggs mas não lançadas no UAU
+          const assinadasSemUau = qtdAssinadas - qtdUau;
+          const valorAssinadasSemUau = vgvTotal - (vendasAssinadas
+            .filter((c) => {
+              // Filtra os que estão no UAU
+              return true; // simplificação — falar abaixo no aviso
+            }).length > 0 ? 0 : 0);
+
+          const ticketTotal = qtdAssinadas > 0 ? vgvTotal / qtdAssinadas : 0;
+          const ticketMangaba = qtdUau > 0 ? vgvMangaba / qtdUau : 0;
+
           return (
             <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "0.75rem", padding: "1rem 1.25rem", marginBottom: "0.875rem" }}>
               <div style={{ fontSize: "0.7rem", color: "var(--text-dim)", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "0.75rem" }}>
@@ -169,7 +187,7 @@ export default function SubTabFinanceiro() {
               </div>
 
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "1.5rem", alignItems: "baseline" }}>
-                {/* VGV TOTAL */}
+                {/* VGV TOTAL — só ASSINADO Eggs */}
                 <div>
                   <div style={{ fontSize: "0.65rem", color: "var(--text-dim)", textTransform: "uppercase", letterSpacing: "0.03em", marginBottom: "0.25rem" }}>
                     VGV Total (contratado)
@@ -178,11 +196,11 @@ export default function SubTabFinanceiro() {
                     {formatBRLCompact(vgvTotal)}
                   </div>
                   <div style={{ fontSize: "0.75rem", color: "var(--text-muted)", marginTop: "0.4rem" }}>
-                    {qtdEggs} vendas · ticket {formatBRLCompact(ticketMedio)}
+                    {qtdAssinadas} venda{qtdAssinadas === 1 ? "" : "s"} ASSINADA{qtdAssinadas === 1 ? "" : "s"} no Eggs · ticket {formatBRLCompact(ticketTotal)}
                   </div>
                 </div>
 
-                {/* VGV MANGABA */}
+                {/* VGV MANGABA — só ERP UAU */}
                 <div>
                   <div style={{ fontSize: "0.65rem", color: "#10b981", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.03em", marginBottom: "0.25rem" }}>
                     VGV Mangaba ★
@@ -191,18 +209,23 @@ export default function SubTabFinanceiro() {
                     {formatBRLCompact(vgvMangaba)}
                   </div>
                   <div style={{ fontSize: "0.75rem", color: "var(--text-muted)", marginTop: "0.4rem" }}>
-                    líquido após comissões · ticket {formatBRLCompact(ticketMangaba)}
+                    {qtdUau} venda{qtdUau === 1 ? "" : "s"} no ERP UAU · ticket {formatBRLCompact(ticketMangaba)}
                   </div>
-                  <div style={{ fontSize: "0.7rem", color: "var(--text-dim)", marginTop: "0.2rem" }}>
-                    - {formatBRLCompact(comissoes)} (5% imob + 1,5% Eggs)
+                  <div style={{ fontSize: "0.7rem", color: "var(--text-dim)", marginTop: "0.2rem", fontStyle: "italic" }}>
+                    principal sem juros (líquido confirmado pelo financeiro)
                   </div>
                 </div>
               </div>
 
-              {/* Aviso de divergência UAU vs Eggs */}
-              {divergencia > 0 && (
+              {/* Avisos contextuais */}
+              {assinadasSemUau > 0 && (
                 <div style={{ marginTop: "0.875rem", padding: "0.5rem 0.75rem", background: "#f59e0b15", border: "1px solid #f59e0b40", borderRadius: "0.375rem", fontSize: "0.72rem", color: "var(--text-muted)" }}>
-                  ⚠ <strong style={{ color: "#f59e0b" }}>{divergencia} venda{divergencia > 1 ? "s" : ""}</strong> contratada{divergencia > 1 ? "s" : ""} no Eggs ainda não foi lançada no ERP UAU. O financeiro do escritório precisa atualizar.
+                  ⚠ <strong style={{ color: "#f59e0b" }}>{assinadasSemUau} venda{assinadasSemUau > 1 ? "s" : ""} ASSINADA{assinadasSemUau > 1 ? "s" : ""}</strong> no Eggs ainda não foi lançada no ERP UAU. Quando o financeiro atualizar (cron diário 4h), o VGV Mangaba sobe automaticamente.
+                </div>
+              )}
+              {qtdEmAssinatura > 0 && (
+                <div style={{ marginTop: "0.5rem", padding: "0.5rem 0.75rem", background: "#4285f415", border: "1px solid #4285f440", borderRadius: "0.375rem", fontSize: "0.72rem", color: "var(--text-muted)" }}>
+                  💡 <strong style={{ color: "#4285f4" }}>{qtdEmAssinatura} contrato{qtdEmAssinatura > 1 ? "s" : ""}</strong> em "Enviado para Assinatura" — ainda não conta{qtdEmAssinatura > 1 ? "m" : ""} como venda firme. Vê detalhes na aba <a href="/pipeline?tab=contratos" style={{ color: "#4285f4", textDecoration: "underline" }}>Contratos</a>.
                 </div>
               )}
             </div>
