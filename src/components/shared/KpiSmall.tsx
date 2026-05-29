@@ -39,7 +39,7 @@ export default function KpiSmall({
         {icon}
         {formula ? <TooltipDefinicao texto={formula}>{labelEl}</TooltipDefinicao> : labelEl}
       </div>
-      <div style={{ fontSize: "1rem", fontWeight: 700, color: c.value, lineHeight: 1.1 }}>
+      <div className="kpi-small-value" style={{ fontSize: "1rem", fontWeight: 700, color: c.value, lineHeight: 1.1 }}>
         {valor}
       </div>
       {contexto && (

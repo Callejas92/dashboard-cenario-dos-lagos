@@ -39,10 +39,10 @@
   --bg-secondary: #0f1525;
   --bg-header: rgba(10, 10, 20, 0.85);
   --bg-tabs: rgba(10, 10, 20, 0.7);
-  --surface: rgba(255, 255, 255, 0.03);
-  --surface-hover: rgba(255, 255, 255, 0.06);
-  --border: rgba(255, 255, 255, 0.06);
-  --border-hover: rgba(255, 255, 255, 0.12);
+  --surface: rgba(255, 255, 255, 0.04);
+  --surface-hover: rgba(255, 255, 255, 0.07);
+  --border: rgba(255, 255, 255, 0.09);
+  --border-hover: rgba(255, 255, 255, 0.16);
   --text: #e2e8f0;
   --text-muted: #94a3b8;
   --text-dim: #64748b;
@@ -63,6 +63,20 @@ body {
   font-family: "Inter", "Segoe UI", system-ui, sans-serif;
   min-height: 100vh;
   transition: background 0.3s, color 0.3s;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+/* Números KPI usam tabular-nums pra alinhamento perfeito.
+   Aplica a qualquer elemento com classe .kpi-hero-value / .kpi-medium-value /
+   .kpi-small-value, e a qualquer span com classe .tnum. */
+.kpi-hero-value,
+.kpi-medium-value,
+.kpi-small-value,
+.tnum {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
 }
 
 .dark body {

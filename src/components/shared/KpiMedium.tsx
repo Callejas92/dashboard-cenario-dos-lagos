@@ -61,7 +61,7 @@ export default function KpiMedium({
         </TooltipDefinicao>
       </div>
 
-      <div style={{ fontSize: "1.5rem", fontWeight: 700, color: c.value, lineHeight: 1.1 }}>
+      <div className="kpi-medium-value" style={{ fontSize: "1.5rem", fontWeight: 700, color: c.value, lineHeight: 1.1 }}>
         {valor}
       </div>
 
