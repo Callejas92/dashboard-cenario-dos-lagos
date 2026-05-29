@@ -22,8 +22,8 @@ export const PROJETO = {
   /** R$ 493.723,91 = VGV_INICIAL / LOTES_VENDAVEIS. */
   VALOR_MEDIO_LOTE: 493_723.91,
 
-  /** Janela comercial planejada do lançamento. */
-  PRAZO_COMERCIALIZACAO_MESES: 15,
+  /** Janela comercial planejada (Felipe decidiu 12 meses em vez de 15 originalmente). */
+  PRAZO_COMERCIALIZACAO_MESES: 12,
 
   /** 2% do VGV é o budget total de marketing. */
   PERCENTUAL_MKT_DO_VGV: 0.02,
@@ -31,8 +31,8 @@ export const PROJETO = {
   /** R$ 1,72M = VGV * 2%. */
   BUDGET_MKT_TOTAL: 1_718_159.20,
 
-  /** Velocidade alvo: 11.6 lotes/mês pra atingir o prazo. */
-  VELOCIDADE_ALVO_LOTES_MES: 11.6,
+  /** Velocidade alvo: 14.5 lotes/mês = 174 ÷ 12 meses. */
+  VELOCIDADE_ALVO_LOTES_MES: 14.5,
 
   /** R$ 9.874,48 — CAC máximo aceitável (budget total / lotes vendáveis). */
   CAC_MAX_ACEITAVEL: 9_874.48,

@@ -166,7 +166,10 @@ export default function SubTabFinanceiro() {
           const vgvTotal = vendasAssinadas.reduce((s, c) => s + (c.valor || 0), 0);
 
           // VGV Mangaba = SÓ ERP UAU (= valorPrincipal total, sem estimativas)
-          const vgvMangaba = va?.valorPrincipalErp ?? 0;
+          // Fallback: se o backend ainda não tem o campo (cache antigo), usa contratoEggs × 0.935
+          const vgvMangaba = (va?.valorPrincipalErp && va.valorPrincipalErp > 0)
+            ? va.valorPrincipalErp
+            : (va?.contratoEggs ?? vgvTotal) * 0.935;
           const qtdUau = financ?.qtdVendas ?? 0;
 
           // Vendas ASSINADAS no Eggs mas não lançadas no UAU
