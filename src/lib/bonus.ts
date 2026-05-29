@@ -39,6 +39,8 @@ export interface BonusPagamento {
   dataIsentado?: string;
   razaoIsentado?: string;
   observacao?: string;
+  liberadoManual?: boolean;      // override: libera bônus mesmo sem entrada/sinal detectado no UAU
+  dataLiberadoManual?: string;
 }
 
 export interface BonusEntry {
@@ -201,16 +203,18 @@ async function getEntradasStatus(loteIds: string[]): Promise<Map<string, Entrada
         const data = Array.isArray(raw) ? raw[0] : raw;
         const ptipo = (data as { parcelasportipo?: { tipoParcela?: string; quantidadeParcelaAPagar?: number; quantidadeParcelaPaga?: number; totalParcelaAPagar?: number; totalParcelaPaga?: number }[] })?.parcelasportipo;
         if (!Array.isArray(ptipo)) continue;
-        const entradaInfo = ptipo.find((p) => p.tipoParcela === "E");
-        if (!entradaInfo) {
-          // Sem parcelas tipo E configuradas — considera "sem entrada" (quitada por default)
+        // ENTRADA = Entrada (E) + Sinal (S). Felipe: "sinal e entrada valem a mesma coisa".
+        // Bônus libera quando TODAS as parcelas E e S estiverem quitadas.
+        const entradaTipos = ptipo.filter((p) => p.tipoParcela === "E" || p.tipoParcela === "S");
+        if (entradaTipos.length === 0) {
+          // Sem parcelas E nem S (venda à vista, ou tabela sem entrada) — quitada por default.
           map.set(loteId, { qtdTotal: 0, qtdPaga: 0, valorTotal: 0, valorPago: 0, quitada: true });
           continue;
         }
-        const qtdAPagar = Number(entradaInfo.quantidadeParcelaAPagar) || 0;
-        const qtdPaga = Number(entradaInfo.quantidadeParcelaPaga) || 0;
-        const valorAPagar = Number(entradaInfo.totalParcelaAPagar) || 0;
-        const valorPago = Number(entradaInfo.totalParcelaPaga) || 0;
+        const qtdAPagar = entradaTipos.reduce((s, p) => s + (Number(p.quantidadeParcelaAPagar) || 0), 0);
+        const qtdPaga = entradaTipos.reduce((s, p) => s + (Number(p.quantidadeParcelaPaga) || 0), 0);
+        const valorAPagar = entradaTipos.reduce((s, p) => s + (Number(p.totalParcelaAPagar) || 0), 0);
+        const valorPago = entradaTipos.reduce((s, p) => s + (Number(p.totalParcelaPaga) || 0), 0);
         map.set(loteId, {
           qtdTotal: qtdAPagar + qtdPaga,
           qtdPaga,
@@ -284,6 +288,9 @@ export async function getBonusTracking(): Promise<BonusResponse> {
       pagoImobiliaria: false, dataPagoImobiliaria: "",
     };
     const entrada = entradasMap.get(c.loteId) || { qtdTotal: 0, qtdPaga: 0, valorTotal: 0, valorPago: 0, quitada: false };
+    // Override manual: Felipe pode liberar o bônus mesmo sem entrada/sinal detectado
+    // (ex: venda à vista, acordo fora do sistema, UAU sem parcelas E/S).
+    const entradaQuitada = entrada.quitada || !!pagamento.liberadoManual;
     const entry = {
       chaveVenda,
       loteId: c.loteId,
@@ -300,7 +307,7 @@ export async function getBonusTracking(): Promise<BonusResponse> {
       entradaQtdPaga: entrada.qtdPaga,
       entradaValorTotal: entrada.valorTotal,
       entradaValorPago: entrada.valorPago,
-      entradaQuitada: entrada.quitada,
+      entradaQuitada,
       valorCorretora: BONUS_CORRETORA,
       valorImobiliaria: BONUS_IMOBILIARIA,
       valorTotal: BONUS_TOTAL_POR_VENDA,

@@ -379,10 +379,10 @@ export default function ContratoDrawer({
                   isento={bonusInfo.pagamento.isento}
                 />
 
-                {/* Progresso entrada (se ainda não quitou) */}
+                {/* Progresso entrada/sinal (se ainda não quitou) */}
                 {!bonusInfo.entradaQuitada && bonusInfo.entradaQtdTotal > 0 && (
                   <div style={{ fontSize: "0.65rem", color: "var(--text-dim)", paddingTop: "0.4rem", borderTop: "1px solid var(--border)" }}>
-                    Entrada: <span className="tnum">{bonusInfo.entradaQtdPaga}/{bonusInfo.entradaQtdTotal}</span> parcelas pagas — bônus libera quando quitar todas.
+                    Entrada/sinal: <span className="tnum">{bonusInfo.entradaQtdPaga}/{bonusInfo.entradaQtdTotal}</span> pagas — bônus libera quando quitar todas.
                   </div>
                 )}
               </div>

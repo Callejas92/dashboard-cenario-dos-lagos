@@ -39,6 +39,10 @@ export async function POST(request: NextRequest) {
       if (typeof raw.pagoImobiliaria === "boolean") patch.pagoImobiliaria = raw.pagoImobiliaria;
       if (typeof raw.dataPagoImobiliaria === "string") patch.dataPagoImobiliaria = raw.dataPagoImobiliaria;
       if (typeof raw.observacao === "string") patch.observacao = raw.observacao;
+      if (typeof raw.liberadoManual === "boolean") {
+        patch.liberadoManual = raw.liberadoManual;
+        patch.dataLiberadoManual = raw.liberadoManual ? new Date().toISOString().split("T")[0] : "";
+      }
 
       const updated = await setBonusPagamento(chave, patch);
       return NextResponse.json({ success: true, chaveVenda: chave, pagamento: updated });
