@@ -1,19 +1,15 @@
 /**
- * Root page — respeita o feature flag NEXT_PUBLIC_DASHBOARD_V2.
+ * Root page — V2 é o padrão (redesign concluído e aprovado em Mai/2026).
  *
- * - V2 = "true"  → redireciona para /panorama (nova arquitetura, em construção)
- * - V2 = "false" → renderiza a versão antiga (legacy/page.tsx) inline
- *
- * Durante o redesign v2:
- *  - `master` continua deployando a v1 (flag false em produção)
- *  - Branch `redesign-v2` constrói /panorama, /pipeline, /marketing, /admin
- *  - Quando ficar pronto: setar flag true em produção
- *  - Versão antiga sempre acessível em /legacy
+ * - Padrão (sem env var): redireciona para /panorama (V2)
+ * - NEXT_PUBLIC_DASHBOARD_V2 = "false": força a versão antiga (escape hatch)
+ * - Versão antiga sempre acessível em /legacy, independente da flag
  */
 import { redirect } from "next/navigation";
 import LegacyPage from "./legacy/page";
 
-const V2_ENABLED = process.env.NEXT_PUBLIC_DASHBOARD_V2 === "true";
+// V2 ligado por padrão. Só cai no legacy se a flag for explicitamente "false".
+const V2_ENABLED = process.env.NEXT_PUBLIC_DASHBOARD_V2 !== "false";
 
 export default function RootPage() {
   if (V2_ENABLED) {
