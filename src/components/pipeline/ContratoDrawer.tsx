@@ -136,10 +136,14 @@ export default function ContratoDrawer({
   const parcelasBalao = parcelasDoLote.filter((p) => isBalao(p.tipoParcela));
   const totalBalao = parcelasBalao.reduce((s, p) => s + p.valor, 0);
 
-  // Qtd paga = total contrato - parcelas ainda em aberto
-  const qtdPagas = qtdParcelasTotal > 0
+  // Contagem de parcelas só é CONFIÁVEL quando o financeiro retornou as parcelas
+  // a receber deste lote. Se vier vazio (financeiro frio/incompleto), NÃO inventa
+  // "X pagas / 0 falta" — mostra só os valores monetários.
+  const parcelasOk = parcelasDoLote.length > 0;
+  const qtdFalta = parcelasDoLote.length;
+  const qtdPagas = parcelasOk && qtdParcelasTotal > 0
     ? Math.max(0, qtdParcelasTotal - parcelasDoLote.length)
-    : (valorRecebido > 0 ? 1 : 0); // fallback se não soubermos qtd total
+    : 0;
 
   // ── BÔNUS ──
   const bonusInfo = (bonusData?.bonus || []).find((b) => b.loteId === contrato.loteId);
@@ -251,10 +255,10 @@ export default function ContratoDrawer({
               {/* Forma de pagamento (se UAU enviou) */}
               {(formaPagamento || qtdParcelasTotal > 0) && (
                 <div style={{ display: "flex", justifyContent: "space-between", paddingTop: "0.5rem", borderTop: "1px solid var(--border)", fontSize: "0.75rem" }}>
-                  <span style={{ color: "var(--text-muted)" }}>Forma de pagamento</span>
+                  <span style={{ color: "var(--text-muted)" }}>{qtdParcelasTotal > 0 ? "Parcelamento" : "Forma de pagamento"}</span>
                   <span style={{ color: "var(--text)" }}>
-                    {formaPagamento || "—"}
-                    {qtdParcelasTotal > 0 && <> · <span className="tnum">{qtdParcelasTotal}x</span></>}
+                    {formaPagamento && <>{formaPagamento}{qtdParcelasTotal > 0 ? " · " : ""}</>}
+                    {qtdParcelasTotal > 0 && <span className="tnum">{qtdParcelasTotal}x</span>}
                   </span>
                 </div>
               )}
@@ -269,12 +273,12 @@ export default function ContratoDrawer({
               </div>
               <div style={{ padding: "0.875rem 1rem", background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "0.5rem", display: "flex", flexDirection: "column", gap: "0.5rem" }}>
 
-                {/* Linha 1: paga · em aberto · balão */}
+                {/* Linha 1: paga · em aberto */}
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.5rem" }}>
                   {/* Pagas */}
                   <div style={{ padding: "0.5rem 0.625rem", background: "#10b98110", border: "1px solid #10b98130", borderRadius: "0.375rem" }}>
                     <div style={{ fontSize: "0.6rem", color: "#10b981", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.03em" }}>
-                      {qtdPagas} paga{qtdPagas === 1 ? "" : "s"}
+                      {parcelasOk ? `${qtdPagas} paga${qtdPagas === 1 ? "" : "s"}` : "Recebido"}
                     </div>
                     <div className="tnum" style={{ fontSize: "0.9rem", fontWeight: 700, color: "#10b981" }}>
                       {formatBRL(valorRecebido)}
@@ -284,13 +288,18 @@ export default function ContratoDrawer({
                   {/* Em aberto */}
                   <div style={{ padding: "0.5rem 0.625rem", background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "0.375rem" }}>
                     <div style={{ fontSize: "0.6rem", color: "var(--text-dim)", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.03em" }}>
-                      Falta · {parcelasDoLote.length}
+                      {parcelasOk ? `Falta · ${qtdFalta}` : "A receber"}
                     </div>
                     <div className="tnum" style={{ fontSize: "0.9rem", fontWeight: 700, color: "var(--text)" }}>
                       {formatBRL(saldoDevedor > 0 ? saldoDevedor : totalEmAberto)}
                     </div>
                   </div>
                 </div>
+                {!parcelasOk && (saldoDevedor > 0) && (
+                  <div style={{ fontSize: "0.62rem", color: "var(--text-dim)", fontStyle: "italic" }}>
+                    contagem de parcelas indisponível agora (financeiro carregando) — valores conferem.
+                  </div>
+                )}
 
                 {/* Balão (se houver) */}
                 {parcelasBalao.length > 0 && (

@@ -17,6 +17,8 @@ import LoadingCard from "@/components/shared/LoadingCard";
 import { formatBRL, formatBRLCompact, formatInt, truncate } from "@/lib/utils/formatters";
 import { PROJETO } from "@/lib/constants/projeto";
 import { corMeta } from "@/lib/utils/cores";
+import ContratoDrawer from "./ContratoDrawer";
+import LoteInfoDrawer, { type LoteInfo } from "./LoteInfoDrawer";
 
 interface Unidade {
   identificador: string;
@@ -25,12 +27,40 @@ interface Unidade {
   status: string;
   area: number;
   valorTotal: number;
+  valorM2?: number;
   classificacao: string;
   rua?: string;
 }
 interface UauResp {
   summary?: { total?: number; disponivel?: number; vendido?: number; emVenda?: number; foraDeVenda?: number; vgvTotal?: number; vgvVendido?: number };
   unidades?: Unidade[];
+}
+
+// Contrato shape (mesmo do /api/crm/contratos) — só o que o ContratoDrawer precisa.
+interface Contrato {
+  id: number;
+  loteId: string;
+  bloco: string;
+  unidade: string;
+  valor: number;
+  metragem: number;
+  digital: boolean;
+  cliente: string;
+  clienteCpfCnpj: string;
+  clienteTipo: "PF" | "PJ" | "";
+  clienteTelefone: string;
+  clienteEmail: string;
+  status: string;
+  statusOriginal: string;
+  cancelado: boolean;
+  responsavelSistema?: string;
+  corretor: { nome: string; cpf: string; creci: string; telefone: string; email: string };
+  imobiliaria: { razaoSocial: string; nomeFantasia: string; cnpj: string };
+  dataContrato?: string;
+  dataEmissao?: string;
+}
+interface CrmContratosResp {
+  contratos?: Contrato[];
 }
 
 function classify(status: string): "vendido" | "emVenda" | "disponivel" | "foraDeVenda" {
@@ -50,12 +80,43 @@ const COR_STATUS: Record<string, string> = {
 
 export default function SubTabEstoque() {
   const { data, isLoading } = useSWR<UauResp>("/api/uau");
+  const { data: crmData } = useSWR<CrmContratosResp>("/api/crm/contratos");
   const [filtroStatus, setFiltroStatus] = useState<"todos" | "vendido" | "emVenda" | "disponivel" | "foraDeVenda">("todos");
   const [filtroClass, setFiltroClass] = useState<string>("");
   const [filtroQuadra, setFiltroQuadra] = useState<string>("");
   const [busca, setBusca] = useState("");
+  const [drawerContrato, setDrawerContrato] = useState<Contrato | null>(null);
+  const [drawerLote, setDrawerLote] = useState<LoteInfo | null>(null);
 
   const unidades = data?.unidades || [];
+
+  // Mapa loteId → contrato (pra abrir o drawer completo em lotes vendidos)
+  const contratoPorLote = useMemo(() => {
+    const m = new Map<string, Contrato>();
+    for (const c of crmData?.contratos || []) {
+      if (!c.cancelado) m.set(c.loteId, c);
+    }
+    return m;
+  }, [crmData]);
+
+  function abrirLote(u: Unidade) {
+    const contrato = contratoPorLote.get(u.identificador);
+    if (contrato) {
+      setDrawerContrato(contrato);
+    } else {
+      setDrawerLote({
+        identificador: u.identificador,
+        quadra: u.quadra,
+        lote: u.lote,
+        status: u.status,
+        area: u.area,
+        valorTotal: u.valorTotal,
+        valorM2: u.valorM2,
+        classificacao: u.classificacao,
+        rua: u.rua,
+      });
+    }
+  }
 
   // KPIs do summary (já confiável — vem da API que exclui investidor)
   const summary = data?.summary || {};
@@ -246,8 +307,16 @@ export default function SubTabEstoque() {
               {lotesFiltrados.slice(0, 150).map((u) => {
                 const cat = classify(u.status);
                 const cor = COR_STATUS[cat];
+                const temContrato = contratoPorLote.has(u.identificador);
                 return (
-                  <tr key={u.identificador} style={{ borderBottom: "1px solid var(--border)" }}>
+                  <tr
+                    key={u.identificador}
+                    onClick={() => abrirLote(u)}
+                    style={{ borderBottom: "1px solid var(--border)", cursor: "pointer", transition: "background 0.1s" }}
+                    onMouseEnter={(e) => { e.currentTarget.style.background = "var(--border)"; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+                    title={temContrato ? "Ver contrato completo" : "Ver detalhes do lote"}
+                  >
                     <td style={{ padding: "0.4rem 0.25rem", color: "var(--text)", fontWeight: 600 }}>{u.identificador}</td>
                     <td style={{ padding: "0.4rem 0.25rem", color: "var(--text-muted)" }}>{u.quadra}</td>
                     <td style={{ padding: "0.4rem 0.25rem", color: "var(--text-muted)" }}>{u.classificacao || "—"}</td>
@@ -273,6 +342,10 @@ export default function SubTabEstoque() {
           )}
         </div>
       </div>
+
+      {/* Drawers: contrato completo (vendido) ou info simples (disponível) */}
+      <ContratoDrawer contrato={drawerContrato} onClose={() => setDrawerContrato(null)} />
+      <LoteInfoDrawer lote={drawerLote} onClose={() => setDrawerLote(null)} />
     </div>
   );
 }
