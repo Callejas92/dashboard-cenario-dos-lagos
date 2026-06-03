@@ -13,3 +13,7 @@ next-env.d.ts
 .env.prod
 .env.production
 .env.staging
+
+# Windows / Google Drive (evita lixo de sincronização no repo)
+desktop.ini
+*(1).*
