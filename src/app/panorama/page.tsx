@@ -16,6 +16,7 @@ import LayoutV2 from "@/components/shared/LayoutV2";
 import LinhaKpisGigantes from "@/components/panorama/LinhaKpisGigantes";
 import MiniFunilContratos from "@/components/panorama/MiniFunilContratos";
 import VelocidadeVendas from "@/components/panorama/VelocidadeVendas";
+import VelocidadeNoTempo from "@/components/panorama/VelocidadeNoTempo";
 import PrevisaoTermino from "@/components/panorama/PrevisaoTermino";
 import SaudeMarketing from "@/components/panorama/SaudeMarketing";
 import ListaAlertas from "@/components/panorama/ListaAlertas";
@@ -32,6 +33,7 @@ export default function PanoramaPage() {
         <LinhaKpisGigantes />
         <MiniFunilContratos />
         <VelocidadeVendas />
+        <VelocidadeNoTempo />
         <PrevisaoTermino />
         <SaudeMarketing />
         <ListaAlertas />
