@@ -115,8 +115,7 @@ export async function getContratosEggs(): Promise<ContratoEnriquecido[]> {
     });
 
     if (!res.ok) {
-      console.error(`Eggs Contratos ${res.status}`);
-      return [];
+      throw new Error(`Eggs Contratos retornou ${res.status}`);
     }
 
     const raw: EggsContrato[] = await res.json();
@@ -197,6 +196,6 @@ export async function getContratosEggs(): Promise<ContratoEnriquecido[]> {
     return contratos;
   } catch (err) {
     console.error("getContratosEggs error:", err);
-    return [];
+    throw err;
   }
 }

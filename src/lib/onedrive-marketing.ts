@@ -536,6 +536,7 @@ async function getAccessToken(): Promise<string> {
     put(TOKEN_BLOB_NAME, JSON.stringify(updatedPayload), {
       access: "public",
       addRandomSuffix: false,
+      allowOverwrite: true,
     }).catch((err) => console.warn("Falha ao salvar novo refresh token:", err));
   }
   return newTokens.access_token;

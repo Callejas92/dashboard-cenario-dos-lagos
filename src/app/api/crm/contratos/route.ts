@@ -7,6 +7,7 @@
  */
 import { NextRequest, NextResponse } from "next/server";
 import { getContratosEggs } from "@/lib/eggs-contratos";
+import { cachedJson } from "@/lib/blob-cache";
 
 const EGGS_API = "https://api.eggs.app/api/v1/PropostaContrato/Exportar";
 
@@ -79,8 +80,7 @@ interface ContratoEnriquecido {
   };
 }
 
-let cache: { data: unknown; timestamp: number } | null = null;
-const CACHE_TTL = 2 * 60 * 1000;
+const CACHE_TTL = 10 * 60 * 1000; // cache no Blob (persiste entre instâncias serverless)
 
 function buildLoteId(bloco: string, unidade: string): string {
   const q = parseInt(bloco) || 0;
@@ -96,11 +96,8 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ configured: false, message: "CRM_EGGS_TOKEN não configurado" });
   }
 
-  if (cache && Date.now() - cache.timestamp < CACHE_TTL) {
-    return NextResponse.json(cache.data);
-  }
-
   try {
+    const payload = await cachedJson("crm-contratos", CACHE_TTL, async () => {
     // Usa lib compartilhado (mesma função que o cross-sell usa)
     const contratos = await getContratosEggs();
 
@@ -170,18 +167,12 @@ export async function GET(request: NextRequest) {
       fetchedAt: new Date().toISOString(),
     };
 
-    cache = { data: result, timestamp: Date.now() };
-    return NextResponse.json(result);
+      return result;
+    });
+    return NextResponse.json(payload);
   } catch (err) {
     const errMsg = err instanceof Error ? err.message : String(err);
     console.error("Contratos error:", errMsg);
-    return NextResponse.json({
-      configured: true,
-      error: errMsg,
-      total: 0,
-      contratos: [],
-      porStatus: {},
-      porCorretor: [],
-    }, { status: 200 });
+    return NextResponse.json({ configured: true, error: errMsg }, { status: 503 });
   }
 }
