@@ -19,6 +19,7 @@ import { Calendar, TrendingUp, Target } from "lucide-react";
 import LoadingCard from "@/components/shared/LoadingCard";
 import TooltipDefinicao from "@/components/shared/TooltipDefinicao";
 import { PROJETO, isVenda } from "@/lib/constants/projeto";
+import { calcularVelocidade } from "@/lib/calculations/velocidade";
 import { formatBRLCompact, formatInt } from "@/lib/utils/formatters";
 
 interface CrmContratosResp {
@@ -55,11 +56,13 @@ export default function PrevisaoTermino() {
   const totalVendido = vendas.length;
   const restantes = Math.max(0, PROJETO.LOTES_VENDAVEIS - totalVendido);
 
-  // Ritmo dos últimos 30 dias
-  const dataLimite30d = new Date(hoje);
-  dataLimite30d.setDate(dataLimite30d.getDate() - 30);
-  const vendas30d = vendas.filter((c) => new Date(c.dataContrato! + "T12:00:00") >= dataLimite30d).length;
-  const ritmo30d = vendas30d / 1; // vendas/mês (proxy: 30 dias = 1 mês)
+  // Ritmo dos últimos 30 dias — usa a MESMA fonte do card "Velocidade" e dos gráficos
+  // (calcularVelocidade) pra não divergir na tela. Antes contava a borda do dia diferente
+  // (timestamp now-30d), o que excluía 1 venda no limite e mostrava 19 em vez de 20.
+  const vendas30d = calcularVelocidade(
+    vendas.map((c) => ({ dataVenda: c.dataContrato as string, valor: c.valor })),
+  ).ultimos30d.qtdVendas;
+  const ritmo30d = vendas30d; // vendas/mês (proxy: 30 dias = 1 mês)
 
   // Ritmo desde o lançamento
   const lancamento = new Date(PROJETO.DATA_LANCAMENTO + "T00:00:00");
