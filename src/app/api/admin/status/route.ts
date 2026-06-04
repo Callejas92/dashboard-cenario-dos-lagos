@@ -32,17 +32,33 @@ async function cacheSavedAt(prefix: string): Promise<string | null> {
   }
 }
 
-async function pingMeta(): Promise<boolean | null> {
-  if (!has("META_ACCESS_TOKEN")) return null;
+// Ping ao Graph tratando rate-limit (#4/#17/#32) como "não testado" (null), não erro.
+async function pingGraph(url: string): Promise<boolean | null> {
   try {
-    const r = await fetch(
-      `https://graph.facebook.com/v21.0/me?fields=id&access_token=${env().META_ACCESS_TOKEN}`,
-      { signal: AbortSignal.timeout(8000) },
-    );
-    return r.ok;
+    const r = await fetch(url, { signal: AbortSignal.timeout(8000) });
+    if (r.ok) return true;
+    const j = await r.json().catch(() => ({}));
+    const code = j?.error?.code;
+    const msg = (j?.error?.message || "").toLowerCase();
+    if (code === 4 || code === 17 || code === 32 || msg.includes("request limit") || msg.includes("rate limit")) {
+      return null; // rate limit ≠ token inválido
+    }
+    return false;
   } catch {
     return false;
   }
+}
+
+async function pingMeta(): Promise<boolean | null> {
+  if (!has("META_ACCESS_TOKEN", "META_AD_ACCOUNT_ID")) return null;
+  // Endpoint REAL do app (conta de anúncios). /me não serve p/ System User token.
+  return pingGraph(`https://graph.facebook.com/v21.0/act_${env().META_AD_ACCOUNT_ID}?fields=name&access_token=${env().META_ACCESS_TOKEN}`);
+}
+
+async function pingWhatsApp(): Promise<boolean | null> {
+  if (!has("WHATSAPP_TOKEN", "WHATSAPP_PHONE_ID")) return null;
+  // WhatsApp usa token PRÓPRIO (WHATSAPP_TOKEN), não o META_ACCESS_TOKEN.
+  return pingGraph(`https://graph.facebook.com/v21.0/${env().WHATSAPP_PHONE_ID}?fields=display_phone_number&access_token=${env().WHATSAPP_TOKEN}`);
 }
 
 async function pingGoogle(): Promise<boolean | null> {
@@ -110,8 +126,9 @@ async function pingOneDrive(): Promise<{ ok: boolean | null; detalhe: string; sy
 }
 
 export async function GET() {
-  const [meta, google, uau, onedrive, syncCrm, syncCanais, syncVendas] = await Promise.all([
+  const [meta, whatsapp, google, uau, onedrive, syncCrm, syncCanais, syncVendas] = await Promise.all([
     pingMeta(),
+    pingWhatsApp(),
     pingGoogle(),
     pingUau(),
     pingOneDrive(),
@@ -155,7 +172,7 @@ export async function GET() {
     {
       nome: "WhatsApp Business", grupo: "Mensageria",
       configurado: has("WHATSAPP_TOKEN", "WHATSAPP_PHONE_ID"),
-      ok: meta, detalhe: meta === false ? "token Meta inválido" : "", ultimaSync: null,
+      ok: whatsapp, detalhe: whatsapp === false ? "token WhatsApp inválido" : "", ultimaSync: null,
     },
     {
       nome: "Instagram", grupo: "Orgânico",
