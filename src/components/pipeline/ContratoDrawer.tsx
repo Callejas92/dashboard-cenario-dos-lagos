@@ -136,6 +136,16 @@ export default function ContratoDrawer({
   const parcelasBalao = parcelasDoLote.filter((p) => isBalao(p.tipoParcela));
   const totalBalao = parcelasBalao.reduce((s, p) => s + p.valor, 0);
 
+  // Entrada/sinal (tipo E ou S) — separa pra não misturar com parcela nem balão
+  const isEntrada = (tipo?: string): boolean => {
+    if (!tipo) return false;
+    const t = tipo.toUpperCase().trim();
+    return t === "E" || t === "S" || t.includes("ENTR") || t.includes("SINAL");
+  };
+  // Parcelas comuns = tudo que NÃO é balão e NÃO é entrada/sinal
+  const parcelasComuns = parcelasDoLote.filter((p) => !isBalao(p.tipoParcela) && !isEntrada(p.tipoParcela));
+  const totalComuns = parcelasComuns.reduce((s, p) => s + p.valor, 0);
+
   // Contagem de parcelas só é CONFIÁVEL quando o financeiro retornou as parcelas
   // a receber deste lote. Se vier vazio (financeiro frio/incompleto), NÃO inventa
   // "X pagas / 0 falta" — mostra só os valores monetários.
@@ -285,13 +295,13 @@ export default function ContratoDrawer({
                     </div>
                   </div>
 
-                  {/* Em aberto */}
+                  {/* Parcelas comuns (sem balão) */}
                   <div style={{ padding: "0.5rem 0.625rem", background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "0.375rem" }}>
                     <div style={{ fontSize: "0.6rem", color: "var(--text-dim)", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.03em" }}>
-                      {parcelasOk ? `Falta · ${qtdFalta}` : "A receber"}
+                      {parcelasOk ? `Parcelas · ${parcelasComuns.length}` : "A receber"}
                     </div>
                     <div className="tnum" style={{ fontSize: "0.9rem", fontWeight: 700, color: "var(--text)" }}>
-                      {formatBRL(saldoDevedor > 0 ? saldoDevedor : totalEmAberto)}
+                      {formatBRL(parcelasOk ? totalComuns : (saldoDevedor > 0 ? saldoDevedor : totalEmAberto))}
                     </div>
                   </div>
                 </div>
@@ -308,6 +318,13 @@ export default function ContratoDrawer({
                       🎈 Balão · {parcelasBalao.length}
                     </span>
                     <span className="tnum" style={{ color: "#4285f4", fontWeight: 600 }}>{formatBRL(totalBalao)}</span>
+                  </div>
+                )}
+
+                {/* Total a receber (parcelas + balão) — referência, sem substituir o detalhe acima */}
+                {parcelasOk && qtdFalta > 0 && (
+                  <div style={{ fontSize: "0.62rem", color: "var(--text-dim)", textAlign: "right" }}>
+                    total a receber: <span className="tnum">{formatBRL(totalEmAberto)}</span> · {qtdFalta} pagamentos
                   </div>
                 )}
 
