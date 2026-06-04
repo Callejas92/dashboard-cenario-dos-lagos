@@ -106,10 +106,11 @@ export default function VelocidadeNoTempo() {
       ) : (
         <div style={{ width: "100%", height: 240 }}>
           <ResponsiveContainer>
-            <BarChart data={dados} margin={{ top: 18, right: 12, left: -18, bottom: 0 }}>
+            <BarChart data={dados} margin={{ top: 18, right: 16, left: 8, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
               <XAxis dataKey="mes" tick={{ fontSize: 11, fill: "var(--text-muted)" }} axisLine={false} tickLine={false} />
-              <YAxis allowDecimals={false} domain={[0, yMax]} tick={{ fontSize: 11, fill: "var(--text-muted)" }} axisLine={false} tickLine={false} width={28} />
+              {/* Eixo Y oculto: cada barra/linha já vem rotulada — evita ruído (Few/Knaflic). domain mantém a escala. */}
+              <YAxis hide allowDecimals={false} domain={[0, yMax]} />
               <Tooltip
                 cursor={{ fill: "rgba(127,127,127,0.08)" }}
                 content={(props) => {
