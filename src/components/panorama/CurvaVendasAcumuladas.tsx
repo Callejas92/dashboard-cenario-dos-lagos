@@ -16,11 +16,15 @@ import { LineChart, Line, XAxis, YAxis, ReferenceLine, Tooltip, ResponsiveContai
 import { Activity } from "lucide-react";
 import LoadingCard from "@/components/shared/LoadingCard";
 import { PROJETO, isVenda } from "@/lib/constants/projeto";
-import { EVENTOS_MARKETING, COR_TIPO_EVENTO } from "@/lib/constants/eventos";
+import { EVENTOS_MARKETING, COR_TIPO_EVENTO, type TipoEvento } from "@/lib/constants/eventos";
 import { formatBRLCompact } from "@/lib/utils/formatters";
+import EventosManager from "@/components/panorama/EventosManager";
 
 interface CrmResp {
   contratos?: { valor: number; status: string; cancelado: boolean; dataContrato?: string }[];
+}
+interface EventoResp {
+  eventos?: { id?: string; data: string; nome: string; tipo?: TipoEvento }[];
 }
 interface DiaPonto {
   dia: string;
@@ -41,6 +45,7 @@ const fmtLabel = (iso: string) => {
 
 export default function CurvaVendasAcumuladas() {
   const { data, isLoading } = useSWR<CrmResp>("/api/crm/contratos");
+  const { data: evData } = useSWR<EventoResp>("/api/eventos");
 
   if (isLoading || !data) {
     return <LoadingCard height={340} label="Curva de vendas no tempo" hint="lendo CRM Eggs..." />;
@@ -75,7 +80,7 @@ export default function CurvaVendasAcumuladas() {
   const realHoje = ultimo?.real ?? 0;
   const metaHoje = Math.round(ultimo?.meta ?? 0);
   const aFrente = realHoje - metaHoje;
-  const eventos = EVENTOS_MARKETING.filter((e) => dias.some((d) => d.dia === e.data));
+  const eventos = (evData?.eventos ?? EVENTOS_MARKETING).filter((e) => dias.some((d) => d.dia === e.data));
   const tickInterval = Math.max(1, Math.ceil(dias.length / 6));
   const yMax = Math.ceil(Math.max(realHoje, metaHoje, 1) * 1.12);
 
@@ -88,6 +93,7 @@ export default function CurvaVendasAcumuladas() {
         <span style={{ marginLeft: "auto", fontSize: "0.7rem", fontWeight: 400, textTransform: "none", letterSpacing: 0, color: "var(--text-dim)" }}>
           acumulado vs meta · eventos
         </span>
+        <EventosManager />
       </div>
 
       {/* Resumo */}
