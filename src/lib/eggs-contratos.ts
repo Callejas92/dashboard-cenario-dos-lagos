@@ -38,6 +38,18 @@ export interface ContratoEnriquecido {
   };
   dataContrato?: string;
   dataEmissao?: string;
+  // Plano de pagamento contratado (do Eggs) — usado quando o UAU ainda não lançou o financeiro
+  planoPagamento?: PlanoPagamento;
+}
+
+export interface PlanoPagamento {
+  sinal: number;        // ATO / Entrada / Sinal
+  parcelasQtd: number;  // mensais
+  parcelasValor: number;
+  balaoQtd: number;     // anuais / balão
+  balaoValor: number;
+  outros: number;       // comissão/coordenação/taxas dentro do plano
+  total: number;        // soma de tudo (= valor contratado)
 }
 
 interface EggsProponente {
@@ -70,7 +82,15 @@ interface EggsContrato {
   data_emissao?: string;
   // valor negociado real da proposta (fonte de verdade; valor_unidade é preço de tabela)
   proposta?: {
-    venda?: { valor_proposta?: number };
+    venda?: {
+      valor_proposta?: number;
+      // plano de pagamento contratado (séries: ATO, MENSAIS, ANUAIS, COMISSÃO, etc.)
+      vendaSerie?: {
+        serie?: { descricao?: string };
+        quantidade_parcela?: number;
+        valor_total_sem_juros?: number;
+      }[];
+    };
   };
   proponentes?: EggsProponente[];
   empresaCompradora?: EggsEmpresaCompradora;
@@ -94,6 +114,29 @@ function buildLoteId(bloco: string, unidade: string): string {
   const q = parseInt(bloco) || 0;
   const l = parseInt(unidade) || 0;
   return `Q${q}-L${l}`;
+}
+
+// Resume o vendaSerie do Eggs (plano contratado) por tipo. O Eggs guarda só o
+// PLANO (sem status de pagamento) — por isso só usamos quando o UAU ainda não
+// lançou o financeiro da venda (senão o UAU, que tem o pago real, tem prioridade).
+function parsePlano(
+  vendaSerie?: { serie?: { descricao?: string }; quantidade_parcela?: number; valor_total_sem_juros?: number }[],
+): PlanoPagamento | undefined {
+  if (!Array.isArray(vendaSerie) || vendaSerie.length === 0) return undefined;
+  let sinal = 0, parcelasQtd = 0, parcelasValor = 0, balaoQtd = 0, balaoValor = 0, outros = 0;
+  for (const s of vendaSerie) {
+    const d = (s.serie?.descricao || "").toUpperCase();
+    const valor = Number(s.valor_total_sem_juros) || 0;
+    const qtd = Number(s.quantidade_parcela) || 0;
+    if (valor <= 0) continue;
+    if (/ATO|ENTRADA|SINAL/.test(d)) sinal += valor;
+    else if (/MENSA|PARCELA/.test(d)) { parcelasQtd += qtd; parcelasValor += valor; }
+    else if (/ANUA|BAL[AÃ]O|BALAO/.test(d)) { balaoQtd += qtd; balaoValor += valor; }
+    else outros += valor;
+  }
+  const total = sinal + parcelasValor + balaoValor + outros;
+  if (total <= 0) return undefined;
+  return { sinal, parcelasQtd, parcelasValor, balaoQtd, balaoValor, outros, total };
 }
 
 export async function getContratosEggs(): Promise<ContratoEnriquecido[]> {
@@ -181,6 +224,7 @@ export async function getContratosEggs(): Promise<ContratoEnriquecido[]> {
         responsavelSistema: c.responsavel || undefined, // usuário Eggs que cadastrou
         dataContrato: c.data_contrato?.split("T")[0],
         dataEmissao: c.data_emissao?.split("T")[0],
+        planoPagamento: parsePlano(c.proposta?.venda?.vendaSerie),
         corretor: {
           nome: c.corretor?.nome || "",
           cpf: c.corretor?.cpf || "",

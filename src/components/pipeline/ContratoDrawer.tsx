@@ -30,6 +30,15 @@ interface Contrato {
   imobiliaria: { razaoSocial: string; nomeFantasia: string; cnpj: string };
   dataContrato?: string;
   dataEmissao?: string;
+  planoPagamento?: {
+    sinal: number;
+    parcelasQtd: number;
+    parcelasValor: number;
+    balaoQtd: number;
+    balaoValor: number;
+    outros: number;
+    total: number;
+  };
 }
 
 interface ParcelaMin {
@@ -371,11 +380,52 @@ export default function ContratoDrawer({
             </div>
           )}
 
-          {/* Sem parcelas no UAU — só mostra quando temos certeza que carregou e veio vazio */}
+          {/* UAU ainda sem financeiro lançado: mostra o PLANO contratado (Eggs) se houver */}
           {!isLoadingUau && parcelasDoLote.length === 0 && valorRecebido === 0 && (
-            <div style={{ padding: "0.6rem 0.9rem", background: "#f59e0b10", border: "1px solid #f59e0b30", borderRadius: "0.375rem", fontSize: "0.72rem", color: "var(--text-muted)", fontStyle: "italic" }}>
-              ⏳ Sem parcelas no UAU (venda recente — aguardando lançamento do financeiro).
-            </div>
+            contrato.planoPagamento ? (
+              <div>
+                <div style={{ fontSize: "0.65rem", color: "var(--text-dim)", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "0.5rem", display: "flex", alignItems: "center", gap: "0.3rem" }}>
+                  <TrendingUp size={11} /> Plano de pagamento (contratado)
+                </div>
+                <div style={{ padding: "0.875rem 1rem", background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "0.5rem", display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+                  {contrato.planoPagamento.sinal > 0 && (
+                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.78rem" }}>
+                      <span style={{ color: "var(--text-muted)" }}>Sinal / entrada</span>
+                      <span className="tnum" style={{ color: "var(--text)", fontWeight: 600 }}>{formatBRL(contrato.planoPagamento.sinal)}</span>
+                    </div>
+                  )}
+                  {contrato.planoPagamento.parcelasQtd > 0 && (
+                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.78rem" }}>
+                      <span style={{ color: "var(--text-muted)" }}>Parcelas · {contrato.planoPagamento.parcelasQtd}</span>
+                      <span className="tnum" style={{ color: "var(--text)", fontWeight: 600 }}>{formatBRL(contrato.planoPagamento.parcelasValor)}</span>
+                    </div>
+                  )}
+                  {contrato.planoPagamento.balaoQtd > 0 && (
+                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.78rem" }}>
+                      <span style={{ color: "#4285f4", fontWeight: 700 }}>🎈 Balão · {contrato.planoPagamento.balaoQtd}</span>
+                      <span className="tnum" style={{ color: "#4285f4", fontWeight: 600 }}>{formatBRL(contrato.planoPagamento.balaoValor)}</span>
+                    </div>
+                  )}
+                  {contrato.planoPagamento.outros > 0 && (
+                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.72rem", color: "var(--text-dim)" }}>
+                      <span>Outros (comissão/coord.)</span>
+                      <span className="tnum">{formatBRL(contrato.planoPagamento.outros)}</span>
+                    </div>
+                  )}
+                  <div style={{ display: "flex", justifyContent: "space-between", paddingTop: "0.5rem", borderTop: "1px solid var(--border)", fontSize: "0.8rem", fontWeight: 700 }}>
+                    <span style={{ color: "var(--text)" }}>Total contratado</span>
+                    <span className="tnum" style={{ color: "var(--text)" }}>{formatBRL(contrato.planoPagamento.total)}</span>
+                  </div>
+                  <div style={{ fontSize: "0.62rem", color: "#f59e0b", fontStyle: "italic", marginTop: "0.15rem" }}>
+                    ⏳ Plano do contrato (Eggs). O financeiro ainda não foi lançado no UAU — o que já foi pago aparece quando o UAU lançar.
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div style={{ padding: "0.6rem 0.9rem", background: "#f59e0b10", border: "1px solid #f59e0b30", borderRadius: "0.375rem", fontSize: "0.72rem", color: "var(--text-muted)", fontStyle: "italic" }}>
+                ⏳ Sem parcelas no UAU (venda recente — aguardando lançamento do financeiro).
+              </div>
+            )
           )}
 
           {/* ═══ BÔNUS ═══ */}
