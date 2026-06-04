@@ -21,6 +21,18 @@ interface Resp {
   geradoEm?: string;
 }
 
+// O que cada integração traz pro dashboard — em linguagem simples.
+const DESCRICOES: Record<string, string> = {
+  "OneDrive (Excel marketing)": "Traz a planilha de marketing: gastos, orçamento e plano do mês.",
+  "Eggs CRM (contratos)": "Traz os contratos: vendas, clientes, corretores e o status de cada lote.",
+  "UAU ERP (estoque/financeiro)": "Traz o estoque de lotes e o financeiro: parcelas, entradas e recebimentos.",
+  "Meta Ads": "Traz o investimento e os leads dos anúncios no Facebook e Instagram.",
+  "Google Ads": "Traz o investimento e os cliques das campanhas no Google.",
+  "Google Analytics": "Traz o tráfego do site: visitas, de onde vêm e conversões.",
+  "WhatsApp Business": "Traz as mensagens trocadas e o custo do WhatsApp.",
+  "Instagram": "Traz o perfil e os posts do Instagram (seguidores e engajamento).",
+};
+
 function statusInfo(i: Integ) {
   if (!i.configurado) return { cor: "#6b7280", bg: "#6b728015", label: "Não configurado", Icon: XCircle };
   if (i.ok === false) return { cor: "#dc2626", bg: "#dc262615", label: "Erro", Icon: XCircle };
@@ -100,6 +112,11 @@ export default function AdminStatusPanel() {
                 <div style={{ fontSize: "0.68rem", color: "var(--text-dim)", borderTop: "1px solid var(--border)", paddingTop: "0.4rem" }}>
                   última sincronização: <span style={{ color: "var(--text-muted)", fontWeight: 600 }}>{quando(i.ultimaSync)}</span>
                 </div>
+                {DESCRICOES[i.nome] && (
+                  <div style={{ fontSize: "0.66rem", color: "var(--text-dim)", fontStyle: "italic", lineHeight: 1.35 }}>
+                    {DESCRICOES[i.nome]}
+                  </div>
+                )}
               </div>
             );
           })}
