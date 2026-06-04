@@ -3,34 +3,36 @@
 /**
  * Linha 4 do Panorama — investimento de marketing.
  *
- * Conforme feedback do Felipe: NÃO mostrar CAC nem Leads aqui (atribuição
- * lead→venda não existe na prática). Só foco em INVESTIMENTO vs BUDGET.
- *
- * Detalhamento (canais, campanhas, leads) fica na aba Marketing (Fase 4).
+ * Fonte ÚNICA do investimento: aba GASTOS do Cenario_Marketing.xlsx
+ * (via /api/marketing-offline). O Excel já contém TODOS os gastos
+ * (Meta Ads, Google Ads, offline, eventos), então NÃO misturamos APIs aqui
+ * — evita dupla contagem e usa o ledger oficial do cliente.
  *
  * Fontes:
- *  - Investimento do mês: /api/canais (offline do Cenario_Marketing.xlsx + Meta/Google APIs)
- *  - Budget total/mensal alvo: constantes derivadas de PROJETO (aba PREMISSAS do Excel)
- *  - Realizado acumulado: /api/marketing-offline (aba GASTOS)
+ *  - Investido no mês comercial: GASTOS com data no mês comercial atual
+ *  - Realizado acumulado / Budget consumido: total de GASTOS ÷ budget (PREMISSAS)
+ *  - CAC / ROI (blended, acumulado): marketing total ÷ lotes vendidos e VGV ÷ marketing
  */
 import useSWR from "swr";
 import { DollarSign, Wallet, FileSpreadsheet } from "lucide-react";
 import KpiMedium from "@/components/shared/KpiMedium";
 import { SkeletonCard } from "@/components/shared/Skeleton";
-import { buildKey } from "@/lib/cache/tabCache";
 import { PROJETO } from "@/lib/constants/projeto";
 import { corMetaInversa } from "@/lib/utils/cores";
 import { formatBRLCompact, formatPct } from "@/lib/utils/formatters";
 import { calcularVgv } from "@/lib/calculations/vgv";
-import { getMesComercialAtual } from "@/lib/utils/mesComercial";
+import { getMesComercialAtual, dataNoMesComercial } from "@/lib/utils/mesComercial";
 
-interface CanaisResp {
-  kpis?: { totalInvestimento?: number };
-  canais?: Record<string, { investimento?: number }>;
+interface GastoMin {
+  data: string;
+  valor: number;
+  natureza?: string;
+  canalDashboard?: string;
 }
 interface MktResp {
   totalRealizado?: number;
   fetchedAt?: string;
+  gastos?: GastoMin[];
 }
 interface CrmContratosResp {
   contratos?: { loteId: string; valor: number; status: string; cancelado: boolean }[];
@@ -40,13 +42,12 @@ const BUDGET_MENSAL = PROJETO.BUDGET_MKT_TOTAL / PROJETO.PRAZO_COMERCIALIZACAO_M
 
 export default function SaudeMarketing() {
   const mc = getMesComercialAtual();
-  const keyCanais = buildKey("/api/canais", { from: mc.inicioISO, to: mc.fimISO });
 
-  const { data: canais, isLoading: lC } = useSWR<CanaisResp>(keyCanais);
-  const { data: mkt, isLoading: lM } = useSWR<MktResp>("/api/marketing-offline?view=summary");
+  // Fonte ÚNICA do investimento: aba GASTOS do Excel (já tem Meta/Google/offline/eventos).
+  const { data: mkt, isLoading: lM } = useSWR<MktResp>("/api/marketing-offline");
   const { data: crm, isLoading: lCrm } = useSWR<CrmContratosResp>("/api/crm/contratos");
 
-  if (lC || lM || lCrm) {
+  if (lM || lCrm) {
     return (
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "0.75rem" }}>
         <SkeletonCard height={100} />
@@ -55,8 +56,11 @@ export default function SaudeMarketing() {
     );
   }
 
-  const investimentoMes = canais?.kpis?.totalInvestimento ?? 0;
-  const realizadoAcumulado = mkt?.totalRealizado ?? 0;
+  // Investido no mês = soma dos GASTOS do Excel com data no mês comercial atual.
+  const gastos = mkt?.gastos ?? [];
+  const gastosMes = gastos.filter((g) => g.data && dataNoMesComercial(g.data, mc));
+  const investimentoMes = gastosMes.reduce((s, g) => s + (Number(g.valor) || 0), 0);
+  const realizadoAcumulado = mkt?.totalRealizado ?? gastos.reduce((s, g) => s + (Number(g.valor) || 0), 0);
   const pctBudgetConsumido = realizadoAcumulado / PROJETO.BUDGET_MKT_TOTAL;
 
   // CAC e ROI acumulados (desde o lançamento), "blended" — sem depender de
@@ -74,25 +78,22 @@ export default function SaudeMarketing() {
   const cac = vgv.lotesVendidos > 0 ? realizadoAcumulado / vgv.lotesVendidos : 0;
   const roi = realizadoAcumulado > 0 ? vgv.vgvVendido / realizadoAcumulado : 0;
 
-  // Detalhamento de onde vem o investimento do mês — pra tooltip explicativo
-  const inv = {
-    metaAds:    canais?.canais?.["Meta Ads"]?.investimento ?? 0,
-    googleAds:  canais?.canais?.["Google Ads"]?.investimento ?? 0,
-    whatsapp:   canais?.canais?.["WhatsApp"]?.investimento ?? 0,
-    outdoor:    canais?.canais?.["Outdoor"]?.investimento ?? 0,
-    radio:      canais?.canais?.["Rádio"]?.investimento ?? 0,
-    jornal:     canais?.canais?.["Jornal"]?.investimento ?? 0,
-    evento:    (canais?.canais?.["Evento"]?.investimento ?? 0),
-    outros:    (canais?.canais?.["Outros"]?.investimento ?? 0) + (canais?.canais?.["Site"]?.investimento ?? 0),
-    comissao:   canais?.canais?.["Comissão Corretor"]?.investimento ?? 0,
-  };
+  // Detalhamento por natureza (do Excel) — pra tooltip explicativo
+  const porNatureza = new Map<string, number>();
+  for (const g of gastosMes) {
+    const n = g.natureza || g.canalDashboard || "Outros";
+    porNatureza.set(n, (porNatureza.get(n) || 0) + (Number(g.valor) || 0));
+  }
+  const breakdownLinhas = Array.from(porNatureza.entries())
+    .sort((a, b) => b[1] - a[1])
+    .map(([n, v]) => `· ${n}: ${formatBRLCompact(v)}`);
   const formulaMes = [
-    `Soma de gastos em todos os canais no período ${mc.label}.`,
+    `Soma dos GASTOS (aba GASTOS do Cenario_Marketing.xlsx) com data no mês comercial ${mc.label}.`,
     "",
-    "Fontes:",
-    `· APIs em tempo real: Meta Ads (${formatBRLCompact(inv.metaAds)}), Google Ads (${formatBRLCompact(inv.googleAds)}), WhatsApp (${formatBRLCompact(inv.whatsapp)})`,
-    `· Cenario_Marketing.xlsx aba GASTOS: Outdoor (${formatBRLCompact(inv.outdoor)}), Rádio (${formatBRLCompact(inv.radio)}), Jornal (${formatBRLCompact(inv.jornal)}), Evento (${formatBRLCompact(inv.evento)}), Outros (${formatBRLCompact(inv.outros)})`,
-    `· Bônus pagos (Vercel Blob): ${formatBRLCompact(inv.comissao)}`,
+    "Fonte ÚNICA: o Excel já inclui TUDO (Meta Ads, Google Ads, offline, eventos) — sem misturar APIs (evita dupla contagem).",
+    "",
+    `Por natureza (${gastosMes.length} lançamentos):`,
+    ...breakdownLinhas,
     "",
     `Budget mensal alvo: ${formatBRLCompact(BUDGET_MENSAL)} (R$ 1,72M ÷ ${PROJETO.PRAZO_COMERCIALIZACAO_MESES} meses).`,
   ].join("\n");
