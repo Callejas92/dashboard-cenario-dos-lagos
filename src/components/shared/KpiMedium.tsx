@@ -16,6 +16,7 @@ export interface KpiMediumProps {
   severidade?: Severidade;
   formula: string;
   contexto?: string;
+  secundario?: string;
   sparkline?: number[];
   icon?: ReactNode;
 }
@@ -26,6 +27,7 @@ export default function KpiMedium({
   severidade = "cinza",
   formula,
   contexto,
+  secundario,
   sparkline,
   icon,
 }: KpiMediumProps) {
@@ -68,6 +70,12 @@ export default function KpiMedium({
       {contexto && (
         <div style={{ fontSize: "0.7rem", color: "var(--text-muted)" }}>
           {contexto}
+        </div>
+      )}
+
+      {secundario && (
+        <div style={{ fontSize: "0.68rem", color: "var(--text-dim)", fontWeight: 600 }}>
+          {secundario}
         </div>
       )}
 
