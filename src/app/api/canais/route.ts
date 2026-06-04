@@ -5,13 +5,13 @@ import { getGoogleAdsCost } from "@/lib/google-ads-cost";
 import { getCrossSell } from "@/lib/cross-sell";
 import { getVendas } from "@/lib/uau-vendas";
 import { getBonusComoCustoMensal } from "@/lib/bonus";
+import { cachedJson } from "@/lib/blob-cache";
 
 const META_API = "https://graph.facebook.com/v21.0";
 const CRM_API = "http://leadsc2s.eggs.com.br/api/webhook/leads";
 
 export const maxDuration = 60;
 
-let cachedData: { data: unknown; timestamp: number; key: string } | null = null;
 const CACHE_TTL = 5 * 60 * 1000;
 
 // Maps CRM lead_source names to our canal names
@@ -307,11 +307,7 @@ export async function GET(request: Request) {
     const d = new Date(); d.setDate(d.getDate() - 30); return d.toISOString().split("T")[0];
   })();
 
-  const cacheKey = `${from}|${to}`;
-  if (cachedData && cachedData.key === cacheKey && Date.now() - cachedData.timestamp < CACHE_TTL) {
-    return NextResponse.json(cachedData.data);
-  }
-
+  const payload = await cachedJson(`canais-${from}-${to}`, CACHE_TTL, async () => {
   // Fetch all sources in parallel
   const [metaAds, crmLeads, uauVendas, custosOffline, whatsApp, crossSell, googleAds, bonusPagos] = await Promise.all([
     fetchMetaAds(from, to),
@@ -501,6 +497,7 @@ export async function GET(request: Request) {
     fetchedAt: new Date().toISOString(),
   };
 
-  cachedData = { data: result, timestamp: Date.now(), key: cacheKey };
-  return NextResponse.json(result);
+  return result;
+  });
+  return NextResponse.json(payload);
 }
