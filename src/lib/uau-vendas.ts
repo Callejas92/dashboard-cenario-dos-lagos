@@ -322,6 +322,25 @@ async function doFetchVendas(startDate: string, endDate: string, opts: GetVendas
       }
     }
 
+    // Segunda passada: re-tenta resumos que falharam no lote (sequencial, timeout maior).
+    // Sem isto, uma venda cujo resumo deu timeout fica com valorRecebido/saldo/qtdParcelas = 0
+    // (parece "nada pago" mesmo com a entrada quitada — caso Q6-L79).
+    const semResumo = vendasComNumero.filter((v) => !resumoMap.has(v.numVen));
+    for (const v of semResumo) {
+      try {
+        const res = await uauFetch(token, "Venda/ConsultarResumoVenda", {
+          codigoObra: v.obra,
+          codigoEmpresa: v.empresa,
+          numeroVenda: v.numVen,
+        }, 15000);
+        const rows2 = extractMyTable(res);
+        if (rows2.length > 0) resumoMap.set(v.numVen, rows2[0]);
+        else if (res && typeof res === "object") resumoMap.set(v.numVen, res as Record<string, unknown>);
+      } catch {
+        // segue sem o resumo desta venda
+      }
+    }
+
     // Aguarda contratos Eggs e monta map por loteId
     // Eggs.dataContrato é a data REAL da assinatura (autoridade), enquanto
     // UAU.DataCad_unid é apenas a data de cadastro do lote (genérica, antiga).
