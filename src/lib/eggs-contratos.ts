@@ -68,6 +68,10 @@ interface EggsContrato {
   status: string;
   data_contrato?: string;
   data_emissao?: string;
+  // valor negociado real da proposta (fonte de verdade; valor_unidade é preço de tabela)
+  proposta?: {
+    venda?: { valor_proposta?: number };
+  };
   proponentes?: EggsProponente[];
   empresaCompradora?: EggsEmpresaCompradora;
   empresaVenda?: {
@@ -163,7 +167,7 @@ export async function getContratosEggs(): Promise<ContratoEnriquecido[]> {
         loteId: buildLoteId(c.bloco, c.unidade),
         bloco: c.bloco,
         unidade: c.unidade,
-        valor: c.valor_unidade || 0,
+        valor: c.proposta?.venda?.valor_proposta || c.valor_unidade || 0,
         metragem: c.metragem || 0,
         digital: c.digital,
         cliente,
