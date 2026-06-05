@@ -47,6 +47,8 @@ const cardStyle: CSSProperties = {
   background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "0.75rem",
   width: "100%", maxWidth: 460, maxHeight: "85vh", overflow: "auto",
   padding: "1rem 1.1rem", boxShadow: "0 12px 40px rgba(0,0,0,0.4)",
+  // o modal é filho do cabeçalho do gráfico (uppercase): reseta pra texto normal
+  textTransform: "none", letterSpacing: "normal",
 };
 const inputStyle: CSSProperties = {
   background: "var(--bg-secondary, rgba(127,127,127,0.06))", color: "var(--text)",
@@ -137,8 +139,8 @@ export default function EventosManager() {
                     {e.id === "lancamento" ? (
                       <span style={{ fontSize: "0.62rem", color: "var(--text-dim)", fontStyle: "italic" }}>fixo</span>
                     ) : (
-                      <button onClick={() => remover(e.id)} disabled={busy} style={{ background: "transparent", border: "none", color: "#dc2626", cursor: "pointer", padding: 2, opacity: busy ? 0.5 : 1 }} title="Remover">
-                        <Trash2 size={13} />
+                      <button onClick={() => remover(e.id)} disabled={busy} style={{ display: "inline-flex", alignItems: "center", background: "transparent", border: "none", color: "#dc2626", cursor: "pointer", padding: "0.35rem 0.5rem", margin: "-0.25rem 0", borderRadius: "0.3rem", opacity: busy ? 0.5 : 1 }} title="Remover">
+                        <Trash2 size={15} />
                       </button>
                     )}
                   </div>
