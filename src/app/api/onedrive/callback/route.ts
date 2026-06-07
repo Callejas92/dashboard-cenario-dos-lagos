@@ -64,6 +64,7 @@ export async function GET(request: NextRequest) {
     await put(TOKEN_BLOB_NAME, JSON.stringify(tokenPayload), {
       access: "public",
       addRandomSuffix: false,
+      allowOverwrite: true, // o token já existe da 1ª conexão — precisa sobrescrever
     });
 
     // Verificar acesso - listar root do OneDrive

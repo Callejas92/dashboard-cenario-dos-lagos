@@ -123,6 +123,7 @@ async function savePagamentos(pagamentos: Record<string, BonusPagamento>) {
   await put(PAGAMENTOS_BLOB, JSON.stringify(pagamentos, null, 2), {
     access: "public",
     addRandomSuffix: false,
+    allowOverwrite: true, // sobrescreve o registro de pagamentos a cada marcação
     contentType: "application/json",
   });
   // Invalida cache (memória + blob) — marcar pago/isento deve refletir na hora
