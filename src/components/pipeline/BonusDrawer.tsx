@@ -45,7 +45,17 @@ const STATUS_COR: Record<string, string> = {
   aguardando_entrada: "#4285f4", isento: "#6b7280", revisar: "#f59e0b", cancelado_pago: "#6b7280",
 };
 
-export default function BonusDrawer({ bonus, onClose }: { bonus: BonusItemDrawer | null; onClose: () => void }) {
+export interface PlanoPagamento {
+  sinal: number;
+  parcelasQtd: number;
+  parcelasValor: number;
+  balaoQtd: number;
+  balaoValor: number;
+  outros: number;
+  total: number;
+}
+
+export default function BonusDrawer({ bonus, plano, onClose }: { bonus: BonusItemDrawer | null; plano?: PlanoPagamento; onClose: () => void }) {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
     window.addEventListener("keydown", onKey);
@@ -117,6 +127,44 @@ export default function BonusDrawer({ bonus, onClose }: { bonus: BonusItemDrawer
               </div>
             </div>
           </div>
+
+          {/* Forma de pagamento (plano contratado — Eggs) */}
+          {plano && (plano.sinal > 0 || plano.parcelasQtd > 0 || plano.balaoQtd > 0) ? (
+            <div>
+              <div style={tituloSecao}>Forma de pagamento</div>
+              <div style={cardStyle}>
+                {plano.sinal > 0 ? (
+                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.8rem", padding: "0.15rem 0" }}>
+                    <span style={{ color: "var(--text-muted)" }}>Sinal / entrada</span>
+                    <span style={{ color: "var(--text)", fontWeight: 600 }}>{formatBRL(plano.sinal)}</span>
+                  </div>
+                ) : null}
+                {plano.parcelasQtd > 0 ? (
+                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.8rem", padding: "0.15rem 0" }}>
+                    <span style={{ color: "var(--text-muted)" }}>Parcelas · {plano.parcelasQtd}× {formatBRL(plano.parcelasValor)}</span>
+                    <span style={{ color: "var(--text)", fontWeight: 600 }}>{formatBRL(plano.parcelasQtd * plano.parcelasValor)}</span>
+                  </div>
+                ) : null}
+                {plano.balaoQtd > 0 ? (
+                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.8rem", padding: "0.15rem 0" }}>
+                    <span style={{ color: "var(--text-muted)" }}>Balão · {plano.balaoQtd}× {formatBRL(plano.balaoValor)}</span>
+                    <span style={{ color: "var(--text)", fontWeight: 600 }}>{formatBRL(plano.balaoQtd * plano.balaoValor)}</span>
+                  </div>
+                ) : null}
+                {plano.outros > 0 ? (
+                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.8rem", padding: "0.15rem 0" }}>
+                    <span style={{ color: "var(--text-muted)" }}>Outros (comissão/taxas)</span>
+                    <span style={{ color: "var(--text)", fontWeight: 600 }}>{formatBRL(plano.outros)}</span>
+                  </div>
+                ) : null}
+              </div>
+              {plano.sinal > 0 && bonus.valorTotal > plano.sinal ? (
+                <div style={{ marginTop: "0.4rem", padding: "0.5rem 0.7rem", background: "#dc262615", border: "1px solid #dc262640", borderRadius: "0.4rem", fontSize: "0.72rem", color: "#dc2626", lineHeight: 1.4 }}>
+                  ⚠ Bônus de {formatBRL(bonus.valorTotal)} é <strong>maior que a entrada/sinal</strong> de {formatBRL(plano.sinal)} — avalie antes de pagar.
+                </div>
+              ) : null}
+            </div>
+          ) : null}
 
           {/* Bônus corretora + imobiliária */}
           <div>

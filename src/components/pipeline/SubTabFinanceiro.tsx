@@ -12,7 +12,7 @@
 import { useState, useMemo } from "react";
 import useSWR, { mutate as mutateGlobal } from "swr";
 import { DollarSign, AlertTriangle, Award, CheckCircle2, XCircle, RefreshCw, ChevronRight } from "lucide-react";
-import BonusDrawer from "./BonusDrawer";
+import BonusDrawer, { type PlanoPagamento } from "./BonusDrawer";
 import KpiMedium from "@/components/shared/KpiMedium";
 import KpiSmall from "@/components/shared/KpiSmall";
 import { SkeletonCard } from "@/components/shared/Skeleton";
@@ -97,7 +97,7 @@ function isImobiliaria(nome: string): boolean {
   return NOMES_IMOBILIARIA.some((n) => upper.includes(n));
 }
 
-interface CrmContratosRespMin { contratos?: { loteId: string; valor: number; cliente: string; corretor?: { nome: string }; clienteTelefone?: string; cancelado?: boolean; status?: string; statusOriginal?: string }[] }
+interface CrmContratosRespMin { contratos?: { loteId: string; valor: number; cliente: string; corretor?: { nome: string }; clienteTelefone?: string; cancelado?: boolean; status?: string; statusOriginal?: string; planoPagamento?: PlanoPagamento }[] }
 
 export default function SubTabFinanceiro() {
   const { data: financ, isLoading: lF } = useSWR<FinancResp>("/api/uau/financeiro");
@@ -139,6 +139,8 @@ export default function SubTabFinanceiro() {
 
   const va = financ?.valoresAgregados;
   const bs = bonus?.summary;
+  const planoPorLote = new Map<string, PlanoPagamento>();
+  for (const c of crm?.contratos || []) if (c.planoPagamento) planoPorLote.set(c.loteId, c.planoPagamento);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
@@ -336,14 +338,14 @@ export default function SubTabFinanceiro() {
         )}
 
         {/* Lista de bônus a pagar */}
-        <BonusList bonus={bonus?.bonus || []} />
+        <BonusList bonus={bonus?.bonus || []} planoPorLote={planoPorLote} />
       </section>
     </div>
   );
 }
 
 // ── Componente da lista de bônus ──────────────────────────────────────────
-function BonusList({ bonus }: { bonus: BonusItem[] }) {
+function BonusList({ bonus, planoPorLote }: { bonus: BonusItem[]; planoPorLote: Map<string, PlanoPagamento> }) {
   const [updatingChave, setUpdatingChave] = useState<string | null>(null);
   const [drawerBonus, setDrawerBonus] = useState<BonusItem | null>(null);
 
@@ -408,7 +410,7 @@ function BonusList({ bonus }: { bonus: BonusItem[] }) {
       <Grupo titulo="🟢 A PAGAR" cor="#10b981" itens={agrupados.aPagar} ativo updatingChave={updatingChave} onMarcar={marcar} onLiberar={liberarManual} onAbrir={setDrawerBonus} />
       <Grupo titulo="🔵 AGUARDANDO ENTRADA" cor="#4285f4" itens={agrupados.aguardando} colapsado updatingChave={updatingChave} onMarcar={marcar} onLiberar={liberarManual} onAbrir={setDrawerBonus} />
       <Grupo titulo="⚪ JÁ PAGO" cor="#6b7280" itens={agrupados.pagos} colapsado updatingChave={updatingChave} onMarcar={marcar} onLiberar={liberarManual} onAbrir={setDrawerBonus} />
-      <BonusDrawer bonus={drawerBonus} onClose={() => setDrawerBonus(null)} />
+      <BonusDrawer bonus={drawerBonus} plano={drawerBonus ? planoPorLote.get(drawerBonus.loteId) : undefined} onClose={() => setDrawerBonus(null)} />
     </div>
   );
 }
