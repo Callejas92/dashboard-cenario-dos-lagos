@@ -86,14 +86,20 @@ async function aplicarCores(token: string, wsPath: string, values: unknown[][], 
     }
     push();
   }
-  // 2) Aplica em PARALELO (sequencial estourava o limite de 60s do gateway).
+  // 2) Aplica em PARALELO (sequencial estourava 60s) + retry sequencial das que falham
+  //    (escritas concorrentes no mesmo workbook às vezes dão conflito).
   let okc = 0;
-  const conc = 6;
+  const conc = 5;
+  const falhas: { addr: string; color: string }[] = [];
+  const fill = (o: { addr: string; color: string }) =>
+    graph(token, `${wsPath}/range(address='${o.addr}')/format/fill`, { method: "PATCH", body: JSON.stringify({ color: o.color }) });
   for (let i = 0; i < ops.length; i += conc) {
-    const res = await Promise.allSettled(ops.slice(i, i + conc).map((o) =>
-      graph(token, `${wsPath}/range(address='${o.addr}')/format/fill`, { method: "PATCH", body: JSON.stringify({ color: o.color }) }),
-    ));
-    okc += res.filter((r) => r.status === "fulfilled").length;
+    const batch = ops.slice(i, i + conc);
+    const res = await Promise.allSettled(batch.map(fill));
+    res.forEach((r, idx) => { if (r.status === "fulfilled") okc++; else falhas.push(batch[idx]); });
+  }
+  for (const o of falhas) {
+    try { await fill(o); okc++; } catch { /* desiste dessa faixa */ }
   }
   return `cores: ${okc}/${ops.length} faixas`;
 }
