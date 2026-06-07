@@ -69,12 +69,13 @@ export default function SubTabContratos() {
   const [busca, setBusca] = useState("");
   const [drawerContrato, setDrawerContrato] = useState<Contrato | null>(null);
 
-  // Sincroniza filtro com query string ao montar
+  // Sincroniza o filtro com a query string SÓ quando a URL muda (navegação entre links).
+  // NÃO depende de filtroEstagio: antes, ao clicar num estágio (que muda só o estado, não
+  // a URL), o effect re-rodava e revertia pro valor da URL — era o bug do "Assinado não muda".
+  const estagioParam = params.get("estagio");
   useEffect(() => {
-    if (params.get("estagio") && params.get("estagio") !== filtroEstagio) {
-      setFiltroEstagio(params.get("estagio") || "todos");
-    }
-  }, [params, filtroEstagio]);
+    setFiltroEstagio(estagioParam || "todos");
+  }, [estagioParam]);
 
   const contratosBase = useMemo(() => {
     return (data?.contratos || []).filter((c) => !c.cancelado);
