@@ -1,0 +1,155 @@
+/**
+ * Sincroniza o status de bônus no Excel "Cenário_Comercial.xlsx" (aba "🏘️ LOTES").
+ *
+ *  Coluna V = Status Corretor · Coluna X = Status Imob · casa por Quadra (A) + Lote (B).
+ *  Escreve:
+ *    - "aguardando pgt"  → entrada/sinal NÃO quitada
+ *    - "autorizado"      → entrada/sinal quitada (bônus liberado)
+ *    - preserva "pago"   → o Felipe marca manualmente; nunca sobrescrevo
+ *
+ * Só age sobre dado COMPLETO (bonus.completo). Reescreve as colunas V/X inteiras
+ * (preservando o que não muda) e só faz PATCH se algo realmente mudou.
+ * Requer OneDrive com escopo Files.ReadWrite.
+ */
+import { put } from "@vercel/blob";
+import { getAccessToken } from "@/lib/onedrive-marketing";
+import { getBonusTracking } from "@/lib/bonus";
+
+const GRAPH = "https://graph.microsoft.com/v1.0";
+const SYNC_STATE_BLOB = "cache/excel-bonus-sync.json";
+const COL_V = 21; // Status Corretor (coluna V)
+const COL_X = 23; // Status Imob (coluna X)
+const PRIMEIRA_LINHA_DADOS = 3; // 0-based → Excel linha 4 (linhas 1-3 = título/seções/cabeçalho)
+
+export interface SyncReport {
+  ok: boolean;
+  motivo?: string;
+  arquivo?: string;
+  aba?: string;
+  totalLinhas?: number;
+  casadas?: number;
+  naoEncontradas?: string[];
+  celulasAlteradas?: number;
+  preservadasPago?: number;
+  dryRun?: boolean;
+  mudou?: boolean;
+}
+
+const isPago = (v: unknown) => String(v ?? "").trim().toLowerCase() === "pago";
+
+function colLetter(idx: number): string {
+  let s = "", n = idx;
+  do { s = String.fromCharCode(65 + (n % 26)) + s; n = Math.floor(n / 26) - 1; } while (n >= 0);
+  return s;
+}
+
+async function graph(token: string, url: string, init?: RequestInit): Promise<Record<string, unknown>> {
+  const res = await fetch(url, {
+    ...init,
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json", ...(init?.headers || {}) },
+    cache: "no-store",
+  });
+  if (!res.ok) {
+    const t = await res.text().catch(() => "");
+    throw new Error(`Graph ${res.status} em ${url.split("?")[0].split("/").slice(-1)[0]}: ${t.slice(0, 180)}`);
+  }
+  return res.json();
+}
+
+async function resolveComercialFileId(token: string): Promise<string> {
+  const j = await graph(token, `${GRAPH}/me/drive/root/search(q='comercial')?$select=name,id&$top=25`);
+  const cands = ((j.value as { name: string; id: string }[]) || []).filter((f) => /\.xls/i.test(f.name));
+  const file = cands.find((f) => /comercial/i.test(f.name) && !/marketing/i.test(f.name)) || cands[0];
+  if (!file) throw new Error("Cenário_Comercial.xlsx não encontrado no OneDrive");
+  return file.id;
+}
+
+async function resolveLotesSheetName(token: string, fileId: string): Promise<string> {
+  const j = await graph(token, `${GRAPH}/me/drive/items/${fileId}/workbook/worksheets?$select=id,name`);
+  const ws = ((j.value as { name: string }[]) || []).find((w) => /lotes/i.test(w.name));
+  if (!ws) throw new Error("aba 'LOTES' não encontrada no Cenário_Comercial.xlsx");
+  return ws.name;
+}
+
+export async function syncBonusToExcel(opts: { dryRun?: boolean } = {}): Promise<SyncReport> {
+  const { dryRun = false } = opts;
+
+  const tracking = await getBonusTracking();
+  if (!tracking.completo) return { ok: false, motivo: "dado de bônus incompleto (UAU) — sync adiado" };
+
+  const porLote = new Map<string, boolean>(); // loteId → entradaQuitada
+  for (const b of tracking.bonus) porLote.set(b.loteId, b.entradaQuitada);
+
+  const token = await getAccessToken();
+  const fileId = await resolveComercialFileId(token);
+  const wsName = await resolveLotesSheetName(token, fileId);
+  const wsPath = `${GRAPH}/me/drive/items/${fileId}/workbook/worksheets('${encodeURIComponent(wsName)}')`;
+
+  const ur = await graph(token, `${wsPath}/usedRange(valuesOnly=true)?$select=values`);
+  const values = (ur.values as unknown[][]) || [];
+  const totalLinhas = values.length;
+
+  const novoV: unknown[][] = [];
+  const novoX: unknown[][] = [];
+  let casadas = 0, alteradas = 0, preservadas = 0;
+  const casadasLotes = new Set<string>();
+
+  for (let i = PRIMEIRA_LINHA_DADOS; i < totalLinhas; i++) {
+    const row = values[i] || [];
+    const quadra = String(row[0] ?? "").trim();
+    const lote = String(row[1] ?? "").trim();
+    const curV = row[COL_V] ?? "";
+    const curX = row[COL_X] ?? "";
+    let nv: unknown = curV;
+    let nx: unknown = curX;
+
+    const q = parseInt(quadra, 10);
+    const l = parseInt(lote, 10);
+    if (quadra !== "" && lote !== "" && Number.isFinite(q) && Number.isFinite(l)) {
+      const loteId = `Q${q}-L${l}`;
+      if (porLote.has(loteId)) {
+        casadas++;
+        casadasLotes.add(loteId);
+        const desejado = porLote.get(loteId) ? "autorizado" : "aguardando pgt";
+        if (isPago(curV)) { preservadas++; } else { nv = desejado; }
+        if (isPago(curX)) { preservadas++; } else { nx = desejado; }
+        if (nv !== curV) alteradas++;
+        if (nx !== curX) alteradas++;
+      }
+    }
+    novoV.push([nv]);
+    novoX.push([nx]);
+  }
+
+  const naoEncontradas: string[] = [];
+  for (const id of porLote.keys()) if (!casadasLotes.has(id)) naoEncontradas.push(id);
+
+  const mudou = alteradas > 0;
+  const report: SyncReport = {
+    ok: true,
+    arquivo: "Cenário_Comercial.xlsx",
+    aba: wsName,
+    totalLinhas,
+    casadas,
+    naoEncontradas,
+    celulasAlteradas: alteradas,
+    preservadasPago: preservadas,
+    dryRun,
+    mudou,
+  };
+
+  if (dryRun || !mudou) return report;
+
+  const primeira = PRIMEIRA_LINHA_DADOS + 1; // Excel 1-based
+  const ultima = totalLinhas;                // Excel 1-based (usedRange começa em A1)
+  const addrV = `${colLetter(COL_V)}${primeira}:${colLetter(COL_V)}${ultima}`;
+  const addrX = `${colLetter(COL_X)}${primeira}:${colLetter(COL_X)}${ultima}`;
+  await graph(token, `${wsPath}/range(address='${addrV}')`, { method: "PATCH", body: JSON.stringify({ values: novoV }) });
+  await graph(token, `${wsPath}/range(address='${addrX}')`, { method: "PATCH", body: JSON.stringify({ values: novoX }) });
+
+  await put(SYNC_STATE_BLOB, JSON.stringify({ syncedAt: new Date().toISOString(), celulasAlteradas: alteradas }), {
+    access: "public", addRandomSuffix: false, allowOverwrite: true, contentType: "application/json",
+  }).catch(() => {});
+
+  return report;
+}
