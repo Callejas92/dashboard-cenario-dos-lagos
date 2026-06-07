@@ -410,7 +410,7 @@ function BonusList({ bonus, planoPorLote }: { bonus: BonusItem[]; planoPorLote: 
       <Grupo titulo="🟢 A PAGAR" cor="#10b981" itens={agrupados.aPagar} ativo updatingChave={updatingChave} onMarcar={marcar} onLiberar={liberarManual} onAbrir={setDrawerBonus} />
       <Grupo titulo="🔵 AGUARDANDO ENTRADA" cor="#4285f4" itens={agrupados.aguardando} colapsado updatingChave={updatingChave} onMarcar={marcar} onLiberar={liberarManual} onAbrir={setDrawerBonus} />
       <Grupo titulo="⚪ JÁ PAGO" cor="#6b7280" itens={agrupados.pagos} colapsado updatingChave={updatingChave} onMarcar={marcar} onLiberar={liberarManual} onAbrir={setDrawerBonus} />
-      <BonusDrawer bonus={drawerBonus} plano={drawerBonus ? planoPorLote.get(drawerBonus.loteId) : undefined} onClose={() => setDrawerBonus(null)} />
+      {drawerBonus ? <BonusDrawer bonus={drawerBonus} plano={planoPorLote.get(drawerBonus.loteId)} onClose={() => setDrawerBonus(null)} /> : null}
     </div>
   );
 }

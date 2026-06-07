@@ -6,6 +6,7 @@
  * Click no fundo ou ESC fecha. Mesmo visual do ContratoDrawer.
  */
 import { useEffect } from "react";
+import useSWR from "swr";
 import { X, Award, CheckCircle2, Clock } from "lucide-react";
 import { formatBRL, formatData } from "@/lib/utils/formatters";
 
@@ -55,12 +56,19 @@ export interface PlanoPagamento {
   total: number;
 }
 
+interface UauVendasResp { vendas?: { identificadorUnidade: string; valorRecebido: number }[] }
+interface FinancParcelasResp { parcelasAReceber?: { identificadorUnidade: string; valor: number; dataVencimento: string }[] }
+
 export default function BonusDrawer({ bonus, plano, onClose }: { bonus: BonusItemDrawer | null; plano?: PlanoPagamento; onClose: () => void }) {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
+
+  // ERP UAU (lento): valor recebido + cronograma p/ projetar quando o pago chega a 7,5%.
+  const { data: uauVendas } = useSWR<UauVendasResp>("/api/uau/vendas");
+  const { data: financ } = useSWR<FinancParcelasResp>("/api/uau/financeiro");
 
   if (!bonus) return null;
 
@@ -72,6 +80,23 @@ export default function BonusDrawer({ bonus, plano, onClose }: { bonus: BonusIte
 
   const cardStyle = { background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "0.5rem", padding: "0.6rem 0.9rem" } as const;
   const tituloSecao = { fontSize: "0.7rem", color: "var(--text-dim)", fontWeight: 700 as const, textTransform: "uppercase" as const, letterSpacing: "0.05em", marginBottom: "0.4rem" };
+
+  // ── Meta 7,5%: quando o pago chega a 7,5% do contrato (referência p/ liberar o bônus) ──
+  const valorRecebido = (uauVendas?.vendas || []).find((v) => v.identificadorUnidade === bonus.loteId)?.valorRecebido;
+  const pago = valorRecebido ?? bonus.entradaValorPago;
+  const meta75 = 0.075 * bonus.valorContratado;
+  const pct = bonus.valorContratado > 0 ? (pago / bonus.valorContratado) * 100 : 0;
+  const atingiu75 = pago >= meta75;
+  const uauPronto = !!uauVendas && !!financ;
+  let dataMeta: string | null = null;
+  if (!atingiu75 && financ) {
+    const parc = (financ.parcelasAReceber || [])
+      .filter((p) => p.identificadorUnidade === bonus.loteId)
+      .slice()
+      .sort((a, b) => (a.dataVencimento < b.dataVencimento ? -1 : 1));
+    let run = pago;
+    for (const p of parc) { run += p.valor; if (run >= meta75) { dataMeta = p.dataVencimento; break; } }
+  }
 
   return (
     <>
@@ -158,13 +183,45 @@ export default function BonusDrawer({ bonus, plano, onClose }: { bonus: BonusIte
                   </div>
                 ) : null}
               </div>
-              {plano.sinal > 0 && bonus.valorTotal > plano.sinal ? (
-                <div style={{ marginTop: "0.4rem", padding: "0.5rem 0.7rem", background: "#dc262615", border: "1px solid #dc262640", borderRadius: "0.4rem", fontSize: "0.72rem", color: "#dc2626", lineHeight: 1.4 }}>
-                  ⚠ Bônus de {formatBRL(bonus.valorTotal)} é <strong>maior que a entrada/sinal</strong> de {formatBRL(plano.sinal)} — avalie antes de pagar.
-                </div>
-              ) : null}
             </div>
           ) : null}
+
+          {/* Meta 7,5% pago — referência pra liberar o bônus */}
+          <div>
+            <div style={tituloSecao}>Pra liberar o bônus (meta 7,5% pago)</div>
+            {uauPronto ? (
+              <>
+                <div style={cardStyle}>
+                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.8rem", padding: "0.15rem 0" }}>
+                    <span style={{ color: "var(--text-muted)" }}>Pago até agora</span>
+                    <span style={{ color: "var(--text)", fontWeight: 600 }}>{formatBRL(pago)} ({pct.toFixed(1)}%)</span>
+                  </div>
+                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.8rem", padding: "0.15rem 0" }}>
+                    <span style={{ color: "var(--text-muted)" }}>Meta 7,5%</span>
+                    <span style={{ color: "var(--text)", fontWeight: 600 }}>{formatBRL(meta75)}</span>
+                  </div>
+                  <div style={{ fontSize: "0.8rem", fontWeight: 600, marginTop: "0.3rem", color: atingiu75 ? "#10b981" : "#f59e0b", display: "flex", alignItems: "center", gap: "0.3rem" }}>
+                    {atingiu75 ? (
+                      <><CheckCircle2 size={13} /> Já passou de 7,5% — ok pra pagar</>
+                    ) : dataMeta ? (
+                      <><Clock size={13} /> Chega a 7,5% por volta de {formatData(dataMeta)}</>
+                    ) : (
+                      <><Clock size={13} /> Sem cronograma no UAU pra projetar</>
+                    )}
+                  </div>
+                </div>
+                {!atingiu75 ? (
+                  <div style={{ marginTop: "0.4rem", padding: "0.5rem 0.7rem", background: "#dc262615", border: "1px solid #dc262640", borderRadius: "0.4rem", fontSize: "0.72rem", color: "#dc2626", lineHeight: 1.4 }}>
+                    ⚠ Pago {pct.toFixed(1)}% — ainda <strong>abaixo de 7,5%</strong>. Avalie antes de pagar o bônus de {formatBRL(bonus.valorTotal)}.
+                  </div>
+                ) : null}
+              </>
+            ) : (
+              <div style={{ ...cardStyle, fontSize: "0.78rem", color: "var(--text-dim)", fontStyle: "italic" }}>
+                calculando pelas próximas parcelas… (ERP UAU, pode levar ~40s)
+              </div>
+            )}
+          </div>
 
           {/* Bônus corretora + imobiliária */}
           <div>
