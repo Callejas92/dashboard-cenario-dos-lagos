@@ -8,7 +8,8 @@
  *  - Sem corretor identificado → status "revisar" (flag amarela, decisão manual)
  *  - Cancelamento pós-pagamento → mantém histórico (status "cancelado_pago")
  */
-import { list, put } from "@vercel/blob";
+import { list, put, del } from "@vercel/blob";
+import { after } from "next/server";
 import { getContratosEggs, type ContratoEnriquecido } from "@/lib/eggs-contratos";
 import { authenticate, isUauConfigured, uauFetch } from "@/lib/uau-auth";
 import investorData from "@/data/investor-lots.json";
@@ -20,6 +21,7 @@ export const BONUS_IMOBILIARIA = 1000;
 export const BONUS_TOTAL_POR_VENDA = BONUS_CORRETORA + BONUS_IMOBILIARIA;
 
 const PAGAMENTOS_BLOB = "bonus-payments.json";
+const TRACKING_BLOB = "cache/bonus-tracking.json"; // último resultado COMPLETO (compartilhado entre instâncias)
 
 export type BonusStatus =
   | "aguardando_entrada"   // Es ainda em aberto
@@ -123,8 +125,9 @@ async function savePagamentos(pagamentos: Record<string, BonusPagamento>) {
     addRandomSuffix: false,
     contentType: "application/json",
   });
-  // Invalida cache
+  // Invalida cache (memória + blob) — marcar pago/isento deve refletir na hora
   cache = null;
+  await invalidateTrackingBlob();
 }
 
 export async function setBonusPagamento(
@@ -264,9 +267,8 @@ function classifyStatus(
   return "a_pagar";
 }
 
-export async function getBonusTracking(): Promise<BonusResponse> {
-  if (cache && Date.now() - cache.timestamp < CACHE_TTL) return cache.data;
-
+// Compute pesado (Eggs + UAU). NÃO mexe em cache — o wrapper getBonusTracking cuida disso.
+async function computeBonusTracking(): Promise<BonusResponse> {
   const [contratos, pagamentos] = await Promise.all([
     getContratosEggs(),
     loadPagamentos(),
@@ -394,13 +396,80 @@ export async function getBonusTracking(): Promise<BonusResponse> {
     fetchedAt: new Date().toISOString(),
   };
 
-  // Só cacheia resultado COMPLETO — um parcial (UAU derrubou chamadas) recomputa na próxima.
-  if (completo) cache = { data: response, timestamp: Date.now() };
   return response;
+}
+
+// ── Persistência compartilhada via Blob (sobrevive entre instâncias serverless) ─────
+async function readTrackingBlob(): Promise<{ savedAt: number; data: BonusResponse } | null> {
+  try {
+    const { blobs } = await list({ prefix: TRACKING_BLOB });
+    const hit = blobs.find((b) => b.pathname === TRACKING_BLOB) ?? blobs[0];
+    if (!hit) return null;
+    const res = await fetch(hit.url, { cache: "no-store" });
+    if (!res.ok) return null;
+    return (await res.json()) as { savedAt: number; data: BonusResponse };
+  } catch {
+    return null;
+  }
+}
+
+async function writeTrackingBlob(data: BonusResponse): Promise<void> {
+  await put(TRACKING_BLOB, JSON.stringify({ savedAt: Date.now(), data }), {
+    access: "public", addRandomSuffix: false, allowOverwrite: true, contentType: "application/json",
+  }).catch((err) => console.warn("bonus: falha ao salvar tracking no blob:", err));
+}
+
+async function invalidateTrackingBlob(): Promise<void> {
+  try {
+    const { blobs } = await list({ prefix: TRACKING_BLOB });
+    if (blobs.length) await del(blobs.map((b) => b.url));
+  } catch {
+    /* ignora — pior caso o dado fica stale até o TTL */
+  }
+}
+
+/**
+ * Tracking de bônus com cache em 2 camadas:
+ *  1. memória (mesma instância, 5 min)
+ *  2. Blob compartilhado (stale-while-revalidate) — serve o último COMPLETO na hora a
+ *     QUALQUER instância e revalida em background. Só persiste resultados completos
+ *     (um parcial do UAU nunca vira "verdade" pro badge/Excel).
+ */
+export async function getBonusTracking(): Promise<BonusResponse> {
+  if (cache && Date.now() - cache.timestamp < CACHE_TTL) return cache.data;
+
+  const blob = await readTrackingBlob();
+  if (blob?.data?.bonus) {
+    cache = { data: blob.data, timestamp: blob.savedAt };
+    if (Date.now() - blob.savedAt >= CACHE_TTL) {
+      const revalidar = async () => {
+        try {
+          const fresh = await computeBonusTracking();
+          if (fresh.completo) {
+            cache = { data: fresh, timestamp: Date.now() };
+            await writeTrackingBlob(fresh);
+          }
+        } catch (err) {
+          console.warn("bonus: revalidação em background falhou:", err);
+        }
+      };
+      try { after(revalidar); } catch { /* fora de contexto de request: ignora */ }
+    }
+    return blob.data;
+  }
+
+  // Sem nada (memória nem blob): computa agora — único caminho que bloqueia.
+  const fresh = await computeBonusTracking();
+  if (fresh.completo) {
+    cache = { data: fresh, timestamp: Date.now() };
+    await writeTrackingBlob(fresh);
+  }
+  return fresh;
 }
 
 export function clearBonusCache() {
   cache = null;
+  void invalidateTrackingBlob();
 }
 
 /**
