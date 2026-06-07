@@ -48,7 +48,7 @@ export default function LayoutV2({ children }: { children: ReactNode }) {
   // Estoque/Pipeline, o cache do servidor (10min) já estará quente.
   useEffect(() => {
     if (!authenticated) return;
-    const warmUrls = ["/api/uau", "/api/uau/vendas", "/api/uau/financeiro", "/api/bonus"];
+    const warmUrls = ["/api/uau", "/api/uau/vendas", "/api/uau/financeiro"];
     for (const url of warmUrls) {
       // keepalive + no-await: dispara e esquece, não bloqueia a UI
       fetch(url, { keepalive: true }).catch(() => { /* silencioso */ });

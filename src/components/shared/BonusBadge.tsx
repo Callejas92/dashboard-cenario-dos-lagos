@@ -11,12 +11,15 @@ import { Award } from "lucide-react";
 
 interface BonusResp {
   summary?: { qtdAPagar?: number };
+  completo?: boolean;
 }
 
 export default function BonusBadge() {
   const router = useRouter();
   const { data } = useSWR<BonusResp>("/api/bonus");
-  const qtd = data?.summary?.qtdAPagar ?? 0;
+  // Só mostra com dado COMPLETO. Se a consulta ao UAU veio parcial (completo=false),
+  // o nº pode estar subcontado — melhor esconder do que mostrar errado.
+  const qtd = data?.completo ? (data.summary?.qtdAPagar ?? 0) : 0;
 
   if (qtd <= 0) return null;
 
