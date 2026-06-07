@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
 
 // Azure App Registration - configurar no portal.azure.com
-const CLIENT_ID = process.env.ONEDRIVE_CLIENT_ID || "";
-const REDIRECT_URI = process.env.ONEDRIVE_REDIRECT_URI || "";
+// .trim() remove \n acidental no env (senão o client_id vai com %0A e o Azure rejeita)
+const CLIENT_ID = (process.env.ONEDRIVE_CLIENT_ID || "").trim();
+const REDIRECT_URI = (process.env.ONEDRIVE_REDIRECT_URI || "").trim();
 
 // Scopes: leitura + ESCRITA (pra marcar status de bônus no Cenário_Comercial.xlsx)
 const SCOPES = "Files.ReadWrite Files.ReadWrite.All offline_access";

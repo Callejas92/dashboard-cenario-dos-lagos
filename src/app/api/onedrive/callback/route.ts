@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { put } from "@vercel/blob";
 
-const CLIENT_ID = process.env.ONEDRIVE_CLIENT_ID || "";
-const CLIENT_SECRET = process.env.ONEDRIVE_CLIENT_SECRET || "";
-const REDIRECT_URI = process.env.ONEDRIVE_REDIRECT_URI || "";
+const CLIENT_ID = (process.env.ONEDRIVE_CLIENT_ID || "").trim();
+const CLIENT_SECRET = (process.env.ONEDRIVE_CLIENT_SECRET || "").trim();
+const REDIRECT_URI = (process.env.ONEDRIVE_REDIRECT_URI || "").trim();
 
 const TOKEN_BLOB_NAME = "onedrive-token.json";
 

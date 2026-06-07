@@ -487,8 +487,8 @@ function parseWorkbook(workbook: XLSX.WorkBook): MarketingData {
 
 // ── OneDrive Graph API ─────────────────────────────────────────────────────
 async function getAccessToken(): Promise<string> {
-  const CLIENT_ID = process.env.ONEDRIVE_CLIENT_ID || "";
-  const CLIENT_SECRET = process.env.ONEDRIVE_CLIENT_SECRET || "";
+  const CLIENT_ID = (process.env.ONEDRIVE_CLIENT_ID || "").trim();
+  const CLIENT_SECRET = (process.env.ONEDRIVE_CLIENT_SECRET || "").trim();
   if (!CLIENT_ID || !CLIENT_SECRET) {
     throw new Error("ONEDRIVE_CLIENT_ID e ONEDRIVE_CLIENT_SECRET não configurados");
   }
