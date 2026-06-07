@@ -14,6 +14,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { BarChart3, FileText, Megaphone, Settings, Sun, Moon } from "lucide-react";
 import LoginScreen from "@/components/LoginScreen";
 import SwrProvider from "./SwrProvider";
+import BonusBadge from "./BonusBadge";
 
 const TABS = [
   { href: "/panorama", label: "Panorama", icon: BarChart3 },
@@ -47,7 +48,7 @@ export default function LayoutV2({ children }: { children: ReactNode }) {
   // Estoque/Pipeline, o cache do servidor (10min) já estará quente.
   useEffect(() => {
     if (!authenticated) return;
-    const warmUrls = ["/api/uau", "/api/uau/vendas", "/api/uau/financeiro"];
+    const warmUrls = ["/api/uau", "/api/uau/vendas", "/api/uau/financeiro", "/api/bonus"];
     for (const url of warmUrls) {
       // keepalive + no-await: dispara e esquece, não bloqueia a UI
       fetch(url, { keepalive: true }).catch(() => { /* silencioso */ });
@@ -142,7 +143,8 @@ export default function LayoutV2({ children }: { children: ReactNode }) {
               })}
             </nav>
 
-            <div style={{ display: "flex", gap: "0.25rem" }}>
+            <div style={{ display: "flex", gap: "0.4rem", alignItems: "center" }}>
+              <BonusBadge />
               <button
                 onClick={() => router.push("/admin")}
                 style={{

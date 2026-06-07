@@ -95,6 +95,7 @@ export interface BonusSummary {
 export interface BonusResponse {
   bonus: BonusEntry[];
   summary: BonusSummary;
+  completo: boolean;   // false = alguma consulta de entrada ao UAU falhou (dado parcial — não confiar p/ aviso/Excel)
   fetchedAt: string;
 }
 
@@ -150,9 +151,9 @@ interface EntradaStatus {
   quitada: boolean;
 }
 
-async function getEntradasStatus(loteIds: string[]): Promise<Map<string, EntradaStatus>> {
+async function getEntradasStatus(loteIds: string[]): Promise<{ map: Map<string, EntradaStatus>; completo: boolean }> {
   const map = new Map<string, EntradaStatus>();
-  if (!isUauConfigured() || loteIds.length === 0) return map;
+  if (!isUauConfigured() || loteIds.length === 0) return { map, completo: true };
 
   try {
     const token = await authenticate();
@@ -169,6 +170,8 @@ async function getEntradasStatus(loteIds: string[]): Promise<Map<string, Entrada
     const rows = Array.isArray(espelhoRaw) && (espelhoRaw[0] as { MyTable?: unknown[] })?.MyTable
       ? ((espelhoRaw[0] as { MyTable: unknown[] }).MyTable as Record<string, unknown>[]).slice(1)
       : [];
+    // Espelho vazio/falhou → não dá pra confiar (todas cairiam no default "não pago").
+    if (rows.length === 0) return { map, completo: false };
 
     const loteParaVenda = new Map<string, { numVen: number; obra: string; empresa: number }>();
     const loteSet = new Set(loteIds);
@@ -184,50 +187,61 @@ async function getEntradasStatus(loteIds: string[]): Promise<Map<string, Entrada
       });
     }
 
-    // Batch fetch ConsultarResumoVenda pra cada venda
-    const vendasComNum = Array.from(loteParaVenda.entries());
+    // Consulta o resumo de UMA venda e popula o map. Lança em falha (pra ser re-tentada).
+    const fetchOne = async (
+      [loteId, v]: [string, { numVen: number; obra: string; empresa: number }],
+      timeout: number,
+    ): Promise<void> => {
+      const raw = await uauFetch(token, "Venda/ConsultarResumoVenda", {
+        codigoObra: v.obra, codigoEmpresa: v.empresa, numeroVenda: v.numVen,
+      }, timeout);
+      const data = Array.isArray(raw) ? raw[0] : raw;
+      const ptipo = (data as { parcelasportipo?: { tipoParcela?: string; quantidadeParcelaAPagar?: number; quantidadeParcelaPaga?: number; totalParcelaAPagar?: number; totalParcelaPaga?: number }[] })?.parcelasportipo;
+      if (!Array.isArray(ptipo)) throw new Error("resumo sem parcelasportipo");
+      // ENTRADA = Entrada (E) + Sinal (S). Felipe: "sinal e entrada valem a mesma coisa".
+      // Bônus libera quando TODAS as parcelas E e S estiverem quitadas.
+      const entradaTipos = ptipo.filter((p) => p.tipoParcela === "E" || p.tipoParcela === "S");
+      if (entradaTipos.length === 0) {
+        // Sem parcelas E nem S (venda à vista, ou tabela sem entrada) — quitada por default.
+        map.set(loteId, { qtdTotal: 0, qtdPaga: 0, valorTotal: 0, valorPago: 0, quitada: true });
+        return;
+      }
+      const qtdAPagar = entradaTipos.reduce((s, p) => s + (Number(p.quantidadeParcelaAPagar) || 0), 0);
+      const qtdPaga = entradaTipos.reduce((s, p) => s + (Number(p.quantidadeParcelaPaga) || 0), 0);
+      const valorAPagar = entradaTipos.reduce((s, p) => s + (Number(p.totalParcelaAPagar) || 0), 0);
+      const valorPago = entradaTipos.reduce((s, p) => s + (Number(p.totalParcelaPaga) || 0), 0);
+      map.set(loteId, {
+        qtdTotal: qtdAPagar + qtdPaga,
+        qtdPaga,
+        valorTotal: valorAPagar + valorPago,
+        valorPago,
+        quitada: qtdAPagar === 0,
+      });
+    };
+
+    // Resolve todas; RE-TENTA as que estouraram timeout/erro até 3 rodadas (UAU frio derruba algumas).
+    // Sem isso, uma chamada que falha cai no default "não pago" e subconta os bônus "a pagar".
+    let pendentes = Array.from(loteParaVenda.entries());
     const conc = 10;
-    for (let i = 0; i < vendasComNum.length; i += conc) {
-      const batch = vendasComNum.slice(i, i + conc);
-      const results = await Promise.allSettled(
-        batch.map(async ([loteId, v]) => {
-          const res = await uauFetch(token, "Venda/ConsultarResumoVenda", {
-            codigoObra: v.obra, codigoEmpresa: v.empresa, numeroVenda: v.numVen,
-          }, 10000);
-          return { loteId, raw: res };
-        })
-      );
-      for (const r of results) {
-        if (r.status !== "fulfilled") continue;
-        const { loteId, raw } = r.value;
-        const data = Array.isArray(raw) ? raw[0] : raw;
-        const ptipo = (data as { parcelasportipo?: { tipoParcela?: string; quantidadeParcelaAPagar?: number; quantidadeParcelaPaga?: number; totalParcelaAPagar?: number; totalParcelaPaga?: number }[] })?.parcelasportipo;
-        if (!Array.isArray(ptipo)) continue;
-        // ENTRADA = Entrada (E) + Sinal (S). Felipe: "sinal e entrada valem a mesma coisa".
-        // Bônus libera quando TODAS as parcelas E e S estiverem quitadas.
-        const entradaTipos = ptipo.filter((p) => p.tipoParcela === "E" || p.tipoParcela === "S");
-        if (entradaTipos.length === 0) {
-          // Sem parcelas E nem S (venda à vista, ou tabela sem entrada) — quitada por default.
-          map.set(loteId, { qtdTotal: 0, qtdPaga: 0, valorTotal: 0, valorPago: 0, quitada: true });
-          continue;
-        }
-        const qtdAPagar = entradaTipos.reduce((s, p) => s + (Number(p.quantidadeParcelaAPagar) || 0), 0);
-        const qtdPaga = entradaTipos.reduce((s, p) => s + (Number(p.quantidadeParcelaPaga) || 0), 0);
-        const valorAPagar = entradaTipos.reduce((s, p) => s + (Number(p.totalParcelaAPagar) || 0), 0);
-        const valorPago = entradaTipos.reduce((s, p) => s + (Number(p.totalParcelaPaga) || 0), 0);
-        map.set(loteId, {
-          qtdTotal: qtdAPagar + qtdPaga,
-          qtdPaga,
-          valorTotal: valorAPagar + valorPago,
-          valorPago,
-          quitada: qtdAPagar === 0,
+    for (let tentativa = 0; tentativa < 3 && pendentes.length > 0; tentativa++) {
+      const timeout = tentativa === 0 ? 10000 : 15000;
+      const falhou: typeof pendentes = [];
+      for (let i = 0; i < pendentes.length; i += conc) {
+        const batch = pendentes.slice(i, i + conc);
+        const results = await Promise.allSettled(batch.map((e) => fetchOne(e, timeout)));
+        results.forEach((r, idx) => {
+          if (r.status === "rejected") falhou.push(batch[idx]);
         });
       }
+      pendentes = falhou;
     }
+
+    // completo = Espelho ok E todas as vendas com numVen resolvidas (mesmo após retries).
+    return { map, completo: pendentes.length === 0 };
   } catch (e) {
     console.error("Erro pegando entradas status:", e);
+    return { map, completo: false };
   }
-  return map;
 }
 
 // ── Orquestração principal ─────────────────────────────────────────────────
@@ -277,9 +291,9 @@ export async function getBonusTracking(): Promise<BonusResponse> {
     return true;
   });
 
-  // Pega status das entradas em batch
+  // Pega status das entradas em batch (com retry; completo=false se alguma chamada falhou)
   const loteIds = contratosValidos.map((c) => c.loteId);
-  const entradasMap = await getEntradasStatus(loteIds);
+  const { map: entradasMap, completo } = await getEntradasStatus(loteIds);
 
   const bonus: BonusEntry[] = contratosValidos.map((c) => {
     const chaveVenda = `${c.id}-${c.loteId}`;
@@ -376,10 +390,12 @@ export async function getBonusTracking(): Promise<BonusResponse> {
       return a.loteId.localeCompare(b.loteId);
     }),
     summary: sum,
+    completo,
     fetchedAt: new Date().toISOString(),
   };
 
-  cache = { data: response, timestamp: Date.now() };
+  // Só cacheia resultado COMPLETO — um parcial (UAU derrubou chamadas) recomputa na próxima.
+  if (completo) cache = { data: response, timestamp: Date.now() };
   return response;
 }
 
