@@ -33,6 +33,7 @@ export interface SyncReport {
   preservadasPago?: number;
   dryRun?: boolean;
   mudou?: boolean;
+  destaque?: string; // status da formatação condicional (âmbar/verde)
 }
 
 const isPago = (v: unknown) => String(v ?? "").trim().toLowerCase() === "pago";
@@ -54,6 +55,32 @@ async function graph(token: string, url: string, init?: RequestInit): Promise<Re
     throw new Error(`Graph ${res.status} em ${url.split("?")[0].split("/").slice(-1)[0]}: ${t.slice(0, 180)}`);
   }
   return res.json();
+}
+
+// Destaque (formatação condicional): âmbar p/ "aguardando", verde p/ "autorizado".
+// Idempotente: não duplica se a regra já existe. Erro aqui NÃO quebra a escrita de valores.
+async function aplicarDestaque(token: string, wsPath: string): Promise<string> {
+  const regras = [
+    { texto: "aguardando", fill: "#FBBF24", font: "#7C2D12" }, // âmbar (chama atenção)
+    { texto: "autorizado", fill: "#86EFAC", font: "#14532D" }, // verde (ok)
+  ];
+  for (const col of ["V", "X"]) {
+    const cfUrl = `${wsPath}/range(address='${col}4:${col}1000')/conditionalFormats`;
+    const existing = await graph(token, cfUrl);
+    if (Array.isArray(existing.value) && existing.value.length > 0) continue; // já tem regra
+    for (const r of regras) {
+      await graph(token, cfUrl, {
+        method: "POST",
+        body: JSON.stringify({
+          containsText: {
+            format: { fill: { color: r.fill }, font: { color: r.font, bold: true } },
+            rule: { operator: "Contains", text: r.texto },
+          },
+        }),
+      });
+    }
+  }
+  return "aplicado";
 }
 
 async function resolveComercialFileId(token: string): Promise<string> {
@@ -161,6 +188,13 @@ export async function syncBonusToExcel(opts: { dryRun?: boolean; force?: boolean
     const addrX = `${colLetter(COL_X)}${primeira}:${colLetter(COL_X)}${ultima}`;
     await graph(token, `${wsPath}/range(address='${addrV}')`, { method: "PATCH", body: JSON.stringify({ values: novoV }) });
     await graph(token, `${wsPath}/range(address='${addrX}')`, { method: "PATCH", body: JSON.stringify({ values: novoX }) });
+  }
+
+  // Destaque visual (âmbar "aguardando" / verde "autorizado"). Idempotente; não quebra o sync.
+  try {
+    report.destaque = await aplicarDestaque(token, wsPath);
+  } catch (e) {
+    report.destaque = "erro: " + (e instanceof Error ? e.message : String(e));
   }
 
   // Marca o horário do sync (mesmo sem mudança) p/ o throttle do caminho automático.
