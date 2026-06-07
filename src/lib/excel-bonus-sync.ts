@@ -62,17 +62,13 @@ async function graph(token: string, url: string, init?: RequestInit): Promise<Re
 // faixas (menos chamadas). Preserva "pago" (não recolore). Erro aqui NÃO quebra a escrita.
 async function aplicarCores(token: string, wsPath: string, values: unknown[][], porLote: Map<string, boolean>): Promise<string> {
   const AMBAR = "#FBBF24", VERDE = "#86EFAC";
-  let faixas = 0;
+  // 1) Monta as faixas (linhas consecutivas de mesma cor) — sem chamadas ainda.
+  const ops: { addr: string; color: string }[] = [];
   for (const col of ["V", "X"] as const) {
     const colIdx = col === "V" ? COL_V : COL_X;
     let start = -1, end = -1, cor = "";
-    const flush = async () => {
-      if (start >= 0) {
-        await graph(token, `${wsPath}/range(address='${col}${start}:${col}${end}')/format/fill`, {
-          method: "PATCH", body: JSON.stringify({ color: cor }),
-        });
-        faixas++;
-      }
+    const push = () => {
+      if (start >= 0) ops.push({ addr: `${col}${start}:${col}${end}`, color: cor });
       start = -1; end = -1; cor = "";
     };
     for (let i = PRIMEIRA_LINHA_DADOS; i < values.length; i++) {
@@ -85,16 +81,21 @@ async function aplicarCores(token: string, wsPath: string, values: unknown[][], 
         const cur = String(row[colIdx] ?? "").trim().toLowerCase();
         if (cur !== "pago") desejada = porLote.get(`Q${q}-L${l}`) ? VERDE : AMBAR;
       }
-      if (desejada && desejada === cor) {
-        end = excelRow; // estende a faixa atual
-      } else {
-        await flush();
-        if (desejada) { start = excelRow; end = excelRow; cor = desejada; }
-      }
+      if (desejada && desejada === cor) { end = excelRow; }
+      else { push(); if (desejada) { start = excelRow; end = excelRow; cor = desejada; } }
     }
-    await flush();
+    push();
   }
-  return `cores aplicadas (${faixas} faixas)`;
+  // 2) Aplica em PARALELO (sequencial estourava o limite de 60s do gateway).
+  let okc = 0;
+  const conc = 6;
+  for (let i = 0; i < ops.length; i += conc) {
+    const res = await Promise.allSettled(ops.slice(i, i + conc).map((o) =>
+      graph(token, `${wsPath}/range(address='${o.addr}')/format/fill`, { method: "PATCH", body: JSON.stringify({ color: o.color }) }),
+    ));
+    okc += res.filter((r) => r.status === "fulfilled").length;
+  }
+  return `cores: ${okc}/${ops.length} faixas`;
 }
 
 async function resolveComercialFileId(token: string): Promise<string> {
