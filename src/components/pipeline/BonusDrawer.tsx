@@ -141,14 +141,14 @@ export default function BonusDrawer({ bonus, plano, onClose }: { bonus: BonusIte
                 ) : null}
                 {plano.parcelasQtd > 0 ? (
                   <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.8rem", padding: "0.15rem 0" }}>
-                    <span style={{ color: "var(--text-muted)" }}>Parcelas · {plano.parcelasQtd}× {formatBRL(plano.parcelasValor)}</span>
-                    <span style={{ color: "var(--text)", fontWeight: 600 }}>{formatBRL(plano.parcelasQtd * plano.parcelasValor)}</span>
+                    <span style={{ color: "var(--text-muted)" }}>Parcelas · {plano.parcelasQtd}×</span>
+                    <span style={{ color: "var(--text)", fontWeight: 600 }}>{formatBRL(plano.parcelasValor)}</span>
                   </div>
                 ) : null}
                 {plano.balaoQtd > 0 ? (
                   <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.8rem", padding: "0.15rem 0" }}>
-                    <span style={{ color: "var(--text-muted)" }}>Balão · {plano.balaoQtd}× {formatBRL(plano.balaoValor)}</span>
-                    <span style={{ color: "var(--text)", fontWeight: 600 }}>{formatBRL(plano.balaoQtd * plano.balaoValor)}</span>
+                    <span style={{ color: "var(--text-muted)" }}>Balão · {plano.balaoQtd}×</span>
+                    <span style={{ color: "var(--text)", fontWeight: 600 }}>{formatBRL(plano.balaoValor)}</span>
                   </div>
                 ) : null}
                 {plano.outros > 0 ? (
