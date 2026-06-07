@@ -192,12 +192,12 @@ export default function BonusDrawer({ bonus, plano, onClose }: { bonus: BonusIte
             {uauPronto ? (
               <>
                 <div style={cardStyle}>
-                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.8rem", padding: "0.15rem 0" }}>
-                    <span style={{ color: "var(--text-muted)" }}>Pago até agora</span>
-                    <span style={{ color: "var(--text)", fontWeight: 600 }}>{formatBRL(pago)} ({pct.toFixed(1)}%)</span>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", fontSize: "0.8rem", padding: "0.2rem 0" }}>
+                    <span style={{ color: "var(--text-muted)" }}>Valor pago total</span>
+                    <span style={{ color: "var(--text)", fontWeight: 700 }}>{formatBRL(pago)} <span style={{ color: "var(--text-muted)", fontWeight: 600 }}>· {pct.toFixed(1)}% do contrato</span></span>
                   </div>
                   <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.8rem", padding: "0.15rem 0" }}>
-                    <span style={{ color: "var(--text-muted)" }}>Meta 7,5%</span>
+                    <span style={{ color: "var(--text-muted)" }}>Meta 7,5% (libera o bônus)</span>
                     <span style={{ color: "var(--text)", fontWeight: 600 }}>{formatBRL(meta75)}</span>
                   </div>
                   <div style={{ fontSize: "0.8rem", fontWeight: 600, marginTop: "0.3rem", color: atingiu75 ? "#10b981" : "#f59e0b", display: "flex", alignItems: "center", gap: "0.3rem" }}>
