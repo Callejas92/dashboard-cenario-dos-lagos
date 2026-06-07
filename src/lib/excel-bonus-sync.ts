@@ -59,13 +59,15 @@ async function graph(token: string, url: string, init?: RequestInit): Promise<Re
 
 // Destaque (formatação condicional): âmbar p/ "aguardando", verde p/ "autorizado".
 // Idempotente: não duplica se a regra já existe. Erro aqui NÃO quebra a escrita de valores.
-async function aplicarDestaque(token: string, wsPath: string): Promise<string> {
+async function aplicarDestaque(token: string, fileId: string, wsName: string): Promise<string> {
+  // Formatação condicional fica no endpoint /beta do Graph workbook (não existe no v1.0).
+  const wsBeta = `https://graph.microsoft.com/beta/me/drive/items/${fileId}/workbook/worksheets('${encodeURIComponent(wsName)}')`;
   const regras = [
     { texto: "aguardando", fill: "#FBBF24", font: "#7C2D12" }, // âmbar (chama atenção)
     { texto: "autorizado", fill: "#86EFAC", font: "#14532D" }, // verde (ok)
   ];
   for (const col of ["V", "X"]) {
-    const cfUrl = `${wsPath}/range(address='${col}4:${col}1000')/conditionalFormats`;
+    const cfUrl = `${wsBeta}/range(address='${col}4:${col}1000')/conditionalFormats`;
     const existing = await graph(token, cfUrl);
     if (Array.isArray(existing.value) && existing.value.length > 0) continue; // já tem regra
     for (const r of regras) {
@@ -192,7 +194,7 @@ export async function syncBonusToExcel(opts: { dryRun?: boolean; force?: boolean
 
   // Destaque visual (âmbar "aguardando" / verde "autorizado"). Idempotente; não quebra o sync.
   try {
-    report.destaque = await aplicarDestaque(token, wsPath);
+    report.destaque = await aplicarDestaque(token, fileId, wsName);
   } catch (e) {
     report.destaque = "erro: " + (e instanceof Error ? e.message : String(e));
   }
