@@ -11,7 +11,7 @@
  * (preservando o que não muda) e só faz PATCH se algo realmente mudou.
  * Requer OneDrive com escopo Files.ReadWrite.
  */
-import { put } from "@vercel/blob";
+import { list, put } from "@vercel/blob";
 import { getAccessToken } from "@/lib/onedrive-marketing";
 import { getBonusTracking } from "@/lib/bonus";
 
@@ -71,8 +71,22 @@ async function resolveLotesSheetName(token: string, fileId: string): Promise<str
   return ws.name;
 }
 
-export async function syncBonusToExcel(opts: { dryRun?: boolean } = {}): Promise<SyncReport> {
-  const { dryRun = false } = opts;
+export async function syncBonusToExcel(opts: { dryRun?: boolean; force?: boolean } = {}): Promise<SyncReport> {
+  const { dryRun = false, force = false } = opts;
+
+  // Throttle no caminho automático: não relê o Excel se sincronizou há < 5 min.
+  if (!dryRun && !force) {
+    try {
+      const { blobs } = await list({ prefix: SYNC_STATE_BLOB });
+      const hit = blobs.find((b) => b.pathname === SYNC_STATE_BLOB) ?? blobs[0];
+      if (hit) {
+        const st = await (await fetch(hit.url, { cache: "no-store" })).json();
+        if (st?.syncedAt && Date.now() - new Date(st.syncedAt).getTime() < 5 * 60 * 1000) {
+          return { ok: true, motivo: "sincronizado há pouco (throttle)", mudou: false };
+        }
+      }
+    } catch { /* sem estado: segue normal */ }
+  }
 
   const tracking = await getBonusTracking();
   if (!tracking.completo) return { ok: false, motivo: "dado de bônus incompleto (UAU) — sync adiado" };
@@ -138,15 +152,18 @@ export async function syncBonusToExcel(opts: { dryRun?: boolean } = {}): Promise
     mudou,
   };
 
-  if (dryRun || !mudou) return report;
+  if (dryRun) return report;
 
-  const primeira = PRIMEIRA_LINHA_DADOS + 1; // Excel 1-based
-  const ultima = totalLinhas;                // Excel 1-based (usedRange começa em A1)
-  const addrV = `${colLetter(COL_V)}${primeira}:${colLetter(COL_V)}${ultima}`;
-  const addrX = `${colLetter(COL_X)}${primeira}:${colLetter(COL_X)}${ultima}`;
-  await graph(token, `${wsPath}/range(address='${addrV}')`, { method: "PATCH", body: JSON.stringify({ values: novoV }) });
-  await graph(token, `${wsPath}/range(address='${addrX}')`, { method: "PATCH", body: JSON.stringify({ values: novoX }) });
+  if (mudou) {
+    const primeira = PRIMEIRA_LINHA_DADOS + 1; // Excel 1-based
+    const ultima = totalLinhas;                // Excel 1-based (usedRange começa em A1)
+    const addrV = `${colLetter(COL_V)}${primeira}:${colLetter(COL_V)}${ultima}`;
+    const addrX = `${colLetter(COL_X)}${primeira}:${colLetter(COL_X)}${ultima}`;
+    await graph(token, `${wsPath}/range(address='${addrV}')`, { method: "PATCH", body: JSON.stringify({ values: novoV }) });
+    await graph(token, `${wsPath}/range(address='${addrX}')`, { method: "PATCH", body: JSON.stringify({ values: novoX }) });
+  }
 
+  // Marca o horário do sync (mesmo sem mudança) p/ o throttle do caminho automático.
   await put(SYNC_STATE_BLOB, JSON.stringify({ syncedAt: new Date().toISOString(), celulasAlteradas: alteradas }), {
     access: "public", addRandomSuffix: false, allowOverwrite: true, contentType: "application/json",
   }).catch(() => {});

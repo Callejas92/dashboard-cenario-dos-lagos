@@ -1,5 +1,6 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { getBonusTracking, setBonusPagamento, clearBonusCache, type BonusPagamento } from "@/lib/bonus";
+import { syncBonusToExcel } from "@/lib/excel-bonus-sync";
 
 export const maxDuration = 60;
 
@@ -7,6 +8,9 @@ export const maxDuration = 60;
 export async function GET() {
   try {
     const data = await getBonusTracking();
+    // Mantém o Excel (Cenário_Comercial, colunas V/X) em dia automaticamente —
+    // roda pós-resposta (não atrasa a UI) e com throttle de 5 min (não martela o OneDrive).
+    if (data.completo) after(() => syncBonusToExcel().catch(() => {}));
     return NextResponse.json(data);
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
@@ -45,6 +49,8 @@ export async function POST(request: NextRequest) {
       }
 
       const updated = await setBonusPagamento(chave, patch);
+      // Liberação manual muda entrada/sinal → reflete no Excel na hora (forçado).
+      after(() => syncBonusToExcel({ force: true }).catch(() => {}));
       return NextResponse.json({ success: true, chaveVenda: chave, pagamento: updated });
     }
 

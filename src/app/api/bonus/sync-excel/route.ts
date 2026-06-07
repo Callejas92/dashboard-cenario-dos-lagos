@@ -21,7 +21,7 @@ export async function GET() {
 
 export async function POST() {
   try {
-    const r = await syncBonusToExcel({ dryRun: false });
+    const r = await syncBonusToExcel({ dryRun: false, force: true });
     return NextResponse.json(r);
   } catch (e) {
     return NextResponse.json({ ok: false, erro: e instanceof Error ? e.message : String(e) }, { status: 500 });
