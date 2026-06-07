@@ -104,16 +104,10 @@ export default function SubTabFinanceiro() {
   const { data: bonus, isLoading: lB } = useSWR<BonusResp>("/api/bonus");
   const { data: crm, isLoading: lC } = useSWR<CrmContratosRespMin>("/api/crm/contratos");
 
-  // Mostra loading explícito enquanto QUALQUER dado essencial não chegou.
-  // financeiro do UAU costuma demorar 30-40s no primeiro acesso (cold start).
-  if (lF || lB || lC || !financ || !bonus || !crm) {
-    return (
-      <LoadingCard
-        height={400}
-        label="Carregando financeiro e bônus"
-        hint={lF ? "ERP UAU pode levar até 40s no primeiro acesso. Aguarde…" : "Lendo CRM Eggs e bônus..."}
-      />
-    );
+  // Só bloqueia a tela toda no que é RÁPIDO (bônus + CRM). O financeiro do UAU é lento
+  // (cold start 30-57s) e carrega numa seção própria — não segura mais a lista de bônus.
+  if (lB || lC || !bonus || !crm) {
+    return <LoadingCard height={400} label="Carregando bônus" hint="Lendo CRM Eggs e bônus..." />;
   }
 
   // Mapa loteId → nome do cliente (vem do Eggs CRM, mais confiável que UAU)
@@ -154,6 +148,10 @@ export default function SubTabFinanceiro() {
           <DollarSign size={14} /> Financeiro
         </h2>
 
+        {(lF || !financ) ? (
+          <LoadingCard height={300} label="Carregando financeiro" hint="ERP UAU pode levar até 40s no primeiro acesso. (Os bônus abaixo já estão prontos.)" />
+        ) : (
+        <>
         {/* VGV Total (Eggs ASSINADO) + VGV Mangaba (ERP UAU, só lançado) */}
         {(() => {
           // VGV Total = só vendas ASSINADAS no Eggs (não conta ENVIADO PARA ASSINATURA)
@@ -294,6 +292,8 @@ export default function SubTabFinanceiro() {
             </div>
           )}
         </div>
+        </>
+        )}
       </section>
 
       {/* ════ BÔNUS ════ */}
