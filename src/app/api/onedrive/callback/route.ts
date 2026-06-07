@@ -38,7 +38,7 @@ export async function GET(request: NextRequest) {
         code,
         redirect_uri: REDIRECT_URI,
         grant_type: "authorization_code",
-        scope: "Files.Read Files.Read.All offline_access",
+        scope: "Files.ReadWrite Files.ReadWrite.All offline_access",
       }),
     });
 

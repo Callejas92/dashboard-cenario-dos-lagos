@@ -4,8 +4,8 @@ import { NextResponse } from "next/server";
 const CLIENT_ID = process.env.ONEDRIVE_CLIENT_ID || "";
 const REDIRECT_URI = process.env.ONEDRIVE_REDIRECT_URI || "";
 
-// Scopes necessários para ler arquivos do OneDrive
-const SCOPES = "Files.Read Files.Read.All offline_access";
+// Scopes: leitura + ESCRITA (pra marcar status de bônus no Cenário_Comercial.xlsx)
+const SCOPES = "Files.ReadWrite Files.ReadWrite.All offline_access";
 
 export async function GET() {
   if (!CLIENT_ID || !REDIRECT_URI) {

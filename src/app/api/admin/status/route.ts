@@ -114,7 +114,7 @@ async function pingOneDrive(): Promise<{ ok: boolean | null; detalhe: string; sy
         client_secret: env().ONEDRIVE_CLIENT_SECRET || "",
         refresh_token: tk.refresh_token,
         grant_type: "refresh_token",
-        scope: "Files.Read offline_access",
+        scope: "Files.ReadWrite offline_access",
       }),
       signal: AbortSignal.timeout(8000),
     });

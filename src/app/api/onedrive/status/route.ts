@@ -45,7 +45,7 @@ export async function GET() {
         client_secret: CLIENT_SECRET,
         refresh_token: tokenData.refresh_token,
         grant_type: "refresh_token",
-        scope: "Files.Read Files.Read.All offline_access",
+        scope: "Files.ReadWrite Files.ReadWrite.All offline_access",
       }),
     });
 
