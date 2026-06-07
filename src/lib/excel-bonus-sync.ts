@@ -57,32 +57,44 @@ async function graph(token: string, url: string, init?: RequestInit): Promise<Re
   return res.json();
 }
 
-// Destaque (formatação condicional): âmbar p/ "aguardando", verde p/ "autorizado".
-// Idempotente: não duplica se a regra já existe. Erro aqui NÃO quebra a escrita de valores.
-async function aplicarDestaque(token: string, fileId: string, wsName: string): Promise<string> {
-  // Formatação condicional fica no endpoint /beta do Graph workbook (não existe no v1.0).
-  const wsBeta = `https://graph.microsoft.com/beta/me/drive/items/${fileId}/workbook/worksheets('${encodeURIComponent(wsName)}')`;
-  const regras = [
-    { texto: "aguardando", fill: "#FBBF24", font: "#7C2D12" }, // âmbar (chama atenção)
-    { texto: "autorizado", fill: "#86EFAC", font: "#14532D" }, // verde (ok)
-  ];
-  for (const col of ["V", "X"]) {
-    const cfUrl = `${wsBeta}/range(address='${col}4:${col}1000')/conditionalFormats`;
-    const existing = await graph(token, cfUrl);
-    if (Array.isArray(existing.value) && existing.value.length > 0) continue; // já tem regra
-    for (const r of regras) {
-      await graph(token, cfUrl, {
-        method: "POST",
-        body: JSON.stringify({
-          containsText: {
-            format: { fill: { color: r.fill }, font: { color: r.font, bold: true } },
-            rule: { operator: "Contains", text: r.texto },
-          },
-        }),
-      });
+// Destaque por COR de fundo (formatação condicional do Graph não existe em OneDrive pessoal).
+// Âmbar p/ "aguardando", verde p/ "autorizado". Agrupa linhas consecutivas de mesma cor em
+// faixas (menos chamadas). Preserva "pago" (não recolore). Erro aqui NÃO quebra a escrita.
+async function aplicarCores(token: string, wsPath: string, values: unknown[][], porLote: Map<string, boolean>): Promise<string> {
+  const AMBAR = "#FBBF24", VERDE = "#86EFAC";
+  let faixas = 0;
+  for (const col of ["V", "X"] as const) {
+    const colIdx = col === "V" ? COL_V : COL_X;
+    let start = -1, end = -1, cor = "";
+    const flush = async () => {
+      if (start >= 0) {
+        await graph(token, `${wsPath}/range(address='${col}${start}:${col}${end}')/format/fill`, {
+          method: "PATCH", body: JSON.stringify({ color: cor }),
+        });
+        faixas++;
+      }
+      start = -1; end = -1; cor = "";
+    };
+    for (let i = PRIMEIRA_LINHA_DADOS; i < values.length; i++) {
+      const row = values[i] || [];
+      const q = parseInt(String(row[0] ?? "").trim(), 10);
+      const l = parseInt(String(row[1] ?? "").trim(), 10);
+      const excelRow = i + 1;
+      let desejada = "";
+      if (Number.isFinite(q) && Number.isFinite(l) && porLote.has(`Q${q}-L${l}`)) {
+        const cur = String(row[colIdx] ?? "").trim().toLowerCase();
+        if (cur !== "pago") desejada = porLote.get(`Q${q}-L${l}`) ? VERDE : AMBAR;
+      }
+      if (desejada && desejada === cor) {
+        end = excelRow; // estende a faixa atual
+      } else {
+        await flush();
+        if (desejada) { start = excelRow; end = excelRow; cor = desejada; }
+      }
     }
+    await flush();
   }
-  return "aplicado";
+  return `cores aplicadas (${faixas} faixas)`;
 }
 
 async function resolveComercialFileId(token: string): Promise<string> {
@@ -192,11 +204,13 @@ export async function syncBonusToExcel(opts: { dryRun?: boolean; force?: boolean
     await graph(token, `${wsPath}/range(address='${addrX}')`, { method: "PATCH", body: JSON.stringify({ values: novoX }) });
   }
 
-  // Destaque visual (âmbar "aguardando" / verde "autorizado"). Idempotente; não quebra o sync.
-  try {
-    report.destaque = await aplicarDestaque(token, fileId, wsName);
-  } catch (e) {
-    report.destaque = "erro: " + (e instanceof Error ? e.message : String(e));
+  // Destaque por cor (âmbar "aguardando" / verde "autorizado"). Só quando muda ou forçado.
+  if (mudou || force) {
+    try {
+      report.destaque = await aplicarCores(token, wsPath, values, porLote);
+    } catch (e) {
+      report.destaque = "erro: " + (e instanceof Error ? e.message : String(e));
+    }
   }
 
   // Marca o horário do sync (mesmo sem mudança) p/ o throttle do caminho automático.
