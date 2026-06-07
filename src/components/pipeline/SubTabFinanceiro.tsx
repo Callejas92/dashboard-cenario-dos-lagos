@@ -11,7 +11,8 @@
  */
 import { useState, useMemo } from "react";
 import useSWR, { mutate as mutateGlobal } from "swr";
-import { DollarSign, AlertTriangle, Award, CheckCircle2, XCircle, RefreshCw } from "lucide-react";
+import { DollarSign, AlertTriangle, Award, CheckCircle2, XCircle, RefreshCw, ChevronRight } from "lucide-react";
+import BonusDrawer from "./BonusDrawer";
 import KpiMedium from "@/components/shared/KpiMedium";
 import KpiSmall from "@/components/shared/KpiSmall";
 import { SkeletonCard } from "@/components/shared/Skeleton";
@@ -344,6 +345,7 @@ export default function SubTabFinanceiro() {
 // ── Componente da lista de bônus ──────────────────────────────────────────
 function BonusList({ bonus }: { bonus: BonusItem[] }) {
   const [updatingChave, setUpdatingChave] = useState<string | null>(null);
+  const [drawerBonus, setDrawerBonus] = useState<BonusItem | null>(null);
 
   // Filtra: ignora isentos (não fazem parte do "a pagar")
   // Exclui imobiliárias do listing principal — só corretor PF + ação na imobiliária no card
@@ -403,15 +405,16 @@ function BonusList({ bonus }: { bonus: BonusItem[] }) {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "0.875rem" }}>
-      <Grupo titulo="🟢 A PAGAR" cor="#10b981" itens={agrupados.aPagar} ativo updatingChave={updatingChave} onMarcar={marcar} onLiberar={liberarManual} />
-      <Grupo titulo="🔵 AGUARDANDO ENTRADA" cor="#4285f4" itens={agrupados.aguardando} colapsado updatingChave={updatingChave} onMarcar={marcar} onLiberar={liberarManual} />
-      <Grupo titulo="⚪ JÁ PAGO" cor="#6b7280" itens={agrupados.pagos} colapsado updatingChave={updatingChave} onMarcar={marcar} onLiberar={liberarManual} />
+      <Grupo titulo="🟢 A PAGAR" cor="#10b981" itens={agrupados.aPagar} ativo updatingChave={updatingChave} onMarcar={marcar} onLiberar={liberarManual} onAbrir={setDrawerBonus} />
+      <Grupo titulo="🔵 AGUARDANDO ENTRADA" cor="#4285f4" itens={agrupados.aguardando} colapsado updatingChave={updatingChave} onMarcar={marcar} onLiberar={liberarManual} onAbrir={setDrawerBonus} />
+      <Grupo titulo="⚪ JÁ PAGO" cor="#6b7280" itens={agrupados.pagos} colapsado updatingChave={updatingChave} onMarcar={marcar} onLiberar={liberarManual} onAbrir={setDrawerBonus} />
+      <BonusDrawer bonus={drawerBonus} onClose={() => setDrawerBonus(null)} />
     </div>
   );
 }
 
 function Grupo({
-  titulo, cor, itens, ativo, colapsado, updatingChave, onMarcar, onLiberar,
+  titulo, cor, itens, ativo, colapsado, updatingChave, onMarcar, onLiberar, onAbrir,
 }: {
   titulo: string;
   cor: string;
@@ -421,6 +424,7 @@ function Grupo({
   updatingChave: string | null;
   onMarcar: (b: BonusItem, tipo: "corretora" | "imobiliaria", pago: boolean, data: string, observacao?: string) => Promise<void>;
   onLiberar: (b: BonusItem, liberar: boolean) => Promise<void>;
+  onAbrir: (b: BonusItem) => void;
 }) {
   const [collapsed, setCollapsed] = useState(!!colapsado);
   if (itens.length === 0) return null;
@@ -446,6 +450,7 @@ function Grupo({
               updating={updatingChave === b.chaveVenda}
               onMarcar={onMarcar}
               onLiberar={onLiberar}
+              onAbrir={onAbrir}
             />
           ))}
         </div>
@@ -455,13 +460,14 @@ function Grupo({
 }
 
 function BonusCard({
-  bonus, ativo, updating, onMarcar, onLiberar,
+  bonus, ativo, updating, onMarcar, onLiberar, onAbrir,
 }: {
   bonus: BonusItem;
   ativo: boolean;
   updating: boolean;
   onMarcar: (b: BonusItem, tipo: "corretora" | "imobiliaria", pago: boolean, data: string, observacao?: string) => Promise<void>;
   onLiberar: (b: BonusItem, liberar: boolean) => Promise<void>;
+  onAbrir: (b: BonusItem) => void;
 }) {
   const corretorEhImob = isImobiliaria(bonus.corretorNome);
   const podeMarcarCorretora = ativo && bonus.entradaQuitada && !corretorEhImob;
@@ -471,9 +477,12 @@ function BonusCard({
 
   return (
     <div style={{ padding: "0.625rem 1rem", borderTop: "1px solid var(--border)", display: "grid", gridTemplateColumns: "minmax(0, 1.4fr) minmax(0, 2fr) minmax(0, 2fr)", gap: "0.875rem", alignItems: "start" }}>
-      {/* Lote + Cliente */}
-      <div style={{ minWidth: 0 }}>
-        <div style={{ fontWeight: 700, fontSize: "0.9rem", color: "var(--text)" }}>{bonus.loteId}</div>
+      {/* Lote + Cliente — clicável: abre o detalhe do bônus */}
+      <div onClick={() => onAbrir(bonus)} title="Ver detalhes do bônus" style={{ minWidth: 0, cursor: "pointer" }}>
+        <div style={{ fontWeight: 700, fontSize: "0.9rem", color: "var(--text)", display: "flex", alignItems: "center", gap: "0.2rem" }}>
+          {bonus.loteId}
+          <ChevronRight size={13} style={{ color: "var(--text-dim)" }} />
+        </div>
         <div style={{ fontSize: "0.7rem", color: "var(--text-muted)", marginTop: "0.125rem" }}>
           {truncate(bonus.clienteNome || "(sem nome)", 30)}
         </div>
@@ -489,7 +498,7 @@ function BonusCard({
           <div style={{ fontSize: "0.65rem", color: "#10b981", marginTop: "0.125rem", display: "flex", alignItems: "center", gap: "0.2rem" }}>
             <CheckCircle2 size={10} /> liberado manualmente
             <button
-              onClick={() => onLiberar(bonus, false)}
+              onClick={(e) => { e.stopPropagation(); onLiberar(bonus, false); }}
               title="Desfazer liberação"
               style={{ marginLeft: "0.2rem", background: "transparent", border: 0, color: "var(--text-dim)", cursor: "pointer", textDecoration: "underline", fontSize: "0.6rem" }}
             >
@@ -499,7 +508,7 @@ function BonusCard({
         )}
         {mostrarLiberar && (
           <button
-            onClick={() => onLiberar(bonus, true)}
+            onClick={(e) => { e.stopPropagation(); onLiberar(bonus, true); }}
             disabled={updating}
             title="Libera o bônus pra pagamento mesmo sem entrada/sinal detectado no UAU (venda à vista, acordo externo, etc)"
             style={{
