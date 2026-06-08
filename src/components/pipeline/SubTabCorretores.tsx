@@ -16,6 +16,7 @@ import KpiSmall from "@/components/shared/KpiSmall";
 import { SkeletonCard } from "@/components/shared/Skeleton";
 import LoadingCard from "@/components/shared/LoadingCard";
 import { formatBRLCompact, formatInt, formatData, formatTempoRelativo, truncate } from "@/lib/utils/formatters";
+import CorretorDrawer from "./CorretorDrawer";
 
 interface Contrato {
   loteId: string; valor: number; cancelado: boolean;
@@ -46,8 +47,10 @@ type SortField = "vgv" | "lotes" | "ultima" | "nome";
 
 export default function SubTabCorretores() {
   const { data, isLoading } = useSWR<CrmContratosResp>("/api/crm/contratos");
+  const { data: bonusData } = useSWR<{ bonus?: { loteId: string; entradaQuitada: boolean; valorTotal: number }[] }>("/api/bonus");
   const [sortField, setSortField] = useState<SortField>("vgv");
   const [sortAsc, setSortAsc] = useState(false);
+  const [drawerCorretor, setDrawerCorretor] = useState<string | null>(null);
 
   const linhas = useMemo(() => {
     const contratos = (data?.contratos || []).filter((c) => !c.cancelado);
@@ -221,8 +224,8 @@ export default function SubTabCorretores() {
           </thead>
           <tbody>
             {linhasOrdenadas.map((l) => (
-              <tr key={l.nome} style={{ borderBottom: "1px solid var(--border)" }}>
-                <td style={{ padding: "0.5rem 0.25rem", color: "var(--text)", fontWeight: 600 }}>{l.nome}</td>
+              <tr key={l.nome} onClick={() => setDrawerCorretor(l.nome)} title="Ver scorecard / LTV do corretor" style={{ borderBottom: "1px solid var(--border)", cursor: "pointer" }}>
+                <td style={{ padding: "0.5rem 0.25rem", color: "var(--text)", fontWeight: 600 }}>{l.nome} <span style={{ color: "var(--text-dim)", fontWeight: 400 }}>›</span></td>
                 <td style={{ padding: "0.5rem 0.25rem", color: "var(--text-muted)", fontSize: "0.75rem" }}>{l.creci || "—"}</td>
                 <td style={{ padding: "0.5rem 0.25rem", color: "var(--text-muted)", fontSize: "0.75rem" }}>{truncate(l.imobiliaria || "—", 22)}</td>
                 <td style={{ padding: "0.5rem 0.25rem", textAlign: "right", color: "var(--text)" }}>{l.lotes}</td>
@@ -246,6 +249,15 @@ export default function SubTabCorretores() {
           </tbody>
         </table>
       </div>
+
+      {drawerCorretor ? (
+        <CorretorDrawer
+          corretorNome={drawerCorretor}
+          contratos={data?.contratos || []}
+          bonus={bonusData?.bonus || []}
+          onClose={() => setDrawerCorretor(null)}
+        />
+      ) : null}
     </div>
   );
 }
