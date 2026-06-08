@@ -23,7 +23,7 @@ interface ContratoMin {
 }
 interface BonusMin { loteId: string; entradaQuitada: boolean; valorTotal: number }
 interface UauVendasResp { vendas?: { identificadorUnidade: string; valorPrincipal: number; valorRecebido: number }[] }
-interface FinancResp { parcelasAReceber?: { identificadorUnidade: string; status: string; valor: number }[] }
+interface FinancResp { parcelasAReceber?: { identificadorUnidade: string; status: string; valor: number; tipoParcela?: string }[] }
 
 const COMISSAO_PCT = 0.065;
 
@@ -68,7 +68,14 @@ export default function CorretorDrawer({ corretorNome, contratos, bonus, onClose
   if (uauPronto) {
     const vmap = new Map((uauVendas?.vendas || []).map((v) => [v.identificadorUnidade, v]));
     for (const id of loteIds) { const v = vmap.get(id); if (v?.valorPrincipal) mangaba += v.valorPrincipal; }
-    const vencidos = new Set((financ?.parcelasAReceber || []).filter((p) => p.status === "vencida" && loteIds.has(p.identificadorUnidade)).map((p) => p.identificadorUnidade));
+    // Inadimplência = parcelas vencidas que NÃO são entrada/sinal (E/S).
+    // Entrada atrasada já aparece em "entrada quitada"; contar aqui seria penalizar 2x
+    // e ficaria inconsistente com a aba Financeiro (que não trata entrada como inadimplência).
+    const vencidos = new Set(
+      (financ?.parcelasAReceber || [])
+        .filter((p) => p.status === "vencida" && p.tipoParcela !== "E" && p.tipoParcela !== "S" && loteIds.has(p.identificadorUnidade))
+        .map((p) => p.identificadorUnidade)
+    );
     inadLotes = vencidos.size;
     pctInad = firmes.length ? inadLotes / firmes.length : 0;
     ltvLiquido = mangaba - custoTotal;
