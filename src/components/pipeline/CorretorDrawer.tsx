@@ -67,7 +67,13 @@ export default function CorretorDrawer({ corretorNome, contratos, bonus, onClose
   let mangaba = 0, inadLotes = 0, pctInad = 0, ltvLiquido = 0, qualidade = 0, ltvAjustado = 0;
   if (uauPronto) {
     const vmap = new Map((uauVendas?.vendas || []).map((v) => [v.identificadorUnidade, v]));
-    for (const id of loteIds) { const v = vmap.get(id); if (v?.valorPrincipal) mangaba += v.valorPrincipal; }
+    // Mangaba por lote firme: usa o valorPrincipal do UAU; se o lote ainda não está no
+    // ERP (venda recente), estima por valor × 0,935 — assim Mangaba e custo cobrem os
+    // mesmos lotes (senão o LTV ficaria subestimado p/ quem tem venda fora do UAU).
+    for (const c of firmes) {
+      const v = vmap.get(c.loteId);
+      mangaba += v?.valorPrincipal && v.valorPrincipal > 0 ? v.valorPrincipal : (c.valor || 0) * 0.935;
+    }
     // Inadimplência = parcelas vencidas que NÃO são entrada/sinal (E/S).
     // Entrada atrasada já aparece em "entrada quitada"; contar aqui seria penalizar 2x
     // e ficaria inconsistente com a aba Financeiro (que não trata entrada como inadimplência).
