@@ -56,7 +56,7 @@ export interface PlanoPagamento {
   total: number;
 }
 
-interface UauVendasResp { vendas?: { identificadorUnidade: string; valorRecebido: number }[] }
+interface UauVendasResp { vendas?: { identificadorUnidade: string; valorRecebido: number; valorPrincipal: number }[] }
 interface FinancParcelasResp { parcelasAReceber?: { identificadorUnidade: string; valor: number; dataVencimento: string }[] }
 
 export default function BonusDrawer({ bonus, plano, onClose }: { bonus: BonusItemDrawer | null; plano?: PlanoPagamento; onClose: () => void }) {
@@ -81,21 +81,27 @@ export default function BonusDrawer({ bonus, plano, onClose }: { bonus: BonusIte
   const cardStyle = { background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "0.5rem", padding: "0.6rem 0.9rem" } as const;
   const tituloSecao = { fontSize: "0.7rem", color: "var(--text-dim)", fontWeight: 700 as const, textTransform: "uppercase" as const, letterSpacing: "0.05em", marginBottom: "0.4rem" };
 
-  // ── Meta 7,5%: quando o pago chega a 7,5% do contrato (referência p/ liberar o bônus) ──
-  const valorRecebido = (uauVendas?.vendas || []).find((v) => v.identificadorUnidade === bonus.loteId)?.valorRecebido;
-  const pago = valorRecebido ?? bonus.entradaValorPago;
-  const meta75 = 0.075 * bonus.valorContratado;
+  // ── Liberação do bônus ──
+  // Regra: entrada/sinal toda paga → OK. Se NÃO, mostra % pago + previsão de atingir
+  // 7,5% do MANGABA (principal líquido = valorPrincipal do UAU), projetando pelas parcelas.
+  const venda = (uauVendas?.vendas || []).find((v) => v.identificadorUnidade === bonus.loteId);
+  const pago = venda?.valorRecebido ?? bonus.entradaValorPago;
+  const mangaba = venda?.valorPrincipal && venda.valorPrincipal > 0 ? venda.valorPrincipal : bonus.valorContratado * 0.935;
+  const meta75 = 0.075 * mangaba;
   const pct = bonus.valorContratado > 0 ? (pago / bonus.valorContratado) * 100 : 0;
-  const atingiu75 = pago >= meta75;
   const uauPronto = !!uauVendas && !!financ;
   let dataMeta: string | null = null;
-  if (!atingiu75 && financ) {
-    const parc = (financ.parcelasAReceber || [])
-      .filter((p) => p.identificadorUnidade === bonus.loteId)
-      .slice()
-      .sort((a, b) => (a.dataVencimento < b.dataVencimento ? -1 : 1));
-    let run = pago;
-    for (const p of parc) { run += p.valor; if (run >= meta75) { dataMeta = p.dataVencimento; break; } }
+  if (!bonus.entradaQuitada) {
+    if (pago >= meta75) {
+      dataMeta = "atingido";
+    } else {
+      const parc = (financ?.parcelasAReceber || [])
+        .filter((p) => p.identificadorUnidade === bonus.loteId)
+        .slice()
+        .sort((a, b) => (a.dataVencimento < b.dataVencimento ? -1 : 1));
+      let run = pago;
+      for (const p of parc) { run += p.valor; if (run >= meta75) { dataMeta = p.dataVencimento; break; } }
+    }
   }
 
   return (
@@ -186,9 +192,9 @@ export default function BonusDrawer({ bonus, plano, onClose }: { bonus: BonusIte
             </div>
           ) : null}
 
-          {/* Meta 7,5% pago — referência pra liberar o bônus */}
+          {/* Liberação do bônus: entrada paga = OK; senão, % pago + previsão dos 7,5% do Mangaba */}
           <div>
-            <div style={tituloSecao}>Pra liberar o bônus (meta 7,5% pago)</div>
+            <div style={tituloSecao}>Liberação do bônus</div>
             {uauPronto ? (
               <>
                 <div style={cardStyle}>
@@ -196,29 +202,34 @@ export default function BonusDrawer({ bonus, plano, onClose }: { bonus: BonusIte
                     <span style={{ color: "var(--text-muted)" }}>Valor pago total</span>
                     <span style={{ color: "var(--text)", fontWeight: 700 }}>{formatBRL(pago)} <span style={{ color: "var(--text-muted)", fontWeight: 600 }}>· {pct.toFixed(1)}% do contrato</span></span>
                   </div>
-                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.8rem", padding: "0.15rem 0" }}>
-                    <span style={{ color: "var(--text-muted)" }}>Meta 7,5% (libera o bônus)</span>
-                    <span style={{ color: "var(--text)", fontWeight: 600 }}>{formatBRL(meta75)}</span>
-                  </div>
-                  <div style={{ fontSize: "0.8rem", fontWeight: 600, marginTop: "0.3rem", color: atingiu75 ? "#10b981" : "#f59e0b", display: "flex", alignItems: "center", gap: "0.3rem" }}>
-                    {atingiu75 ? (
-                      <><CheckCircle2 size={13} /> Já passou de 7,5% — ok pra pagar</>
-                    ) : dataMeta ? (
-                      <><Clock size={13} /> Chega a 7,5% por volta de {formatData(dataMeta)}</>
-                    ) : (
-                      <><Clock size={13} /> Sem cronograma no UAU pra projetar</>
-                    )}
-                  </div>
+                  {bonus.entradaQuitada ? (
+                    <div style={{ fontSize: "0.82rem", fontWeight: 600, marginTop: "0.3rem", color: "#10b981", display: "flex", alignItems: "center", gap: "0.3rem" }}>
+                      <CheckCircle2 size={13} /> Entrada paga — pode pagar o bônus
+                    </div>
+                  ) : (
+                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.8rem", padding: "0.15rem 0" }}>
+                      <span style={{ color: "var(--text-muted)" }}>Meta 7,5% do Mangaba</span>
+                      <span style={{ color: "var(--text)", fontWeight: 600 }}>{formatBRL(meta75)}</span>
+                    </div>
+                  )}
                 </div>
-                {!atingiu75 ? (
-                  <div style={{ marginTop: "0.4rem", padding: "0.5rem 0.7rem", background: "#dc262615", border: "1px solid #dc262640", borderRadius: "0.4rem", fontSize: "0.72rem", color: "#dc2626", lineHeight: 1.4 }}>
-                    ⚠ Pago {pct.toFixed(1)}% — ainda <strong>abaixo de 7,5%</strong>. Avalie antes de pagar o bônus de {formatBRL(bonus.valorTotal)}.
+                {!bonus.entradaQuitada ? (
+                  <div style={{ marginTop: "0.4rem", padding: "0.5rem 0.7rem", background: "#f59e0b15", border: "1px solid #f59e0b40", borderRadius: "0.4rem", fontSize: "0.72rem", color: "var(--text-muted)", lineHeight: 1.4, display: "flex", gap: "0.35rem" }}>
+                    <Clock size={13} style={{ color: "#f59e0b", flexShrink: 0, marginTop: "0.1rem" }} />
+                    <span>
+                      <strong style={{ color: "#f59e0b" }}>{pct.toFixed(1)}% pago</strong> até o momento.{" "}
+                      {dataMeta === "atingido"
+                        ? <>Já atingiu os <strong>7,5% do Mangaba</strong>.</>
+                        : dataMeta
+                          ? <>Previsão de atingir os <strong>7,5% do Mangaba</strong> ({formatBRL(meta75)}) em <strong>{formatData(dataMeta)}</strong>.</>
+                          : <>Sem cronograma no UAU pra projetar a data dos 7,5% do Mangaba.</>}
+                    </span>
                   </div>
                 ) : null}
               </>
             ) : (
               <div style={{ ...cardStyle, fontSize: "0.78rem", color: "var(--text-dim)", fontStyle: "italic" }}>
-                calculando pelas próximas parcelas… (ERP UAU, pode levar ~40s)
+                calculando pela próxima(s) parcela(s)… (ERP UAU, pode levar ~40s)
               </div>
             )}
           </div>
