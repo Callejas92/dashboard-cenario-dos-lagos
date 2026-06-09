@@ -31,12 +31,19 @@ export interface SyncReport {
   naoEncontradas?: string[];
   celulasAlteradas?: number;
   preservadasPago?: number;
+  orfaosLimpos?: number;       // células de status limpas por o lote ter saído do bônus (venda desfeita)
+  orfaosLotes?: string[];      // loteIds cujo status foi limpo (pra conferência)
   dryRun?: boolean;
   mudou?: boolean;
   destaque?: string; // status da formatação condicional (âmbar/verde)
 }
 
 const isPago = (v: unknown) => String(v ?? "").trim().toLowerCase() === "pago";
+// Status de bônus escrito por nós (limpável quando o lote sai da lista). "pago" é manual → nunca limpa.
+const isStatusBonus = (v: unknown) => {
+  const s = String(v ?? "").trim().toLowerCase();
+  return s === "autorizado" || s === "aguardando pgt";
+};
 
 function colLetter(idx: number): string {
   let s = "", n = idx;
@@ -60,7 +67,7 @@ async function graph(token: string, url: string, init?: RequestInit): Promise<Re
 // Destaque por COR de fundo (formatação condicional do Graph não existe em OneDrive pessoal).
 // Âmbar p/ "aguardando", verde p/ "autorizado". Agrupa linhas consecutivas de mesma cor em
 // faixas (menos chamadas). Preserva "pago" (não recolore). Erro aqui NÃO quebra a escrita.
-async function aplicarCores(token: string, wsPath: string, values: unknown[][], porLote: Map<string, boolean>): Promise<string> {
+async function aplicarCores(token: string, wsPath: string, values: unknown[][], porLote: Map<string, boolean>, orfaos: string[] = []): Promise<string> {
   const AMBAR = "#FBBF24", VERDE = "#86EFAC";
   // 1) Monta as faixas (linhas consecutivas de mesma cor) — sem chamadas ainda.
   const ops: { addr: string; color: string }[] = [];
@@ -101,7 +108,16 @@ async function aplicarCores(token: string, wsPath: string, values: unknown[][], 
   for (const o of falhas) {
     try { await fill(o); okc++; } catch { /* desiste dessa faixa */ }
   }
-  return `cores: ${okc}/${ops.length} faixas`;
+  // 3) Limpa o FILL das células órfãs (status removido) — pra não ficar célula vazia colorida.
+  let okClear = 0;
+  const clearFill = (addr: string) =>
+    graph(token, `${wsPath}/range(address='${addr}')/format/fill/clear`, { method: "POST" });
+  for (let i = 0; i < orfaos.length; i += conc) {
+    const batch = orfaos.slice(i, i + conc);
+    const res = await Promise.allSettled(batch.map(clearFill));
+    res.forEach((r) => { if (r.status === "fulfilled") okClear++; });
+  }
+  return `cores: ${okc}/${ops.length} faixas` + (orfaos.length ? ` · órfãos limpos: ${okClear}/${orfaos.length}` : "");
 }
 
 async function resolveComercialFileId(token: string): Promise<string> {
@@ -159,6 +175,8 @@ export async function syncBonusToExcel(opts: { dryRun?: boolean; force?: boolean
   const novoX: unknown[][] = [];
   let casadas = 0, alteradas = 0, preservadas = 0;
   const casadasLotes = new Set<string>();
+  const orfaos: string[] = []; // células V/X de lote que saiu do bônus (venda desfeita) — limpar
+  const orfaosLotes = new Set<string>();
 
   for (let i = PRIMEIRA_LINHA_DADOS; i < totalLinhas; i++) {
     const row = values[i] || [];
@@ -181,6 +199,12 @@ export async function syncBonusToExcel(opts: { dryRun?: boolean; force?: boolean
         if (isPago(curX)) { preservadas++; } else { nx = desejado; }
         if (nv !== curV) alteradas++;
         if (nx !== curX) alteradas++;
+      } else if (isStatusBonus(curV) || isStatusBonus(curX)) {
+        // Órfão: lote saiu da lista de bônus (venda desfeita/liberada) mas ficou com status
+        // antigo no Excel. Limpa "autorizado"/"aguardando pgt" (nunca mexe em "pago").
+        if (isStatusBonus(curV)) { nv = ""; alteradas++; orfaos.push(`${colLetter(COL_V)}${i + 1}`); }
+        if (isStatusBonus(curX)) { nx = ""; alteradas++; orfaos.push(`${colLetter(COL_X)}${i + 1}`); }
+        orfaosLotes.add(loteId);
       }
     }
     novoV.push([nv]);
@@ -200,6 +224,8 @@ export async function syncBonusToExcel(opts: { dryRun?: boolean; force?: boolean
     naoEncontradas,
     celulasAlteradas: alteradas,
     preservadasPago: preservadas,
+    orfaosLimpos: orfaos.length,
+    orfaosLotes: Array.from(orfaosLotes),
     dryRun,
     mudou,
   };
@@ -218,7 +244,7 @@ export async function syncBonusToExcel(opts: { dryRun?: boolean; force?: boolean
   // Destaque por cor (âmbar "aguardando" / verde "autorizado"). Só quando muda ou forçado.
   if (mudou || force) {
     try {
-      report.destaque = await aplicarCores(token, wsPath, values, porLote);
+      report.destaque = await aplicarCores(token, wsPath, values, porLote, orfaos);
     } catch (e) {
       report.destaque = "erro: " + (e instanceof Error ? e.message : String(e));
     }
