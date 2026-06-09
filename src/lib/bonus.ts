@@ -3,7 +3,8 @@
  *
  * Regras:
  *  - R$ 3.000 corretora + R$ 1.000 imobiliária = R$ 4.000 por venda válida
- *  - Trigger pra liberar: TODAS as parcelas tipo E (Entrada) pagas
+ *  - Trigger pra AUTORIZAR: cliente pagou >= 1,5% do contrato (valor recebido no ERP UAU,
+ *    "o que veio pra Mangaba"). Abaixo disso → aguardando.
  *  - Status pago: manual no dashboard, persistido em blob bonus-payments.json
  *  - Sem corretor identificado → status "revisar" (flag amarela, decisão manual)
  *  - Cancelamento pós-pagamento → mantém histórico (status "cancelado_pago")
@@ -19,6 +20,9 @@ const INVESTOR_LOTS = new Set<string>(investorData.lots);
 export const BONUS_CORRETORA = 3000;
 export const BONUS_IMOBILIARIA = 1000;
 export const BONUS_TOTAL_POR_VENDA = BONUS_CORRETORA + BONUS_IMOBILIARIA;
+
+// Regra de autorização: cliente pagou >= 1,5% do contrato (valor recebido no ERP UAU).
+export const PCT_AUTORIZACAO = 0.015;
 
 const PAGAMENTOS_BLOB = "bonus-payments.json";
 const TRACKING_BLOB = "cache/bonus-tracking.json"; // último resultado COMPLETO (compartilhado entre instâncias)
@@ -65,6 +69,10 @@ export interface BonusEntry {
   entradaValorTotal: number;
   entradaValorPago: number;
   entradaQuitada: boolean;
+  // Autorização (regra 1,5%)
+  valorRecebido: number;   // total pago pelo cliente no ERP (o que veio pra Mangaba)
+  metaAutorizado: number;  // 1,5% do contrato — limite pra autorizar
+  autorizado: boolean;     // valorRecebido >= 1,5% do contrato (ou liberado manual) → libera o bônus
   // Bônus
   valorCorretora: number;
   valorImobiliaria: number;
@@ -153,6 +161,7 @@ interface EntradaStatus {
   valorTotal: number;
   valorPago: number;
   quitada: boolean;
+  totalRecebido: number; // soma de TODAS as parcelas pagas (não só E/S) = valor que veio pra Mangaba no ERP
 }
 
 async function getEntradasStatus(loteIds: string[]): Promise<{ map: Map<string, EntradaStatus>; completo: boolean }> {
@@ -202,12 +211,13 @@ async function getEntradasStatus(loteIds: string[]): Promise<{ map: Map<string, 
       const data = Array.isArray(raw) ? raw[0] : raw;
       const ptipo = (data as { parcelasportipo?: { tipoParcela?: string; quantidadeParcelaAPagar?: number; quantidadeParcelaPaga?: number; totalParcelaAPagar?: number; totalParcelaPaga?: number }[] })?.parcelasportipo;
       if (!Array.isArray(ptipo)) throw new Error("resumo sem parcelasportipo");
+      // Total recebido = TODAS as parcelas pagas (E/S + parcelas normais) = o que veio pra Mangaba no ERP.
+      const totalRecebido = ptipo.reduce((s, p) => s + (Number(p.totalParcelaPaga) || 0), 0);
       // ENTRADA = Entrada (E) + Sinal (S). Felipe: "sinal e entrada valem a mesma coisa".
-      // Bônus libera quando TODAS as parcelas E e S estiverem quitadas.
       const entradaTipos = ptipo.filter((p) => p.tipoParcela === "E" || p.tipoParcela === "S");
       if (entradaTipos.length === 0) {
-        // Sem parcelas E nem S (venda à vista, ou tabela sem entrada) — quitada por default.
-        map.set(loteId, { qtdTotal: 0, qtdPaga: 0, valorTotal: 0, valorPago: 0, quitada: true });
+        // Sem parcelas E nem S (venda à vista, ou tabela sem entrada) — entrada quitada por default.
+        map.set(loteId, { qtdTotal: 0, qtdPaga: 0, valorTotal: 0, valorPago: 0, quitada: true, totalRecebido });
         return;
       }
       const qtdAPagar = entradaTipos.reduce((s, p) => s + (Number(p.quantidadeParcelaAPagar) || 0), 0);
@@ -220,6 +230,7 @@ async function getEntradasStatus(loteIds: string[]): Promise<{ map: Map<string, 
         valorTotal: valorAPagar + valorPago,
         valorPago,
         quitada: qtdAPagar === 0,
+        totalRecebido,
       });
     };
 
@@ -250,7 +261,7 @@ async function getEntradasStatus(loteIds: string[]): Promise<{ map: Map<string, 
 
 // ── Orquestração principal ─────────────────────────────────────────────────
 function classifyStatus(
-  entry: { entradaQuitada: boolean; corretorNome: string; cancelado: boolean; pagamento: BonusPagamento }
+  entry: { autorizado: boolean; corretorNome: string; cancelado: boolean; pagamento: BonusPagamento }
 ): BonusStatus {
   const algumPago = entry.pagamento.pagoCorretora || entry.pagamento.pagoImobiliaria;
 
@@ -264,7 +275,7 @@ function classifyStatus(
   if (algumPago) return "pago_parcial";
 
   if (!entry.corretorNome) return "revisar";
-  if (!entry.entradaQuitada) return "aguardando_entrada";
+  if (!entry.autorizado) return "aguardando_entrada";
   return "a_pagar";
 }
 
@@ -304,10 +315,13 @@ async function computeBonusTracking(): Promise<BonusResponse> {
       pagoCorretora: false, dataPagoCorretora: "",
       pagoImobiliaria: false, dataPagoImobiliaria: "",
     };
-    const entrada = entradasMap.get(c.loteId) || { qtdTotal: 0, qtdPaga: 0, valorTotal: 0, valorPago: 0, quitada: false };
-    // Override manual: Felipe pode liberar o bônus mesmo sem entrada/sinal detectado
-    // (ex: venda à vista, acordo fora do sistema, UAU sem parcelas E/S).
+    const entrada = entradasMap.get(c.loteId) || { qtdTotal: 0, qtdPaga: 0, valorTotal: 0, valorPago: 0, quitada: false, totalRecebido: 0 };
+    // Override manual: Felipe pode liberar o bônus mesmo sem atingir 1,5%
+    // (ex: venda à vista, acordo fora do sistema, UAU sem parcelas).
     const entradaQuitada = entrada.quitada || !!pagamento.liberadoManual;
+    const valorRecebido = entrada.totalRecebido;
+    const metaAutorizado = PCT_AUTORIZACAO * c.valor;
+    const autorizado = valorRecebido >= metaAutorizado || !!pagamento.liberadoManual;
     const entry = {
       chaveVenda,
       loteId: c.loteId,
@@ -325,6 +339,9 @@ async function computeBonusTracking(): Promise<BonusResponse> {
       entradaValorTotal: entrada.valorTotal,
       entradaValorPago: entrada.valorPago,
       entradaQuitada,
+      valorRecebido,
+      metaAutorizado,
+      autorizado,
       valorCorretora: BONUS_CORRETORA,
       valorImobiliaria: BONUS_IMOBILIARIA,
       valorTotal: BONUS_TOTAL_POR_VENDA,

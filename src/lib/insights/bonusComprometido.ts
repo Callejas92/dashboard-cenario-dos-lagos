@@ -8,7 +8,7 @@ import { formatBRLCompact } from "@/lib/utils/formatters";
 import type { Insight } from "./types";
 
 export interface DadosBonus {
-  qtdAPagar: number;        // vendas com entrada quitada, ainda não pago
+  qtdAPagar: number;        // vendas que pagaram >= 1,5% do contrato, ainda não pago
   qtdPagoTotal: number;     // bônus já pagos
   aPagarAgora: number;      // R$ a pagar
   pagoTotal: number;        // R$ já pago

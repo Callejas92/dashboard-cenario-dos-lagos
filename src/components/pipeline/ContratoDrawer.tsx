@@ -74,6 +74,9 @@ interface BonusItem {
   valorImobiliaria: number;
   pagamento: { pagoCorretora: boolean; dataPagoCorretora: string; pagoImobiliaria: boolean; dataPagoImobiliaria: string; isento?: boolean };
   entradaQuitada: boolean;
+  autorizado?: boolean;
+  valorRecebido?: number;
+  metaAutorizado?: number;
   entradaQtdPaga: number;
   entradaQtdTotal: number;
 }
@@ -441,7 +444,7 @@ export default function ContratoDrawer({
                   valor={bonusInfo.valorCorretora || 3000}
                   pago={bonusInfo.pagamento.pagoCorretora}
                   dataPago={bonusInfo.pagamento.dataPagoCorretora}
-                  entradaQuitada={bonusInfo.entradaQuitada}
+                  autorizado={bonusInfo.autorizado ?? bonusInfo.entradaQuitada}
                   isento={bonusInfo.pagamento.isento}
                 />
 
@@ -451,14 +454,14 @@ export default function ContratoDrawer({
                   valor={bonusInfo.valorImobiliaria || 1000}
                   pago={bonusInfo.pagamento.pagoImobiliaria}
                   dataPago={bonusInfo.pagamento.dataPagoImobiliaria}
-                  entradaQuitada={bonusInfo.entradaQuitada}
+                  autorizado={bonusInfo.autorizado ?? bonusInfo.entradaQuitada}
                   isento={bonusInfo.pagamento.isento}
                 />
 
                 {/* Progresso entrada/sinal (se ainda não quitou) */}
-                {!bonusInfo.entradaQuitada && bonusInfo.entradaQtdTotal > 0 && (
+                {!(bonusInfo.autorizado ?? bonusInfo.entradaQuitada) && (bonusInfo.metaAutorizado ?? 0) > 0 && (
                   <div style={{ fontSize: "0.65rem", color: "var(--text-dim)", paddingTop: "0.4rem", borderTop: "1px solid var(--border)" }}>
-                    Entrada/sinal: <span className="tnum">{bonusInfo.entradaQtdPaga}/{bonusInfo.entradaQtdTotal}</span> pagas — bônus libera quando quitar todas.
+                    Pago <span className="tnum">{formatBRL(bonusInfo.valorRecebido ?? 0)}</span> de {formatBRL(bonusInfo.metaAutorizado ?? 0)} (1,5%) — bônus libera ao atingir.
                   </div>
                 )}
               </div>
@@ -551,13 +554,13 @@ export default function ContratoDrawer({
  *  - Aguardando entrada (azul) — entrada ainda não quitada
  */
 function BonusLinha({
-  label, valor, pago, dataPago, entradaQuitada, isento,
+  label, valor, pago, dataPago, autorizado, isento,
 }: {
   label: string;
   valor: number;
   pago: boolean;
   dataPago: string;
-  entradaQuitada: boolean;
+  autorizado: boolean;
   isento?: boolean;
 }) {
   let badgeText: string;
@@ -572,12 +575,12 @@ function BonusLinha({
     badgeText = `Pago ${formatData(dataPago)}`;
     badgeColor = "#10b981";
     badgeBg = "#10b98115";
-  } else if (entradaQuitada) {
+  } else if (autorizado) {
     badgeText = "A pagar";
     badgeColor = "#f59e0b";
     badgeBg = "#f59e0b15";
   } else {
-    badgeText = "Aguardando entrada";
+    badgeText = "Aguardando 1,5%";
     badgeColor = "#4285f4";
     badgeBg = "#4285f415";
   }

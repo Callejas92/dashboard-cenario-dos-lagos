@@ -67,6 +67,9 @@ interface BonusItem {
   entradaValorTotal: number;
   entradaValorPago: number;
   entradaQuitada: boolean;
+  valorRecebido?: number;
+  metaAutorizado?: number;
+  autorizado?: boolean;
   valorCorretora: number;
   valorImobiliaria: number;
   valorTotal: number;
@@ -312,7 +315,7 @@ export default function SubTabFinanceiro() {
               valor={formatBRLCompact(bs.aPagarAgora ?? 0)}
               severidade={(bs.qtdAPagar ?? 0) > 0 ? "amarelo" : "cinza"}
               contexto={`${bs.qtdAPagar ?? 0} venda${(bs.qtdAPagar ?? 0) === 1 ? "" : "s"}`}
-              formula="Bônus de vendas com entrada quitada, ainda não marcados como pagos. R$ 3k corretora + R$ 1k imobiliária por venda."
+              formula="Bônus de vendas que já pagaram ≥1,5% do contrato, ainda não marcados como pagos. R$ 3k corretora + R$ 1k imobiliária por venda."
             />
             <KpiMedium
               label="Pago"
@@ -322,11 +325,11 @@ export default function SubTabFinanceiro() {
               formula="Soma do que já foi marcado como pago (corretora + imobiliária)."
             />
             <KpiMedium
-              label="Aguardando entrada"
+              label="Aguardando 1,5%"
               valor={formatBRLCompact(bs.aguardandoEntrada ?? 0)}
               severidade="cinza"
               contexto={`${bs.qtdAguardandoEntrada ?? 0} venda${(bs.qtdAguardandoEntrada ?? 0) === 1 ? "" : "s"}`}
-              formula="Vendas assinadas onde o ERP UAU ainda não registrou a entrada quitada."
+              formula="Vendas assinadas onde o cliente ainda pagou menos de 1,5% do contrato (ERP UAU)."
             />
             <KpiMedium
               label="Comprometido total"
@@ -408,7 +411,7 @@ function BonusList({ bonus, planoPorLote }: { bonus: BonusItem[]; planoPorLote: 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "0.875rem" }}>
       <Grupo titulo="🟢 A PAGAR" cor="#10b981" itens={agrupados.aPagar} ativo updatingChave={updatingChave} onMarcar={marcar} onLiberar={liberarManual} onAbrir={setDrawerBonus} />
-      <Grupo titulo="🔵 AGUARDANDO ENTRADA" cor="#4285f4" itens={agrupados.aguardando} colapsado updatingChave={updatingChave} onMarcar={marcar} onLiberar={liberarManual} onAbrir={setDrawerBonus} />
+      <Grupo titulo="🔵 AGUARDANDO 1,5%" cor="#4285f4" itens={agrupados.aguardando} colapsado updatingChave={updatingChave} onMarcar={marcar} onLiberar={liberarManual} onAbrir={setDrawerBonus} />
       <Grupo titulo="⚪ JÁ PAGO" cor="#6b7280" itens={agrupados.pagos} colapsado updatingChave={updatingChave} onMarcar={marcar} onLiberar={liberarManual} onAbrir={setDrawerBonus} />
       {drawerBonus ? <BonusDrawer bonus={drawerBonus} plano={planoPorLote.get(drawerBonus.loteId)} onClose={() => setDrawerBonus(null)} /> : null}
     </div>
@@ -472,10 +475,12 @@ function BonusCard({
   onAbrir: (b: BonusItem) => void;
 }) {
   const corretorEhImob = isImobiliaria(bonus.corretorNome);
-  const podeMarcarCorretora = ativo && bonus.entradaQuitada && !corretorEhImob;
-  const podeMarcarImob = ativo && bonus.entradaQuitada && !!bonus.imobiliariaRazaoSocial && !isImobiliaria(bonus.imobiliariaRazaoSocial);
-  // Mostra "Liberar manualmente" só quando entrada NÃO está quitada (aguardando) e ainda não foi liberado.
-  const mostrarLiberar = !bonus.entradaQuitada && !bonus.pagamento.liberadoManual;
+  // Gatilho de autorização: pagou >= 1,5% (campo do core; fallback p/ entradaQuitada se ausente).
+  const autorizado = bonus.autorizado ?? bonus.entradaQuitada;
+  const podeMarcarCorretora = ativo && autorizado && !corretorEhImob;
+  const podeMarcarImob = ativo && autorizado && !!bonus.imobiliariaRazaoSocial && !isImobiliaria(bonus.imobiliariaRazaoSocial);
+  // Mostra "Liberar manualmente" só quando NÃO autorizado (aguardando) e ainda não foi liberado.
+  const mostrarLiberar = !autorizado && !bonus.pagamento.liberadoManual;
 
   return (
     <div style={{ padding: "0.625rem 1rem", borderTop: "1px solid var(--border)", display: "grid", gridTemplateColumns: "minmax(0, 1.4fr) minmax(0, 2fr) minmax(0, 2fr)", gap: "0.875rem", alignItems: "start" }}>
@@ -491,9 +496,9 @@ function BonusCard({
         <div style={{ fontSize: "0.65rem", color: "var(--text-dim)", marginTop: "0.125rem" }}>
           contrato {formatBRLCompact(bonus.valorContratado)}
         </div>
-        {!bonus.entradaQuitada && (
+        {!autorizado && (
           <div style={{ fontSize: "0.65rem", color: "#f59e0b", marginTop: "0.125rem" }}>
-            entrada/sinal {bonus.entradaQtdPaga}/{bonus.entradaQtdTotal} pagas
+            pago {bonus.valorContratado > 0 ? (((bonus.valorRecebido ?? bonus.entradaValorPago) / bonus.valorContratado) * 100).toFixed(1) : "0"}% · meta 1,5%
           </div>
         )}
         {bonus.pagamento.liberadoManual && (

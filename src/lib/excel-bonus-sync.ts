@@ -3,8 +3,8 @@
  *
  *  Coluna V = Status Corretor · Coluna X = Status Imob · casa por Quadra (A) + Lote (B).
  *  Escreve:
- *    - "aguardando pgt"  → entrada/sinal NÃO quitada
- *    - "autorizado"      → entrada/sinal quitada (bônus liberado)
+ *    - "aguardando pgt"  → cliente pagou < 1,5% do contrato
+ *    - "autorizado"      → cliente pagou >= 1,5% do contrato (bônus liberado)
  *    - preserva "pago"   → o Felipe marca manualmente; nunca sobrescrevo
  *
  * Só age sobre dado COMPLETO (bonus.completo). Reescreve as colunas V/X inteiras
@@ -139,8 +139,12 @@ export async function syncBonusToExcel(opts: { dryRun?: boolean; force?: boolean
   const tracking = await getBonusTracking();
   if (!tracking.completo) return { ok: false, motivo: "dado de bônus incompleto (UAU) — sync adiado" };
 
-  const porLote = new Map<string, boolean>(); // loteId → entradaQuitada
-  for (const b of tracking.bonus) porLote.set(b.loteId, b.entradaQuitada);
+  const porLote = new Map<string, boolean>(); // loteId → autorizado (pagou >= 1,5% do contrato)
+  // Defensivo: um cache de tracking antigo pode não ter "autorizado". Sem o campo, não
+  // escreve aquele lote (evita marcar tudo "aguardando" por engano até revalidar).
+  for (const b of tracking.bonus) {
+    if (typeof b.autorizado === "boolean") porLote.set(b.loteId, b.autorizado);
+  }
 
   const token = await getAccessToken();
   const fileId = await resolveComercialFileId(token);
