@@ -37,7 +37,7 @@ async function lerEventos(): Promise<Evento[]> {
     const { blobs } = await list({ prefix: BLOB_PATH });
     const hit = blobs.find((b) => b.pathname === BLOB_PATH) ?? blobs[0];
     if (!hit) return DEFAULT_EVENTOS;
-    const res = await fetch(hit.url, { cache: "no-store" });
+    const res = await fetch(`${hit.url}?_=${Date.now()}`, { cache: "no-store" }); // fura cache CDN do Blob
     if (!res.ok) return DEFAULT_EVENTOS;
     const j = await res.json();
     const arr = Array.isArray(j?.eventos) ? (j.eventos as Evento[]) : [];

@@ -115,7 +115,8 @@ async function loadPagamentos(): Promise<Record<string, BonusPagamento>> {
   try {
     const { blobs } = await list({ prefix: PAGAMENTOS_BLOB });
     if (blobs.length === 0) return {};
-    const res = await fetch(blobs[0].url, { cache: "no-store" });
+    // ?_=Date.now() fura o cache do CDN do Blob (URL sobrescrita serve conteúdo velho ~60s)
+    const res = await fetch(`${blobs[0].url}?_=${Date.now()}`, { cache: "no-store" });
     if (!res.ok) return {};
     return await res.json();
   } catch (e) {
@@ -450,7 +451,9 @@ async function readTrackingBlob(): Promise<{ savedAt: number; data: BonusRespons
     const { blobs } = await list({ prefix: TRACKING_BLOB });
     const hit = blobs.find((b) => b.pathname === TRACKING_BLOB) ?? blobs[0];
     if (!hit) return null;
-    const res = await fetch(hit.url, { cache: "no-store" });
+    // ?_=Date.now() fura o cache do CDN do Blob — sem isso, depois de marcar pago a
+    // leitura servia a versão ANTERIOR por ~30-60s ("dei pago e não foi").
+    const res = await fetch(`${hit.url}?_=${Date.now()}`, { cache: "no-store" });
     if (!res.ok) return null;
     return (await res.json()) as { savedAt: number; data: BonusResponse };
   } catch {

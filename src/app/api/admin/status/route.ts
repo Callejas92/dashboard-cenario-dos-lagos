@@ -104,7 +104,7 @@ async function statusSyncExcel(): Promise<{ ok: boolean | null; detalhe: string;
   try {
     const { blobs } = await list({ prefix: "cache/excel-bonus-sync.json" });
     if (!blobs.length) return { ok: null, detalhe: "ainda sem sync registrado", sync: null };
-    const st = await (await fetch(blobs[0].url, { cache: "no-store" })).json();
+    const st = await (await fetch(`${blobs[0].url}?_=${Date.now()}`, { cache: "no-store" })).json();
     const okAt = st?.syncedAt ? new Date(st.syncedAt).getTime() : 0;
     const falhaAt = st?.ultimaFalhaAt ? new Date(st.ultimaFalhaAt).getTime() : 0;
     if (falhaAt > okAt) {

@@ -18,7 +18,7 @@ async function load(): Promise<Record<string, string>> {
     const { blobs } = await list({ prefix: BLOB });
     const hit = blobs.find((b) => b.pathname === BLOB) ?? blobs[0];
     if (!hit) return {};
-    const res = await fetch(hit.url, { cache: "no-store" });
+    const res = await fetch(`${hit.url}?_=${Date.now()}`, { cache: "no-store" }); // fura cache CDN do Blob
     if (!res.ok) return {};
     return (await res.json()) as Record<string, string>;
   } catch {
