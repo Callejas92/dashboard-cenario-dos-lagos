@@ -44,7 +44,7 @@ Status ao vivo das integrações: OneDrive, **Excel Bônus (sync automático)**,
 ### Regra de negócio do bônus (atual, jun/2026)
 - R$ 3.000 corretor + R$ 1.000 imobiliária externa por venda válida (ASSINADO+, não-investidor).
 - **Autorizado quando o cliente pagou ≥ 1,5% do contrato** (valor recebido no ERP UAU = "o que veio pra Mangaba"). Liberação manual disponível como exceção (registrada).
-- Excel recebe por coluna: `pago` (marcado no dashboard) · `autorizado` · `aguardando pgt` (+ cores verde forte/verde/âmbar). "pago" digitado à mão é preservado.
+- **Fluxo do pago (10/06, decisão final do Felipe): o "pago" é anotado NO EXCEL** — célula com 3 estados: `aguardando pgt` / `autorizado pgt` (dashboard escreve) / `pago` (Felipe digita; dashboard lê e importa sozinho, em lote). Cores: âmbar / verde claro / verde forte. Apagar o "pago" da célula desmarca no dashboard (só os importados do Excel).
 
 ---
 

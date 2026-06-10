@@ -41,9 +41,10 @@ src/lib/server-auth.ts         # Bearer obrigatório em POST/DELETE de escrita
 
 - **Venda** = contrato ASSINADO+ no Eggs. **Mês comercial = dia 15→14.** Lançamento 14/04/2026.
 - **Bônus**: R$ 3k corretor + R$ 1k imob externa por venda; **autorizado quando o cliente
-  pagou ≥ 1,5% do contrato** (recebido no ERP). Pago é marcado NO DASHBOARD (fonte da
-  verdade) e o Excel recebe "pago"+cor automaticamente; "pago" manual no Excel é
-  preservado mas NÃO volta pro dashboard (fluxo mão única).
+  pagou ≥ 1,5% do contrato** (recebido no ERP). **O "pago" é anotado NO EXCEL pelo Felipe**
+  (célula Status Corretor / Status Imob) — o dashboard escreve só "aguardando pgt" /
+  "autorizado pgt", LÊ o "pago" e importa sozinho no sync (e desmarca se o pago for
+  apagado — só os vindos do Excel). Dashboard = acompanhamento; Excel = registro do pago.
 - **Lotes do investidor (39)** ficam fora de tudo — lista editável via `/api/investor-lots`.
 - Excel Comercial (OneDrive): o dashboard escreve SÓ as colunas de status de bônus
   (hoje U=corretor, V=imob — detectadas pelo cabeçalho).
