@@ -187,6 +187,40 @@ async function resolveLotesSheetName(token: string, fileId: string): Promise<str
 }
 
 /**
+ * Diagnóstico: mostra QUAL arquivo/aba o sync está usando (nome, caminho completo,
+ * link, última modificação) + TODOS os candidatos que a busca encontrou no OneDrive.
+ * Usado pra conferir se o dashboard mexe no MESMO arquivo que o Felipe abre.
+ */
+export async function diagnosticoExcel(): Promise<{
+  candidatos: { name: string; caminho: string; webUrl: string; modificado: string }[];
+  escolhido: { name: string; caminho: string; webUrl: string; modificado: string } | null;
+  abas: string[];
+  abaEscolhida: string;
+}> {
+  const token = await getAccessToken();
+  const j = await graph(token, `${GRAPH}/me/drive/root/search(q='comercial')?$select=name,id,webUrl,lastModifiedDateTime,parentReference&$top=25`);
+  type Cand = { name: string; id: string; webUrl?: string; lastModifiedDateTime?: string; parentReference?: { path?: string } };
+  const brutos = ((j.value as Cand[]) || []).filter((f) => /\.xls/i.test(f.name));
+  const candidatos = brutos.map((f) => ({
+    name: f.name,
+    caminho: (f.parentReference?.path || "").replace("/drive/root:", "") || "/",
+    webUrl: f.webUrl || "",
+    modificado: f.lastModifiedDateTime || "",
+    id: f.id,
+  }));
+  const escolhidoBruto = candidatos.find((f) => /comercial/i.test(f.name) && !/marketing/i.test(f.name)) || candidatos[0] || null;
+  let abas: string[] = [];
+  let abaEscolhida = "";
+  if (escolhidoBruto) {
+    const ws = await graph(token, `${GRAPH}/me/drive/items/${escolhidoBruto.id}/workbook/worksheets?$select=name`);
+    abas = (((ws.value as { name: string }[]) || []).map((w) => w.name));
+    abaEscolhida = abas.find((n) => /lotes/i.test(n)) || "";
+  }
+  const semId = (c: typeof candidatos[number] | null) => c ? { name: c.name, caminho: c.caminho, webUrl: c.webUrl, modificado: c.modificado } : null;
+  return { candidatos: candidatos.map((c) => semId(c)!), escolhido: semId(escolhidoBruto), abas, abaEscolhida };
+}
+
+/**
  * Manutenção one-off pedida pelo Felipe: deleta as colunas de VALOR FIXO de bônus
  * ("Bônus Corretor" = R$3k e "Bônus Imob" = R$1k — sempre o mesmo valor, sem motivo).
  * Acha pelo NOME exato do cabeçalho (não por posição) e deleta da direita pra esquerda.
