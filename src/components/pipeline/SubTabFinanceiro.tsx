@@ -14,6 +14,7 @@ import useSWR, { mutate as mutateGlobal } from "swr";
 import { DollarSign, AlertTriangle, Award, CheckCircle2, XCircle, RefreshCw, ChevronRight, Wallet } from "lucide-react";
 import BonusDrawer, { type PlanoPagamento } from "./BonusDrawer";
 import PagamentosPixDrawer from "./PagamentosPixDrawer";
+import BonusPagosDrawer from "./BonusPagosDrawer";
 import KpiMedium from "@/components/shared/KpiMedium";
 import KpiSmall from "@/components/shared/KpiSmall";
 import { SkeletonCard } from "@/components/shared/Skeleton";
@@ -353,6 +354,7 @@ function BonusList({ bonus, planoPorLote }: { bonus: BonusItem[]; planoPorLote: 
   const [updatingChave, setUpdatingChave] = useState<string | null>(null);
   const [drawerBonus, setDrawerBonus] = useState<BonusItem | null>(null);
   const [pixOpen, setPixOpen] = useState(false);
+  const [pagosOpen, setPagosOpen] = useState(false);
 
   // Filtra: ignora isentos (não fazem parte do "a pagar")
   // Exclui imobiliárias do listing principal — só corretor PF + ação na imobiliária no card
@@ -412,7 +414,13 @@ function BonusList({ bonus, planoPorLote }: { bonus: BonusItem[]; planoPorLote: 
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "0.875rem" }}>
-      <div style={{ display: "flex", justifyContent: "flex-end" }}>
+      <div style={{ display: "flex", justifyContent: "flex-end", gap: "0.5rem" }}>
+        <button
+          onClick={() => setPagosOpen(true)}
+          style={{ display: "flex", alignItems: "center", gap: "0.35rem", padding: "0.4rem 0.8rem", fontSize: "0.78rem", fontWeight: 600, color: "var(--text)", background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "0.5rem", cursor: "pointer" }}
+        >
+          <Award size={13} /> Bônus pago
+        </button>
         <button
           onClick={() => setPixOpen(true)}
           style={{ display: "flex", alignItems: "center", gap: "0.35rem", padding: "0.4rem 0.8rem", fontSize: "0.78rem", fontWeight: 600, color: "var(--text)", background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "0.5rem", cursor: "pointer" }}
@@ -425,6 +433,7 @@ function BonusList({ bonus, planoPorLote }: { bonus: BonusItem[]; planoPorLote: 
       <Grupo titulo="⚪ JÁ PAGO" cor="#6b7280" itens={agrupados.pagos} colapsado updatingChave={updatingChave} onMarcar={marcar} onLiberar={liberarManual} onAbrir={setDrawerBonus} />
       {drawerBonus ? <BonusDrawer bonus={drawerBonus} plano={planoPorLote.get(drawerBonus.loteId)} onClose={() => setDrawerBonus(null)} /> : null}
       {pixOpen ? <PagamentosPixDrawer bonus={bonus} onClose={() => setPixOpen(false)} /> : null}
+      {pagosOpen ? <BonusPagosDrawer bonus={bonus} onClose={() => setPagosOpen(false)} /> : null}
     </div>
   );
 }

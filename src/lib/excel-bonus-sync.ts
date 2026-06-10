@@ -33,6 +33,8 @@ export interface SyncReport {
   preservadasPago?: number;
   orfaosLimpos?: number;       // células de status limpas por o lote ter saído do bônus (venda desfeita)
   orfaosLotes?: string[];      // loteIds cujo status foi limpo (pra conferência)
+  colunasStatus?: string;      // colunas de status detectadas (corretor/imob) — pelo header
+  amostraHeader?: Record<string, string>; // headers das colunas U/V/W/X (inspeção)
   dryRun?: boolean;
   mudou?: boolean;
   destaque?: string; // status da formatação condicional (âmbar/verde)
@@ -67,15 +69,14 @@ async function graph(token: string, url: string, init?: RequestInit): Promise<Re
 // Destaque por COR de fundo (formatação condicional do Graph não existe em OneDrive pessoal).
 // Âmbar p/ "aguardando", verde p/ "autorizado". Agrupa linhas consecutivas de mesma cor em
 // faixas (menos chamadas). Preserva "pago" (não recolore). Erro aqui NÃO quebra a escrita.
-async function aplicarCores(token: string, wsPath: string, values: unknown[][], porLote: Map<string, boolean>, orfaos: string[] = []): Promise<string> {
+async function aplicarCores(token: string, wsPath: string, values: unknown[][], porLote: Map<string, boolean>, cols: { letter: string; idx: number }[], orfaos: string[] = []): Promise<string> {
   const AMBAR = "#FBBF24", VERDE = "#86EFAC";
   // 1) Monta as faixas (linhas consecutivas de mesma cor) — sem chamadas ainda.
   const ops: { addr: string; color: string }[] = [];
-  for (const col of ["V", "X"] as const) {
-    const colIdx = col === "V" ? COL_V : COL_X;
+  for (const { letter, idx } of cols) {
     let start = -1, end = -1, cor = "";
     const push = () => {
-      if (start >= 0) ops.push({ addr: `${col}${start}:${col}${end}`, color: cor });
+      if (start >= 0) ops.push({ addr: `${letter}${start}:${letter}${end}`, color: cor });
       start = -1; end = -1; cor = "";
     };
     for (let i = PRIMEIRA_LINHA_DADOS; i < values.length; i++) {
@@ -85,7 +86,7 @@ async function aplicarCores(token: string, wsPath: string, values: unknown[][], 
       const excelRow = i + 1;
       let desejada = "";
       if (Number.isFinite(q) && Number.isFinite(l) && porLote.has(`Q${q}-L${l}`)) {
-        const cur = String(row[colIdx] ?? "").trim().toLowerCase();
+        const cur = String(row[idx] ?? "").trim().toLowerCase();
         if (cur !== "pago") desejada = porLote.get(`Q${q}-L${l}`) ? VERDE : AMBAR;
       }
       if (desejada && desejada === cor) { end = excelRow; }
@@ -171,6 +172,14 @@ export async function syncBonusToExcel(opts: { dryRun?: boolean; force?: boolean
   const values = (ur.values as unknown[][]) || [];
   const totalLinhas = values.length;
 
+  // Colunas de status pelo CABEÇALHO (robusto a deletar/inserir colunas, ex.: remover U e W).
+  // Cai no V(21)/X(23) fixo se não achar o header.
+  const headerRow = values[PRIMEIRA_LINHA_DADOS - 1] || [];
+  const header = headerRow.map((c) => String(c ?? "").trim().toLowerCase());
+  const achaCol = (re: RegExp, fb: number) => { const i = header.findIndex((h) => re.test(h)); return i >= 0 ? i : fb; };
+  const colV = achaCol(/status.*corretor/i, COL_V);
+  const colX = achaCol(/status.*imob/i, COL_X);
+
   const novoV: unknown[][] = [];
   const novoX: unknown[][] = [];
   let casadas = 0, alteradas = 0, preservadas = 0;
@@ -182,8 +191,8 @@ export async function syncBonusToExcel(opts: { dryRun?: boolean; force?: boolean
     const row = values[i] || [];
     const quadra = String(row[0] ?? "").trim();
     const lote = String(row[1] ?? "").trim();
-    const curV = row[COL_V] ?? "";
-    const curX = row[COL_X] ?? "";
+    const curV = row[colV] ?? "";
+    const curX = row[colX] ?? "";
     let nv: unknown = curV;
     let nx: unknown = curX;
 
@@ -202,8 +211,8 @@ export async function syncBonusToExcel(opts: { dryRun?: boolean; force?: boolean
       } else if (isStatusBonus(curV) || isStatusBonus(curX)) {
         // Órfão: lote saiu da lista de bônus (venda desfeita/liberada) mas ficou com status
         // antigo no Excel. Limpa "autorizado"/"aguardando pgt" (nunca mexe em "pago").
-        if (isStatusBonus(curV)) { nv = ""; alteradas++; orfaos.push(`${colLetter(COL_V)}${i + 1}`); }
-        if (isStatusBonus(curX)) { nx = ""; alteradas++; orfaos.push(`${colLetter(COL_X)}${i + 1}`); }
+        if (isStatusBonus(curV)) { nv = ""; alteradas++; orfaos.push(`${colLetter(colV)}${i + 1}`); }
+        if (isStatusBonus(curX)) { nx = ""; alteradas++; orfaos.push(`${colLetter(colX)}${i + 1}`); }
         orfaosLotes.add(loteId);
       }
     }
@@ -226,6 +235,8 @@ export async function syncBonusToExcel(opts: { dryRun?: boolean; force?: boolean
     preservadasPago: preservadas,
     orfaosLimpos: orfaos.length,
     orfaosLotes: Array.from(orfaosLotes),
+    colunasStatus: `corretor=${colLetter(colV)}(${colV}) imob=${colLetter(colX)}(${colX})`,
+    amostraHeader: { U: String(headerRow[20] ?? ""), V: String(headerRow[21] ?? ""), W: String(headerRow[22] ?? ""), X: String(headerRow[23] ?? "") },
     dryRun,
     mudou,
   };
@@ -235,8 +246,8 @@ export async function syncBonusToExcel(opts: { dryRun?: boolean; force?: boolean
   if (mudou) {
     const primeira = PRIMEIRA_LINHA_DADOS + 1; // Excel 1-based
     const ultima = totalLinhas;                // Excel 1-based (usedRange começa em A1)
-    const addrV = `${colLetter(COL_V)}${primeira}:${colLetter(COL_V)}${ultima}`;
-    const addrX = `${colLetter(COL_X)}${primeira}:${colLetter(COL_X)}${ultima}`;
+    const addrV = `${colLetter(colV)}${primeira}:${colLetter(colV)}${ultima}`;
+    const addrX = `${colLetter(colX)}${primeira}:${colLetter(colX)}${ultima}`;
     await graph(token, `${wsPath}/range(address='${addrV}')`, { method: "PATCH", body: JSON.stringify({ values: novoV }) });
     await graph(token, `${wsPath}/range(address='${addrX}')`, { method: "PATCH", body: JSON.stringify({ values: novoX }) });
   }
@@ -244,7 +255,7 @@ export async function syncBonusToExcel(opts: { dryRun?: boolean; force?: boolean
   // Destaque por cor (âmbar "aguardando" / verde "autorizado"). Só quando muda ou forçado.
   if (mudou || force) {
     try {
-      report.destaque = await aplicarCores(token, wsPath, values, porLote, orfaos);
+      report.destaque = await aplicarCores(token, wsPath, values, porLote, [{ letter: colLetter(colV), idx: colV }, { letter: colLetter(colX), idx: colX }], orfaos);
     } catch (e) {
       report.destaque = "erro: " + (e instanceof Error ? e.message : String(e));
     }
