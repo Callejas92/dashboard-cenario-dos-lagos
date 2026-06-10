@@ -15,7 +15,10 @@ import { PROJETO, isVenda } from "@/lib/constants/projeto";
 export interface VgvInput {
   /** Lista de contratos com loteId, valor e status. */
   contratos: { loteId: string; valorContratado: number; status: string; cancelado: boolean }[];
-  /** Lotes do investidor (excluídos). Default: vem do investor-lots.json. */
+  /**
+   * Lotes do investidor (excluídos). Default: vazio — os dados de /api/crm/contratos
+   * JÁ chegam filtrados no servidor (getInvestorLots). Só passe se a fonte for crua.
+   */
   lotesInvestidor?: Set<string>;
 }
 

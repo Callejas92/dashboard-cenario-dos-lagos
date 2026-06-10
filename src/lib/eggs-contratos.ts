@@ -2,10 +2,9 @@
  * Eggs CRM Contratos - shared lib (PropostaContrato/Exportar)
  * Exclui automaticamente contratos de lotes do investidor (Tio Ico)
  */
-import investorData from "@/data/investor-lots.json";
+import { getInvestorLots } from "@/lib/investor-lots";
 
 const EGGS_API = "https://api.eggs.app/api/v1/PropostaContrato/Exportar";
-const INVESTOR_LOTS = new Set<string>(investorData.lots);
 
 export interface ContratoEnriquecido {
   id: number;
@@ -178,6 +177,7 @@ export async function getContratosEggs(): Promise<ContratoEnriquecido[]> {
     const raw: EggsContrato[] = await res.json();
 
     // Filtra contratos de lotes do investidor (Tio Ico) - eles nao existem nas metricas
+    const INVESTOR_LOTS = await getInvestorLots();
     const rawFiltered = raw.filter((c) => {
       const loteId = buildLoteId(c.bloco, c.unidade);
       return !INVESTOR_LOTS.has(loteId);

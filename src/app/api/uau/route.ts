@@ -1,9 +1,7 @@
 import { NextResponse } from "next/server";
 import lotesData from "@/data/lotes.json";
-import investorData from "@/data/investor-lots.json";
+import { getInvestorLots } from "@/lib/investor-lots";
 import { authenticate, UAU_API, isUauConfigured, uauHeaders } from "@/lib/uau-auth";
-
-const INVESTOR_LOTS = new Set<string>(investorData.lots);
 
 // Helper: busca dados do CRM Eggs (mais atualizado que ERP/JSON estático)
 interface CRMLoteInfo {
@@ -145,6 +143,7 @@ async function fetchUnits(
 
 function buildEnrichedResponse(
   uauRows: UnitRow[] | null,
+  INVESTOR_LOTS: Set<string>,
   uauStatus?: string,
   crmLotes?: Map<string, CRMLoteInfo>,
 ) {
@@ -384,9 +383,10 @@ let estoqueInflight: Promise<Record<string, unknown>> | null = null;
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const debug = searchParams.get("debug") === "1";
+  const investorLots = await getInvestorLots();
 
   if (!isUauConfigured()) {
-    return NextResponse.json(buildEnrichedResponse(null, "not_configured"));
+    return NextResponse.json(buildEnrichedResponse(null, investorLots, "not_configured"));
   }
 
   // Cache hit (pula debug — debug sempre fresco)
@@ -460,12 +460,12 @@ export async function GET(request: Request) {
         soldEnrichResult.status === "rejected" ? String(soldEnrichResult.reason) : null,
       ].filter(Boolean).join("; ");
 
-      const response = buildEnrichedResponse(null, "offline");
+      const response = buildEnrichedResponse(null, investorLots, "offline");
       if (errMsgs) response.uauError = errMsgs;
       return response;
     }
 
-    return buildEnrichedResponse(mergedRows, undefined, crmLotes);
+    return buildEnrichedResponse(mergedRows, investorLots, undefined, crmLotes);
   })();
 
   if (!debug) estoqueInflight = fetchPromise;
@@ -480,7 +480,7 @@ export async function GET(request: Request) {
   } catch (error) {
     const errMsg = error instanceof Error ? error.message : String(error);
     console.error("UAU API error:", errMsg);
-    const response = buildEnrichedResponse(null, "offline");
+    const response = buildEnrichedResponse(null, investorLots, "offline");
     response.uauError = errMsg;
     return NextResponse.json(response);
   } finally {

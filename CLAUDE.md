@@ -1,124 +1,74 @@
 # Dashboard Cenário dos Lagos — Contexto para Claude
 
-## O que é este projeto
+## O que é
 
-Dashboard de marketing em tempo real para o empreendimento **Cenário dos Lagos** da **Mangaba Urbanismo**.
-- Produção: https://dashboard-cenario-dos-lagos.vercel.app (senha: callejas)
-- Repo local: `C:\Users\felip\dashboard-cenario-dos-lagos`
-- GitHub: https://github.com/Callejas92/dashboard-cenario-dos-lagos
+Dashboard interno (usuário único: Felipe, founder da Mangaba Urbanismo) do loteamento
+**Cenário dos Lagos** — 174 lotes vendáveis, VGV R$ 85,91M. É **monitor de decisão,
+não sistema de gestão**.
+
+- Produção: https://dashboard.mangabaurbanismo.com.br (login por senha; escritas exigem Bearer = senha)
+- Repo local: `C:\dev\dashboard-cenario-dos-lagos` · GitHub: Callejas92/dashboard-cenario-dos-lagos
 - Deploy: `npx vercel --prod` (auto-deploy do GitHub NÃO está ativo)
+- Workflow: `tsc --noEmit` → `npm run build` → commit → push → `vercel --prod` → **verificar em produção**
+- **Regra de ouro do Felipe: nada de info errada no dashboard.** Verificar todo número contra a fonte.
 
-## Stack
+## Documentos-chave
 
-Next.js 16 (App Router) + TypeScript + Tailwind CSS + Recharts + Vercel + Vercel Blob
+- `ANALISE_DASHBOARD.md` — auditoria completa + plano de fases (status atualizado)
+- `BRIEFING_REDESIGN_DASHBOARD.md` — premissa original do V2 (princípios de design, regras de negócio)
 
-## Arquivos principais
+## Stack & estrutura (V2 — a V1/legacy foi removida em 10/06/2026)
+
+Next.js 16 (App Router) + TypeScript + Recharts + SWR + Vercel + Vercel Blob.
 
 ```
-src/
-  app/
-    page.tsx                    # Shell principal: auth, tabs, navegação
-    api/
-      canais/route.ts           # Agregador: Meta Ads + CRM + UAU (cache 5min)
-      meta-ads/route.ts         # Campanhas Meta + daily (time_increment=1)
-      whatsapp/route.ts         # Métricas + custo estimado + blob
-      whatsapp/webhook/route.ts # GET verify + POST eventos Meta
-      instagram/route.ts        # Perfil e posts
-      crm/route.ts              # Leads CRM Eggs
-      uau/vendas/route.ts       # Vendas ERP UAU
-      uau/financeiro/route.ts   # Financeiro ERP UAU
-      analytics/route.ts        # Google Analytics 4
-  components/
-    TabVisaoGeral.tsx           # KPIs globais + funil + Por Canal/Por Dia
-    TabMetaAds.tsx              # Campanhas + KPIs expandíveis + daily
-    TabWhatsApp.tsx             # Mensagens + custo + webhook + daily
-    TabInstagram.tsx            # Perfil + posts + KPIs expandíveis
-    TabCRM.tsx                  # Leads + status + corretor + daily
-    TabCanais.tsx               # Breakdown por canal
-    TabEstoque.tsx              # Estoque UAU
-    TabFinanceiro.tsx           # Financeiro UAU
-    TabQualidade.tsx            # Metas e qualidade
-    KPICard.tsx                 # Componente de card KPI reutilizável
-    DateRangeFilter.tsx         # Filtro de data com botões rápidos
+src/app/panorama      # visão executiva (KPIs, velocidade, curvas, alertas, insights)
+src/app/pipeline      # Contratos · Corretores (LTV) · Estoque · Financeiro & Bônus
+src/app/marketing     # Painel (planilha OneDrive) · Digital · Orgânico · CRM Leads
+src/app/admin         # status das integrações (⚙️ no header)
+src/app/api/*         # 28 rotas (CRM Eggs, UAU ERP, bônus, PIX, eventos, mídia...)
+src/lib/constants/negocio.ts   # REGRAS DE NEGÓCIO (fonte única): comissões 6,5%,
+                               # FATOR_MANGABA 0,935, bônus 3k/1k, autorização 1,5%
+src/lib/constants/projeto.ts   # premissas (VGV, metas, mês comercial 15→14)
+src/lib/bonus.ts               # tracking de bônus (read-your-writes; blob compartilhado)
+src/lib/excel-bonus-sync.ts    # sync status→Excel Comercial (acha colunas pelo header)
+src/lib/investor-lots.ts       # lotes do investidor: blob override + seed (editável sem deploy)
+src/lib/onedrive-token.ts      # token OAuth cifrado (AES-256-GCM) no blob
+src/lib/server-auth.ts         # Bearer obrigatório em POST/DELETE de escrita
 ```
 
-## Integrações
+## Regras de negócio críticas
 
-### Meta Ads ✅
-- System User token (nunca expira) — `META_ACCESS_TOKEN`
-- Account ID em `META_AD_ACCOUNT_ID`
-- Endpoint usa `time_increment=1` para dados diários
+- **Venda** = contrato ASSINADO+ no Eggs. **Mês comercial = dia 15→14.** Lançamento 14/04/2026.
+- **Bônus**: R$ 3k corretor + R$ 1k imob externa por venda; **autorizado quando o cliente
+  pagou ≥ 1,5% do contrato** (recebido no ERP). Pago é marcado NO DASHBOARD (fonte da
+  verdade) e o Excel recebe "pago"+cor automaticamente; "pago" manual no Excel é
+  preservado mas NÃO volta pro dashboard (fluxo mão única).
+- **Lotes do investidor (39)** ficam fora de tudo — lista editável via `/api/investor-lots`.
+- Excel Comercial (OneDrive): o dashboard escreve SÓ as colunas de status de bônus
+  (hoje U=corretor, V=imob — detectadas pelo cabeçalho).
 
-### WhatsApp Business ✅
-- System User token — `WHATSAPP_TOKEN`
-- `WHATSAPP_PHONE_ID=946828588523627`, `WHATSAPP_WABA_ID=1492656522562843`
-- Webhook publicado na Meta (App publicado, recebe dados de produção)
-  - Assina: `messages` + `phone_number_quality_update`
-  - `WHATSAPP_WEBHOOK_VERIFY_TOKEN` na Vercel
-- Custo estimado: $0.0625/conversa marketing (Brasil) × câmbio live (open.er-api.com)
-- Dados acumulam em Vercel Blob `whatsapp-events.json`
-- conversation_analytics API retorna vazio (limitação da Meta)
+## Pegadinhas que já causaram bug (não repetir)
 
-### Instagram ✅
-- `INSTAGRAM_ACCOUNT_ID=17841470059281377` (@mangabaurbanismo)
+- **Vercel Blob**: sobrescrita propaga em ~60s. NUNCA confie em ler-depois-de-escrever;
+  use read-your-writes (POST devolve o estado novo) + `?_=${Date.now()}` nos fetches.
+- **UAU ERP**: lento (~40s frio) e instável; `completo=false` = dado parcial — nunca
+  persistir parcial como verdade (badge/Excel só agem com completo).
+- `useState` sempre ANTES de qualquer `if (loading)` — Rules of Hooks (crash silencioso).
+- Recharts: `<YAxis hide>` quebra escala de barras; screenshot no frame 0 mostra barras zeradas.
+- PowerShell 5.1: sem `&&`; usar `if ($?) {}`; `""` dentro de string dupla corrompe JSON.
+- Env vars podem vir com `\n` no fim — sempre `.trim()`.
 
-### CRM Eggs ✅
-- `CRM_API_KEY=17a7b2e27adb53f0fef5de6c10f10483`
-- API HTTP: `http://leadsc2s.eggs.com.br/api/webhook/leads`
+## Integrações (credenciais = Vercel env, NUNCA neste arquivo)
 
-### ERP Senior UAU ✅
-- `UAU_BASE_URL`, `UAU_EMPRESA=133`, `UAU_CHAVE=Q2VuYXJpb0RMYWdvcw==`
-- Filtros de data ignorados pelo ERP (retorna tudo)
+| Fonte | Uso | Notas |
+|---|---|---|
+| Eggs CRM | contratos/corretores/leads (autoridade de vendas) | retry + stale-fallback |
+| UAU ERP (Senior) | financeiro/parcelas/estoque | `obra="01VEN"`; cron warm 4min |
+| OneDrive Graph | planilha Marketing (lê) + Comercial (escreve bônus) | token cifrado no blob |
+| Meta/Google/GA/WhatsApp/Instagram | mídia/leads | tokens System User |
 
-### Google Ads ⚠️
-- Developer token: `eoQyarcgourbh57gQtbg9Q`
-- Manager ID: 649-114-5054, Customer ID: 171-613-6766
-- Aguardando billing do cliente
+## Estado do plano (ver ANALISE_DASHBOARD.md)
 
-### Google Analytics 4 ✅
-- `GA4_PROPERTY_ID=529425797`
-
-## Padrões de código importantes
-
-### KPIs expandíveis (padrão em todas as abas)
-Todos os KPI cards são clicáveis e expandem um painel com:
-- Toggle **Por Canal / Por Dia** (onde disponível)
-- Toggle **Tabela / Gráfico**
-- Tabela com scroll (max 320px) e linha de TOTAL
-- Botão X para fechar
-
-**REGRA CRÍTICA:** Todos os `useState` DEVEM estar no topo do componente, ANTES de qualquer `if (loading)` / `if (error)` / `if (!data)`. Violação desta regra causa crash silencioso na produção (React Rules of Hooks).
-
-### Cache de API
-APIs server-side usam cache em memória de 5 minutos:
-```ts
-let cachedData: { data: unknown; timestamp: number; key: string } | null = null;
-const CACHE_TTL = 5 * 60 * 1000;
-```
-
-### Vercel Blob
-- `metrics.json` — configurações (metas, VGV, canais)
-- `whatsapp-events.json` — `{ daily: Record<string, DayStats>, qualityHistory, pricing, updatedAt }`
-
-### Cores dos canais
-```ts
-const CANAL_COLORS = {
-  "Meta Ads": "#1877f2",
-  "Google Ads": "#ea4335",
-  "Site": "#10b981",
-  "Outdoor": "#f4a236",
-  "Rádio": "#8b5cf6",
-  "Jornal": "#e94560",
-  "Indicação": "#0ea5e9",
-  "Contato Corretor": "#f59e0b",
-  "Outros": "#6b7280",
-}
-```
-
-## Pendências conhecidas
-
-- Google Ads: cliente precisa ativar billing
-- GA4: criar key events `click_whatsapp` e `form_submit_lead`
-- Custos offline (Outdoor, Rádio, Jornal): integrar Google Sheets ou OneDrive
-- Performance por Corretor: requer enriquecimento CRM + UAU
-- WhatsApp: webhook só acumula dados a partir da ativação (histórico inserido manualmente no blob)
+✅ F1 segurança · ✅ F2 consolidação+Excel · ✅ F3 resiliência · ✅ F4 limpeza ·
+⬜ F5 produto (cron Excel, notificação bônus autorizado, LTV no ranking, importar pago do Excel)

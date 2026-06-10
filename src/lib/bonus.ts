@@ -13,9 +13,7 @@ import { list, put, del } from "@vercel/blob";
 import { after } from "next/server";
 import { getContratosEggs, type ContratoEnriquecido } from "@/lib/eggs-contratos";
 import { authenticate, isUauConfigured, uauFetch } from "@/lib/uau-auth";
-import investorData from "@/data/investor-lots.json";
-
-const INVESTOR_LOTS = new Set<string>(investorData.lots);
+import { getInvestorLots } from "@/lib/investor-lots";
 
 // Regras de negócio centralizadas em constants/negocio.ts (re-exportadas p/ compat).
 import { BONUS_CORRETORA, BONUS_IMOBILIARIA, BONUS_TOTAL_POR_VENDA, PCT_AUTORIZACAO } from "@/lib/constants/negocio";
@@ -375,9 +373,10 @@ function sortBonus(bonus: BonusEntry[]): BonusEntry[] {
 
 // Compute pesado (Eggs + UAU). NÃO mexe em cache — o wrapper getBonusTracking cuida disso.
 async function computeBonusTracking(): Promise<BonusResponse> {
-  const [contratos, pagamentos] = await Promise.all([
+  const [contratos, pagamentos, INVESTOR_LOTS] = await Promise.all([
     getContratosEggs(),
     loadPagamentos(),
+    getInvestorLots(),
   ]);
 
   // Filtra contratos válidos pro cálculo:

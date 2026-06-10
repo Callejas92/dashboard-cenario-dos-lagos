@@ -4,9 +4,7 @@ import { getContratosEggs } from "@/lib/eggs-contratos";
 import { getBonusComoCustoMensal } from "@/lib/bonus";
 import { COMISSAO_TOTAL_PCT } from "@/lib/constants/negocio";
 import lotesData from "@/data/lotes.json";
-import investorData from "@/data/investor-lots.json";
-
-const INVESTOR_LOTS = new Set<string>(investorData.lots);
+import { getInvestorLots } from "@/lib/investor-lots";
 
 export const maxDuration = 60;
 
@@ -89,6 +87,8 @@ export async function GET() {
   if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
     return NextResponse.json(cached.data);
   }
+
+  const INVESTOR_LOTS = await getInvestorLots();
 
   try {
     const token = await authenticate();

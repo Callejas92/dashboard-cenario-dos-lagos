@@ -1,19 +1,10 @@
 /**
- * Root page — V2 é o padrão (redesign concluído e aprovado em Mai/2026).
- *
- * - Padrão (sem env var): redireciona para /panorama (V2)
- * - NEXT_PUBLIC_DASHBOARD_V2 = "false": força a versão antiga (escape hatch)
- * - Versão antiga sempre acessível em /legacy, independente da flag
+ * Root page — redireciona para o Panorama (V2).
+ * A V1 (/legacy + componentes _deprecated) foi removida em 10/06/2026 (Fase 4),
+ * após ~1 mês de V2 estável em produção.
  */
 import { redirect } from "next/navigation";
-import LegacyPage from "./legacy/page";
-
-// V2 ligado por padrão. Só cai no legacy se a flag for explicitamente "false".
-const V2_ENABLED = process.env.NEXT_PUBLIC_DASHBOARD_V2 !== "false";
 
 export default function RootPage() {
-  if (V2_ENABLED) {
-    redirect("/panorama");
-  }
-  return <LegacyPage />;
+  redirect("/panorama");
 }

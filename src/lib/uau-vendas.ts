@@ -7,9 +7,7 @@
 import { authenticate, isUauConfigured, uauFetch } from "@/lib/uau-auth";
 import { getContratosEggs } from "@/lib/eggs-contratos";
 import lotesData from "@/data/lotes.json";
-import investorData from "@/data/investor-lots.json";
-
-const INVESTOR_LOTS = new Set<string>(investorData.lots);
+import { getInvestorLots } from "@/lib/investor-lots";
 
 interface LoteStatic {
   id: string;
@@ -177,6 +175,7 @@ export async function getVendas(startDate?: string, endDate?: string, opts: GetV
 }
 
 async function doFetchVendas(startDate: string, endDate: string, opts: GetVendasOptions = {}): Promise<VendasResponse> {
+  const INVESTOR_LOTS = await getInvestorLots();
   if (!isUauConfigured()) {
     return {
       vendas: [],

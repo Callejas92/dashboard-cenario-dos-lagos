@@ -1,8 +1,7 @@
 import { NextResponse } from "next/server";
-import investorData from "@/data/investor-lots.json";
+import { getInvestorLots } from "@/lib/investor-lots";
 
 const EGGS_API = "https://api.eggs.app/api/v1/Espelhovendaitem/unidades";
-const INVESTOR_LOTS = new Set<string>(investorData.lots);
 
 // Mapeamento de status do Eggs CRM
 const STATUS_MAP: Record<number, string> = {
@@ -97,6 +96,7 @@ export async function GET() {
     }[] = [];
 
     let totalInvestidor = 0;
+    const INVESTOR_LOTS = await getInvestorLots();
     for (const u of unidades) {
       const status = STATUS_MAP[u.id_situacao_unidade] || u.situacao_unidade || "DESCONHECIDO";
       const loteId = buildLoteId(u.bloco, u.unidade);
