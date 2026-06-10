@@ -16,6 +16,7 @@ import { NextResponse } from "next/server";
 import { getVendas } from "@/lib/uau-vendas";
 import { getContratosEggs } from "@/lib/eggs-contratos";
 import { getBonusTracking } from "@/lib/bonus";
+import { syncBonusToExcel, logSyncFalha } from "@/lib/excel-bonus-sync";
 
 export const maxDuration = 60; // Vercel: até 60s pra aquecer
 
@@ -93,6 +94,18 @@ export async function GET(request: Request) {
     results.bonus = { ok: b.completo, ms: Date.now() - t4, size: b.bonus.length };
   } catch (e) {
     results.bonus = { ok: false, ms: Date.now() - t4, error: e instanceof Error ? e.message : String(e) };
+  }
+
+  // 5. Sync do Excel (throttle interno de 5min): escreve aguardando/autorizado pgt e
+  //    LÊ o "pago" que o Felipe anota na planilha — o ciclo roda mesmo com o
+  //    dashboard fechado (contrato: dashboard autoriza, Felipe paga e anota, dashboard lê).
+  const t5 = Date.now();
+  try {
+    const r = await syncBonusToExcel();
+    results.excelSync = { ok: r.ok, ms: Date.now() - t5, size: r.importadosAplicados ?? 0 };
+  } catch (e) {
+    await logSyncFalha(e);
+    results.excelSync = { ok: false, ms: Date.now() - t5, error: e instanceof Error ? e.message : String(e) };
   }
 
   return NextResponse.json({
