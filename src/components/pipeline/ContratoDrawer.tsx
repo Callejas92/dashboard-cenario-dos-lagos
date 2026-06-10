@@ -86,9 +86,7 @@ interface LoteStatic { id: string; area?: number; classificacao?: string; rua?: 
 const lotesMap = new Map<string, LoteStatic>();
 for (const l of lotesData as LoteStatic[]) lotesMap.set(l.id, l);
 
-const COMISSAO_IMOB_PCT = 0.05;
-const COMISSAO_EGGS_PCT = 0.015;
-const COMISSAO_TOTAL_PCT = COMISSAO_IMOB_PCT + COMISSAO_EGGS_PCT;
+import { COMISSAO_IMOB_PCT, COMISSAO_EGGS_PCT, COMISSAO_TOTAL_PCT } from "@/lib/constants/negocio";
 
 export default function ContratoDrawer({
   contrato,

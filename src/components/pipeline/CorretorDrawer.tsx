@@ -26,7 +26,7 @@ interface BonusMin { loteId: string; entradaQuitada: boolean; autorizado?: boole
 interface UauVendasResp { vendas?: { identificadorUnidade: string; valorPrincipal: number; valorRecebido: number }[] }
 interface FinancResp { parcelasAReceber?: { identificadorUnidade: string; status: string; valor: number; tipoParcela?: string }[] }
 
-const COMISSAO_PCT = 0.065;
+import { COMISSAO_TOTAL_PCT as COMISSAO_PCT, FATOR_MANGABA } from "@/lib/constants/negocio";
 
 export default function CorretorDrawer({ corretorNome, contratos, bonus, onClose }: {
   corretorNome: string | null;
@@ -74,7 +74,7 @@ export default function CorretorDrawer({ corretorNome, contratos, bonus, onClose
     // mesmos lotes (senão o LTV ficaria subestimado p/ quem tem venda fora do UAU).
     for (const c of firmes) {
       const v = vmap.get(c.loteId);
-      mangaba += v?.valorPrincipal && v.valorPrincipal > 0 ? v.valorPrincipal : (c.valor || 0) * 0.935;
+      mangaba += v?.valorPrincipal && v.valorPrincipal > 0 ? v.valorPrincipal : (c.valor || 0) * FATOR_MANGABA;
     }
     // Inadimplência = parcelas vencidas que NÃO são entrada/sinal (E/S).
     // Entrada atrasada já aparece em "entrada quitada"; contar aqui seria penalizar 2x

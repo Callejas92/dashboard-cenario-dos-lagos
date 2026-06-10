@@ -2,10 +2,11 @@
  * Sincroniza o status de bônus no Excel "Cenário_Comercial.xlsx" (aba "🏘️ LOTES").
  *
  *  Coluna V = Status Corretor · Coluna X = Status Imob · casa por Quadra (A) + Lote (B).
- *  Escreve:
- *    - "aguardando pgt"  → cliente pagou < 1,5% do contrato
+ *  Escreve POR COLUNA (corretor e imob têm status independentes):
+ *    - "pago"            → marcado como pago no dashboard (pagoCorretora/pagoImobiliaria)
  *    - "autorizado"      → cliente pagou >= 1,5% do contrato (bônus liberado)
- *    - preserva "pago"   → o Felipe marca manualmente; nunca sobrescrevo
+ *    - "aguardando pgt"  → cliente pagou < 1,5% do contrato
+ *    - "pago" digitado À MÃO pelo Felipe é preservado (só o "pago" do dashboard escreve por cima)
  *
  * Só age sobre dado COMPLETO (bonus.completo). Reescreve as colunas V/X inteiras
  * (preservando o que não muda) e só faz PATCH se algo realmente mudou.
@@ -100,13 +101,14 @@ async function graph(token: string, url: string, init?: RequestInit): Promise<Re
 }
 
 // Destaque por COR de fundo (formatação condicional do Graph não existe em OneDrive pessoal).
-// Âmbar p/ "aguardando", verde p/ "autorizado". Agrupa linhas consecutivas de mesma cor em
-// faixas (menos chamadas). Preserva "pago" (não recolore). Erro aqui NÃO quebra a escrita.
-async function aplicarCores(token: string, wsPath: string, values: unknown[][], porLote: Map<string, boolean>, cols: { letter: string; idx: number }[], orfaos: string[] = []): Promise<string> {
-  const AMBAR = "#FBBF24", VERDE = "#86EFAC";
+// Âmbar "aguardando" · verde claro "autorizado" · verde forte "pago". Agrupa linhas
+// consecutivas de mesma cor em faixas (menos chamadas). Erro aqui NÃO quebra a escrita.
+async function aplicarCores(token: string, wsPath: string, values: unknown[][], porLote: Map<string, { v: string; x: string }>, cols: { letter: string; idx: number; key: "v" | "x" }[], orfaos: string[] = []): Promise<string> {
+  const AMBAR = "#FBBF24", VERDE = "#86EFAC", VERDE_PAGO = "#4ADE80";
+  const corDe = (status: string) => (status === "pago" ? VERDE_PAGO : status === "autorizado" ? VERDE : AMBAR);
   // 1) Monta as faixas (linhas consecutivas de mesma cor) — sem chamadas ainda.
   const ops: { addr: string; color: string }[] = [];
-  for (const { letter, idx } of cols) {
+  for (const { letter, idx, key } of cols) {
     let start = -1, end = -1, cor = "";
     const push = () => {
       if (start >= 0) ops.push({ addr: `${letter}${start}:${letter}${end}`, color: cor });
@@ -118,9 +120,12 @@ async function aplicarCores(token: string, wsPath: string, values: unknown[][], 
       const l = parseInt(String(row[1] ?? "").trim(), 10);
       const excelRow = i + 1;
       let desejada = "";
-      if (Number.isFinite(q) && Number.isFinite(l) && porLote.has(`Q${q}-L${l}`)) {
+      const alvo = Number.isFinite(q) && Number.isFinite(l) ? porLote.get(`Q${q}-L${l}`) : undefined;
+      if (alvo) {
         const cur = String(row[idx] ?? "").trim().toLowerCase();
-        if (cur !== "pago") desejada = porLote.get(`Q${q}-L${l}`) ? VERDE : AMBAR;
+        // valor FINAL da célula: "pago" manual preservado, senão o status do dashboard
+        const statusFinal = cur === "pago" ? "pago" : alvo[key];
+        desejada = corDe(statusFinal);
       }
       if (desejada && desejada === cor) { end = excelRow; }
       else { push(); if (desejada) { start = excelRow; end = excelRow; cor = desejada; } }
@@ -169,6 +174,44 @@ async function resolveLotesSheetName(token: string, fileId: string): Promise<str
   return ws.name;
 }
 
+/**
+ * Manutenção one-off pedida pelo Felipe: deleta as colunas de VALOR FIXO de bônus
+ * ("Bônus Corretor" = R$3k e "Bônus Imob" = R$1k — sempre o mesmo valor, sem motivo).
+ * Acha pelo NOME exato do cabeçalho (não por posição) e deleta da direita pra esquerda.
+ * As colunas de STATUS não são afetadas (o sync já as encontra pelo cabeçalho).
+ */
+export async function deletarColunasBonusFixas(): Promise<{ ok: boolean; deletadas: string[]; detalhe: string }> {
+  const token = await getAccessToken();
+  const fileId = await resolveComercialFileId(token);
+  const wsName = await resolveLotesSheetName(token, fileId);
+  const wsPath = `${GRAPH}/me/drive/items/${fileId}/workbook/worksheets('${encodeURIComponent(wsName)}')`;
+
+  const ur = await graph(token, `${wsPath}/usedRange(valuesOnly=true)?$select=values`);
+  const values = (ur.values as unknown[][]) || [];
+  const header = (values[PRIMEIRA_LINHA_DADOS - 1] || []).map((c) => String(c ?? "").trim().toLowerCase());
+
+  // Só deleta coluna cujo cabeçalho é EXATAMENTE o de valor fixo (segurança).
+  const alvos: { idx: number; nome: string }[] = [];
+  header.forEach((h, i) => {
+    if (h === "bônus corretor" || h === "bonus corretor") alvos.push({ idx: i, nome: "Bônus Corretor" });
+    if (h === "bônus imob" || h === "bonus imob") alvos.push({ idx: i, nome: "Bônus Imob" });
+  });
+  if (!alvos.length) return { ok: true, deletadas: [], detalhe: "nenhuma coluna de valor fixo encontrada (já deletadas?)" };
+
+  // Direita → esquerda pra não deslocar os índices das próximas.
+  alvos.sort((a, b) => b.idx - a.idx);
+  const deletadas: string[] = [];
+  for (const a of alvos) {
+    const letra = colLetter(a.idx);
+    await graph(token, `${wsPath}/range(address='${letra}:${letra}')/delete`, {
+      method: "POST",
+      body: JSON.stringify({ shift: "Left" }),
+    });
+    deletadas.push(`${letra} (${a.nome})`);
+  }
+  return { ok: true, deletadas, detalhe: `deletadas ${deletadas.length} coluna(s); status de bônus segue pelo cabeçalho` };
+}
+
 export async function syncBonusToExcel(opts: { dryRun?: boolean; force?: boolean } = {}): Promise<SyncReport> {
   const { dryRun = false, force = false } = opts;
 
@@ -184,11 +227,17 @@ export async function syncBonusToExcel(opts: { dryRun?: boolean; force?: boolean
   const tracking = await getBonusTracking();
   if (!tracking.completo) return { ok: false, motivo: "dado de bônus incompleto (UAU) — sync adiado" };
 
-  const porLote = new Map<string, boolean>(); // loteId → autorizado (pagou >= 1,5% do contrato)
+  // loteId → status desejado POR COLUNA (V=corretor, X=imob).
   // Defensivo: um cache de tracking antigo pode não ter "autorizado". Sem o campo, não
   // escreve aquele lote (evita marcar tudo "aguardando" por engano até revalidar).
+  const porLote = new Map<string, { v: string; x: string }>();
   for (const b of tracking.bonus) {
-    if (typeof b.autorizado === "boolean") porLote.set(b.loteId, b.autorizado);
+    if (typeof b.autorizado !== "boolean") continue;
+    const base = b.autorizado ? "autorizado" : "aguardando pgt";
+    porLote.set(b.loteId, {
+      v: b.pagamento?.pagoCorretora ? "pago" : base,
+      x: b.pagamento?.pagoImobiliaria ? "pago" : base,
+    });
   }
 
   const token = await getAccessToken();
@@ -228,12 +277,13 @@ export async function syncBonusToExcel(opts: { dryRun?: boolean; force?: boolean
     const l = parseInt(lote, 10);
     if (quadra !== "" && lote !== "" && Number.isFinite(q) && Number.isFinite(l)) {
       const loteId = `Q${q}-L${l}`;
-      if (porLote.has(loteId)) {
+      const alvo = porLote.get(loteId);
+      if (alvo) {
         casadas++;
         casadasLotes.add(loteId);
-        const desejado = porLote.get(loteId) ? "autorizado" : "aguardando pgt";
-        if (isPago(curV)) { preservadas++; } else { nv = desejado; }
-        if (isPago(curX)) { preservadas++; } else { nx = desejado; }
+        // "pago" manual do Felipe é preservado; "pago" vindo do dashboard escreve por cima.
+        if (isPago(curV) && alvo.v !== "pago") { preservadas++; } else { nv = alvo.v; }
+        if (isPago(curX) && alvo.x !== "pago") { preservadas++; } else { nx = alvo.x; }
         if (nv !== curV) alteradas++;
         if (nx !== curX) alteradas++;
       } else if (isStatusBonus(curV) || isStatusBonus(curX)) {
@@ -283,7 +333,7 @@ export async function syncBonusToExcel(opts: { dryRun?: boolean; force?: boolean
   // Destaque por cor (âmbar "aguardando" / verde "autorizado"). Só quando muda ou forçado.
   if (mudou || force) {
     try {
-      report.destaque = await aplicarCores(token, wsPath, values, porLote, [{ letter: colLetter(colV), idx: colV }, { letter: colLetter(colX), idx: colX }], orfaos);
+      report.destaque = await aplicarCores(token, wsPath, values, porLote, [{ letter: colLetter(colV), idx: colV, key: "v" }, { letter: colLetter(colX), idx: colX, key: "x" }], orfaos);
     } catch (e) {
       report.destaque = "erro: " + (e instanceof Error ? e.message : String(e));
     }

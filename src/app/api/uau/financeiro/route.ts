@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { authenticate, isUauConfigured, uauFetch } from "@/lib/uau-auth";
 import { getContratosEggs } from "@/lib/eggs-contratos";
 import { getBonusComoCustoMensal } from "@/lib/bonus";
+import { COMISSAO_TOTAL_PCT } from "@/lib/constants/negocio";
 import lotesData from "@/data/lotes.json";
 import investorData from "@/data/investor-lots.json";
 
@@ -251,7 +252,7 @@ export async function GET() {
     const totalAPagarTotal = vendas.reduce((s, v) => s + v.totalAPagar, 0);
     // Valor principal SEM juros do UAU (vendas lançadas no ERP)
     const valorPrincipalTotal = vendas.reduce((s, v) => s + v.valorPrincipal, 0);
-    const COMISSAO_PCT = 0.05 + 0.015; // 5% imob + 1,5% Eggs
+    const COMISSAO_PCT = COMISSAO_TOTAL_PCT; // 5% imob + 1,5% Eggs (fonte: constants/negocio.ts)
 
     // VGV Mangaba HÍBRIDO (mais preciso):
     //  - Para vendas COM correspondente UAU: usa valorPrincipal direto do ERP

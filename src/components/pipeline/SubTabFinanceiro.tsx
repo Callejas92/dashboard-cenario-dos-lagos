@@ -16,6 +16,7 @@ import BonusDrawer, { type PlanoPagamento } from "./BonusDrawer";
 import PagamentosPixDrawer from "./PagamentosPixDrawer";
 import BonusPagosDrawer from "./BonusPagosDrawer";
 import { authFetch } from "@/lib/client-auth";
+import { FATOR_MANGABA } from "@/lib/constants/negocio";
 import KpiMedium from "@/components/shared/KpiMedium";
 import KpiSmall from "@/components/shared/KpiSmall";
 import { SkeletonCard } from "@/components/shared/Skeleton";
@@ -174,10 +175,10 @@ export default function SubTabFinanceiro() {
           const vgvTotal = vendasAssinadas.reduce((s, c) => s + (c.valor || 0), 0);
 
           // VGV Mangaba = SÓ ERP UAU (= valorPrincipal total, sem estimativas)
-          // Fallback: se o backend ainda não tem o campo (cache antigo), usa contratoEggs × 0.935
+          // Fallback: se o backend ainda não tem o campo (cache antigo), estima por FATOR_MANGABA
           const vgvMangaba = (va?.valorPrincipalErp && va.valorPrincipalErp > 0)
             ? va.valorPrincipalErp
-            : (va?.contratoEggs ?? vgvTotal) * 0.935;
+            : (va?.contratoEggs ?? vgvTotal) * FATOR_MANGABA;
           const qtdUau = financ?.qtdVendas ?? 0;
 
           // Vendas ASSINADAS no Eggs mas não lançadas no UAU

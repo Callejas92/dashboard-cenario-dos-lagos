@@ -9,6 +9,7 @@ import { useEffect } from "react";
 import useSWR from "swr";
 import { X, Award, CheckCircle2, Clock } from "lucide-react";
 import { formatBRL, formatData } from "@/lib/utils/formatters";
+import { PCT_AUTORIZACAO } from "@/lib/constants/negocio";
 
 export interface BonusItemDrawer {
   loteId: string;
@@ -79,7 +80,7 @@ export default function BonusDrawer({ bonus, plano, onClose }: { bonus: BonusIte
 
   // Autorização (regra 1,5%): pago (o que veio pra Mangaba, ERP) >= 1,5% do contrato.
   const pagoRecebido = bonus.valorRecebido ?? bonus.entradaValorPago;
-  const metaAutorizado = bonus.metaAutorizado ?? 0.015 * bonus.valorContratado;
+  const metaAutorizado = bonus.metaAutorizado ?? PCT_AUTORIZACAO * bonus.valorContratado;
   const autorizado = bonus.autorizado ?? pagoRecebido >= metaAutorizado;
   const pct = bonus.valorContratado > 0 ? (pagoRecebido / bonus.valorContratado) * 100 : 0;
 

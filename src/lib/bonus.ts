@@ -17,12 +17,9 @@ import investorData from "@/data/investor-lots.json";
 
 const INVESTOR_LOTS = new Set<string>(investorData.lots);
 
-export const BONUS_CORRETORA = 3000;
-export const BONUS_IMOBILIARIA = 1000;
-export const BONUS_TOTAL_POR_VENDA = BONUS_CORRETORA + BONUS_IMOBILIARIA;
-
-// Regra de autorização: cliente pagou >= 1,5% do contrato (valor recebido no ERP UAU).
-export const PCT_AUTORIZACAO = 0.015;
+// Regras de negócio centralizadas em constants/negocio.ts (re-exportadas p/ compat).
+import { BONUS_CORRETORA, BONUS_IMOBILIARIA, BONUS_TOTAL_POR_VENDA, PCT_AUTORIZACAO } from "@/lib/constants/negocio";
+export { BONUS_CORRETORA, BONUS_IMOBILIARIA, BONUS_TOTAL_POR_VENDA, PCT_AUTORIZACAO };
 
 const PAGAMENTOS_BLOB = "bonus-payments.json";
 const TRACKING_BLOB = "cache/bonus-tracking.json"; // último resultado COMPLETO (compartilhado entre instâncias)
@@ -484,8 +481,11 @@ async function invalidateTrackingBlob(): Promise<void> {
  *     (um parcial do UAU nunca vira "verdade" pro badge/Excel).
  */
 export async function getBonusTracking(): Promise<BonusResponse> {
-  if (cache && Date.now() - cache.timestamp < CACHE_TTL) return cache.data;
-
+  // O Blob é a fonte COMPARTILHADA entre as instâncias serverless — sempre lido fresco.
+  // Antes, o cache de memória (5min) respondia primeiro: marcar pago atualizava uma
+  // instância + o blob, mas OUTRA instância seguia servindo o dado velho da memória
+  // por até 5min → "dei pago e não foi" intermitente. Memória agora é só fallback
+  // (blob ilegível). O dedupe de rajada já é feito pelo SWR no cliente.
   const blob = await readTrackingBlob();
   if (blob?.data?.bonus) {
     cache = { data: blob.data, timestamp: blob.savedAt };
@@ -505,6 +505,9 @@ export async function getBonusTracking(): Promise<BonusResponse> {
     }
     return blob.data;
   }
+
+  // Blob ilegível: serve a memória se houver (melhor velho que nada).
+  if (cache && Date.now() - cache.timestamp < CACHE_TTL) return cache.data;
 
   // Sem nada (memória nem blob): computa agora — único caminho que bloqueia.
   const fresh = await computeBonusTracking();
