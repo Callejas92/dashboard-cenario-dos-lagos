@@ -118,14 +118,26 @@ async function loadPagamentos(): Promise<Record<string, BonusPagamento>> {
     // ?_=Date.now() fura o cache do CDN do Blob (URL sobrescrita serve conteúdo velho ~60s)
     const res = await fetch(`${blobs[0].url}?_=${Date.now()}`, { cache: "no-store" });
     if (!res.ok) return {};
-    return await res.json();
+    const mapa = (await res.json()) as Record<string, BonusPagamento>;
+    // Escritas recentes desta instância vencem o blob (propagação da sobrescrita ~60s).
+    for (const [chave, e] of escritasRecentes) {
+      if (Date.now() - e.at < JANELA_PROPAGACAO) mapa[chave] = e.pagamento;
+      else escritasRecentes.delete(chave);
+    }
+    return mapa;
   } catch (e) {
     console.error("Erro carregando bonus-payments.json:", e);
     return {};
   }
 }
 
-async function savePagamentos(pagamentos: Record<string, BonusPagamento>) {
+// Escritas recentes DESTA instância: vencem o blob durante a janela de propagação do
+// Vercel Blob (~60s pra sobrescrita aparecer na leitura). Sem isso, marcar dois bônus
+// em sequência podia perder o primeiro (o load do segundo lia o blob ainda velho).
+const escritasRecentes = new Map<string, { at: number; pagamento: BonusPagamento }>();
+const JANELA_PROPAGACAO = 2 * 60 * 1000;
+
+async function savePagamentos(pagamentos: Record<string, BonusPagamento>): Promise<BonusResponse | null> {
   await put(PAGAMENTOS_BLOB, JSON.stringify(pagamentos, null, 2), {
     access: "public",
     addRandomSuffix: false,
@@ -134,16 +146,17 @@ async function savePagamentos(pagamentos: Record<string, BonusPagamento>) {
   });
   // Marcar/desmarcar/isentar é mudança PURA de pagamento — aplica no tracking em memória/blob
   // SEM reconsultar o UAU (lento/instável). Se não houver base completa, força recompute.
-  const ok = await patchTrackingPagamentos(pagamentos);
-  if (!ok) { cache = null; await invalidateTrackingBlob(); }
+  const tracking = await patchTrackingPagamentos(pagamentos);
+  if (!tracking) { cache = null; await invalidateTrackingBlob(); }
+  return tracking;
 }
 
 // Aplica os pagamentos ao tracking COMPLETO em cache/blob, sem reconsultar o UAU.
-// Retorna false se não há base completa (aí o chamador força um recompute via UAU).
-async function patchTrackingPagamentos(pagamentos: Record<string, BonusPagamento>): Promise<boolean> {
+// Retorna o tracking atualizado, ou null se não há base completa (chamador força recompute).
+async function patchTrackingPagamentos(pagamentos: Record<string, BonusPagamento>): Promise<BonusResponse | null> {
   let base = cache?.data;
   if (!base) base = (await readTrackingBlob())?.data;
-  if (!base || !base.bonus?.length || !base.completo) return false;
+  if (!base || !base.bonus?.length || !base.completo) return null;
   const bonus = base.bonus.map((b) => {
     const pagamento: BonusPagamento = pagamentos[b.chaveVenda] || {
       pagoCorretora: false, dataPagoCorretora: "", pagoImobiliaria: false, dataPagoImobiliaria: "",
@@ -159,13 +172,13 @@ async function patchTrackingPagamentos(pagamentos: Record<string, BonusPagamento
   };
   cache = { data, timestamp: Date.now() };
   await writeTrackingBlob(data);
-  return true;
+  return data;
 }
 
 export async function setBonusPagamento(
   chaveVenda: string,
   patch: Partial<BonusPagamento>,
-): Promise<BonusPagamento> {
+): Promise<{ pagamento: BonusPagamento; tracking: BonusResponse | null }> {
   const pagamentos = await loadPagamentos();
   const atual = pagamentos[chaveVenda] || {
     pagoCorretora: false, dataPagoCorretora: "",
@@ -173,8 +186,9 @@ export async function setBonusPagamento(
   };
   const novo: BonusPagamento = { ...atual, ...patch };
   pagamentos[chaveVenda] = novo;
-  await savePagamentos(pagamentos);
-  return novo;
+  escritasRecentes.set(chaveVenda, { at: Date.now(), pagamento: novo });
+  const tracking = await savePagamentos(pagamentos);
+  return { pagamento: novo, tracking };
 }
 
 // ── UAU: status da entrada por venda ───────────────────────────────────────
@@ -483,15 +497,20 @@ async function invalidateTrackingBlob(): Promise<void> {
  *     QUALQUER instância e revalida em background. Só persiste resultados completos
  *     (um parcial do UAU nunca vira "verdade" pro badge/Excel).
  */
+// Memória responde por 60s (não 5min): equilíbrio entre frescor entre instâncias e a
+// janela de propagação do Blob (~60s). A consistência IMEDIATA pós-escrita não depende
+// disso — o POST devolve o tracking atualizado e a UI aplica direto (read-your-writes).
+const MEMORY_TTL = 60 * 1000;
+
 export async function getBonusTracking(): Promise<BonusResponse> {
-  // O Blob é a fonte COMPARTILHADA entre as instâncias serverless — sempre lido fresco.
-  // Antes, o cache de memória (5min) respondia primeiro: marcar pago atualizava uma
-  // instância + o blob, mas OUTRA instância seguia servindo o dado velho da memória
-  // por até 5min → "dei pago e não foi" intermitente. Memória agora é só fallback
-  // (blob ilegível). O dedupe de rajada já é feito pelo SWR no cliente.
+  if (cache && Date.now() - cache.timestamp < MEMORY_TTL) return cache.data;
+
   const blob = await readTrackingBlob();
   if (blob?.data?.bonus) {
-    cache = { data: blob.data, timestamp: blob.savedAt };
+    // Não regride: se a memória desta instância é MAIS NOVA que o blob lido (escrita
+    // recente ainda propagando no storage), continua servindo a memória.
+    if (cache && cache.timestamp > blob.savedAt) return cache.data;
+    cache = { data: blob.data, timestamp: Date.now() };
     if (Date.now() - blob.savedAt >= CACHE_TTL) {
       const revalidar = async () => {
         try {

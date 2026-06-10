@@ -84,7 +84,9 @@ export default function EventosManager() {
       else {
         setNome("");
         setDataEv("");
-        await mutate();
+        // Read-your-writes: a API devolve a lista atualizada — aplica direto
+        if (j?.eventos) await mutate({ eventos: j.eventos }, { revalidate: false });
+        else await mutate();
       }
     } catch {
       setErro("Falha de conexão.");
@@ -102,8 +104,11 @@ export default function EventosManager() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id }),
       });
-      if (r.ok) await mutate();
-      else setErro("Falha ao remover.");
+      if (r.ok) {
+        const j = await r.json().catch(() => ({}));
+        if (j?.eventos) await mutate({ eventos: j.eventos }, { revalidate: false });
+        else await mutate();
+      } else setErro("Falha ao remover.");
     } catch {
       setErro("Falha de conexão.");
     } finally {

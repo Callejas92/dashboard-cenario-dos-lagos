@@ -95,7 +95,10 @@ export default function PagamentosPixDrawer({ bonus, onClose }: { bonus: BonusPi
     try {
       const res = await authFetch("/api/pix", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ doc, pix }) });
       if (res.status === 401) alert("Sessão expirada — recarregue a página e faça login de novo.");
-      await mutate("/api/pix");
+      // Read-your-writes: aplica o mapa devolvido direto (blob pode servir velho ~60s)
+      const j = await res.json().catch(() => null);
+      if (j?.pixMap) await mutate("/api/pix", { pix: j.pixMap }, { revalidate: false });
+      else await mutate("/api/pix");
     } finally {
       setSalvando(null);
     }

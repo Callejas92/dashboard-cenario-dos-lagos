@@ -384,8 +384,11 @@ function BonusList({ bonus, planoPorLote }: { bonus: BonusItem[]; planoPorLote: 
         body: JSON.stringify({ action: "mark", chaveVenda: b.chaveVenda, patch }),
       });
       if (res.status === 401) alert("Sessão expirada — recarregue a página e faça login de novo.");
-      // Invalida cache global do bonus pra refetch
-      await mutateGlobal("/api/bonus");
+      // Read-your-writes: o POST devolve o tracking atualizado — aplica direto, sem
+      // refetch (o blob pode servir versão velha por ~60s após a escrita).
+      const j = await res.json().catch(() => null);
+      if (j?.tracking?.bonus) await mutateGlobal("/api/bonus", j.tracking, { revalidate: false });
+      else await mutateGlobal("/api/bonus");
     } finally {
       setUpdatingChave(null);
     }
@@ -402,7 +405,9 @@ function BonusList({ bonus, planoPorLote }: { bonus: BonusItem[]; planoPorLote: 
         body: JSON.stringify({ action: "mark", chaveVenda: b.chaveVenda, patch: { liberadoManual: liberar } }),
       });
       if (res.status === 401) alert("Sessão expirada — recarregue a página e faça login de novo.");
-      await mutateGlobal("/api/bonus");
+      const j = await res.json().catch(() => null);
+      if (j?.tracking?.bonus) await mutateGlobal("/api/bonus", j.tracking, { revalidate: false });
+      else await mutateGlobal("/api/bonus");
     } finally {
       setUpdatingChave(null);
     }

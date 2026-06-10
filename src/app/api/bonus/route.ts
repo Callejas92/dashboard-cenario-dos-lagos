@@ -54,7 +54,9 @@ export async function POST(request: NextRequest) {
       const updated = await setBonusPagamento(chave, patch);
       // Marcação/liberação deve refletir no Excel na hora (forçado).
       after(() => syncBonusToExcel({ force: true }).catch((e) => logSyncFalha(e)));
-      return NextResponse.json({ success: true, chaveVenda: chave, pagamento: updated });
+      // Devolve o tracking COMPLETO atualizado: a UI aplica direto (read-your-writes),
+      // sem depender da releitura do blob (que pode servir versão velha por ~60s).
+      return NextResponse.json({ success: true, chaveVenda: chave, pagamento: updated.pagamento, tracking: updated.tracking });
     }
 
     if (body.action === "isentar") {
@@ -67,7 +69,7 @@ export async function POST(request: NextRequest) {
         dataIsentado: dataHoje,
         razaoIsentado: razao,
       });
-      return NextResponse.json({ success: true, chaveVenda: chave, pagamento: updated });
+      return NextResponse.json({ success: true, chaveVenda: chave, pagamento: updated.pagamento, tracking: updated.tracking });
     }
 
     if (body.action === "remover-isencao") {
@@ -76,7 +78,7 @@ export async function POST(request: NextRequest) {
       const updated = await setBonusPagamento(chave, {
         isento: false, dataIsentado: "", razaoIsentado: "",
       });
-      return NextResponse.json({ success: true, chaveVenda: chave, pagamento: updated });
+      return NextResponse.json({ success: true, chaveVenda: chave, pagamento: updated.pagamento, tracking: updated.tracking });
     }
 
     return NextResponse.json({ error: "Ação inválida. Use: mark | isentar | remover-isencao | clear-cache" }, { status: 400 });

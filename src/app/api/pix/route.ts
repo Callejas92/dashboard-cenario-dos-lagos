@@ -50,5 +50,7 @@ export async function POST(req: Request) {
     contentType: "application/json",
   });
 
-  return NextResponse.json({ ok: true, doc, pix });
+  // Devolve o mapa atualizado: a UI aplica direto (read-your-writes) sem reler o blob
+  // (que pode servir versão velha por ~60s após a sobrescrita).
+  return NextResponse.json({ ok: true, doc, pix, pixMap: map });
 }
