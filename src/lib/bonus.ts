@@ -190,6 +190,28 @@ export async function setBonusPagamento(
   return { pagamento: novo, tracking };
 }
 
+/**
+ * Aplica VÁRIOS patches de pagamento numa tacada só (1 leitura + 1 escrita no blob,
+ * independente do volume). Usado pela importação Excel→dashboard — aplicar um a um
+ * estourava o tempo da função quando o Felipe anotava muitos "pago" de uma vez.
+ */
+export async function setBonusPagamentosEmLote(
+  itens: { chaveVenda: string; patch: Partial<BonusPagamento> }[],
+): Promise<BonusResponse | null> {
+  if (!itens.length) return null;
+  const pagamentos = await loadPagamentos();
+  for (const { chaveVenda, patch } of itens) {
+    const atual = pagamentos[chaveVenda] || {
+      pagoCorretora: false, dataPagoCorretora: "",
+      pagoImobiliaria: false, dataPagoImobiliaria: "",
+    };
+    const novo: BonusPagamento = { ...atual, ...patch };
+    pagamentos[chaveVenda] = novo;
+    escritasRecentes.set(chaveVenda, { at: Date.now(), pagamento: novo });
+  }
+  return savePagamentos(pagamentos);
+}
+
 // ── UAU: status da entrada por venda ───────────────────────────────────────
 interface EntradaStatus {
   qtdTotal: number;

@@ -20,7 +20,7 @@
  */
 import { list, put } from "@vercel/blob";
 import { getAccessToken } from "@/lib/onedrive-marketing";
-import { getBonusTracking, setBonusPagamento } from "@/lib/bonus";
+import { getBonusTracking, setBonusPagamentosEmLote } from "@/lib/bonus";
 
 const GRAPH = "https://graph.microsoft.com/v1.0";
 const SYNC_STATE_BLOB = "cache/excel-bonus-sync.json";
@@ -381,22 +381,30 @@ export async function syncBonusToExcel(opts: { dryRun?: boolean; force?: boolean
     }
   }
 
-  // Mão de volta Excel→dashboard: aplica os "pago" lidos da célula (e desmarca os removidos).
-  let aplicados = 0;
-  const hoje = new Date().toISOString().split("T")[0];
-  for (const p of paraImportar) {
-    const patch = p.parte === "corretor"
-      ? { pagoCorretora: true, dataPagoCorretora: hoje, observacao: "pago via Excel" }
-      : { pagoImobiliaria: true, dataPagoImobiliaria: hoje, observacao: "pago via Excel" };
-    try { await setBonusPagamento(p.chaveVenda, patch); aplicados++; } catch (e) { console.warn("importar pago do Excel falhou:", p.loteId, e); }
+  // Mão de volta Excel→dashboard: aplica os "pago" lidos da célula (e desmarca os
+  // removidos) em LOTE — 1 escrita no blob independente do volume.
+  try {
+    const patches = new Map<string, Record<string, unknown>>();
+    const hoje = new Date().toISOString().split("T")[0];
+    for (const p of paraImportar) {
+      const cur = patches.get(p.chaveVenda) || {};
+      if (p.parte === "corretor") { cur.pagoCorretora = true; cur.dataPagoCorretora = hoje; }
+      else { cur.pagoImobiliaria = true; cur.dataPagoImobiliaria = hoje; }
+      cur.observacao = "pago via Excel";
+      patches.set(p.chaveVenda, cur);
+    }
+    for (const p of paraDesmarcar) {
+      const cur = patches.get(p.chaveVenda) || {};
+      if (p.parte === "corretor") { cur.pagoCorretora = false; cur.dataPagoCorretora = ""; }
+      else { cur.pagoImobiliaria = false; cur.dataPagoImobiliaria = ""; }
+      patches.set(p.chaveVenda, cur);
+    }
+    await setBonusPagamentosEmLote(Array.from(patches, ([chaveVenda, patch]) => ({ chaveVenda, patch })));
+    report.importadosAplicados = paraImportar.length + paraDesmarcar.length;
+  } catch (e) {
+    console.warn("importação Excel→dashboard falhou:", e);
+    report.importadosAplicados = 0;
   }
-  for (const p of paraDesmarcar) {
-    const patch = p.parte === "corretor"
-      ? { pagoCorretora: false, dataPagoCorretora: "" }
-      : { pagoImobiliaria: false, dataPagoImobiliaria: "" };
-    try { await setBonusPagamento(p.chaveVenda, patch); aplicados++; } catch (e) { console.warn("desmarcar pago do Excel falhou:", p.loteId, e); }
-  }
-  report.importadosAplicados = aplicados;
 
   // Marca o horário do sync (mesmo sem mudança) p/ o throttle do caminho automático.
   // Sucesso LIMPA a última falha registrada (admin volta a mostrar verde).
