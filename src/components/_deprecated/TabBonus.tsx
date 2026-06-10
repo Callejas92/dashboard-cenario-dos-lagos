@@ -6,6 +6,7 @@ import {
   DollarSign, XCircle, ChevronDown, ChevronRight, User, Building2,
 } from "lucide-react";
 import KPICard from "./KPICard";
+import { authFetch } from "@/lib/client-auth";
 
 type BonusStatus =
   | "aguardando_entrada"
@@ -111,7 +112,7 @@ export default function TabBonus() {
     setError(null);
     try {
       // Clear cache silencioso (não bloqueia se falhar)
-      await fetch("/api/bonus", {
+      await authFetch("/api/bonus", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "clear-cache" }),
@@ -141,7 +142,7 @@ export default function TabBonus() {
   const markPagamento = async (chaveVenda: string, patch: Partial<BonusPagamento>) => {
     setUpdating(chaveVenda);
     try {
-      await fetch("/api/bonus", {
+      await authFetch("/api/bonus", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "mark", chaveVenda, patch }),
@@ -157,7 +158,7 @@ export default function TabBonus() {
   const isentar = async (chaveVenda: string, razao: string) => {
     setUpdating(chaveVenda);
     try {
-      await fetch("/api/bonus", {
+      await authFetch("/api/bonus", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "isentar", chaveVenda, razao }),
@@ -173,7 +174,7 @@ export default function TabBonus() {
   const removerIsencao = async (chaveVenda: string) => {
     setUpdating(chaveVenda);
     try {
-      await fetch("/api/bonus", {
+      await authFetch("/api/bonus", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "remover-isencao", chaveVenda }),

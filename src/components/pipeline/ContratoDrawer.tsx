@@ -444,7 +444,7 @@ export default function ContratoDrawer({
                   valor={bonusInfo.valorCorretora || 3000}
                   pago={bonusInfo.pagamento.pagoCorretora}
                   dataPago={bonusInfo.pagamento.dataPagoCorretora}
-                  autorizado={bonusInfo.autorizado ?? bonusInfo.entradaQuitada}
+                  autorizado={bonusInfo.autorizado === true}
                   isento={bonusInfo.pagamento.isento}
                 />
 
@@ -454,12 +454,12 @@ export default function ContratoDrawer({
                   valor={bonusInfo.valorImobiliaria || 1000}
                   pago={bonusInfo.pagamento.pagoImobiliaria}
                   dataPago={bonusInfo.pagamento.dataPagoImobiliaria}
-                  autorizado={bonusInfo.autorizado ?? bonusInfo.entradaQuitada}
+                  autorizado={bonusInfo.autorizado === true}
                   isento={bonusInfo.pagamento.isento}
                 />
 
                 {/* Progresso entrada/sinal (se ainda não quitou) */}
-                {!(bonusInfo.autorizado ?? bonusInfo.entradaQuitada) && (bonusInfo.metaAutorizado ?? 0) > 0 && (
+                {bonusInfo.autorizado !== true && (bonusInfo.metaAutorizado ?? 0) > 0 && (
                   <div style={{ fontSize: "0.65rem", color: "var(--text-dim)", paddingTop: "0.4rem", borderTop: "1px solid var(--border)" }}>
                     Pago <span className="tnum">{formatBRL(bonusInfo.valorRecebido ?? 0)}</span> de {formatBRL(bonusInfo.metaAutorizado ?? 0)} (1,5%) — bônus libera ao atingir.
                   </div>

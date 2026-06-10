@@ -8,6 +8,7 @@ import { useState, type CSSProperties } from "react";
 import useSWR from "swr";
 import { CalendarPlus, X, Trash2 } from "lucide-react";
 import { COR_TIPO_EVENTO, type TipoEvento } from "@/lib/constants/eventos";
+import { authFetch } from "@/lib/client-auth";
 
 interface Evento {
   id: string;
@@ -73,7 +74,7 @@ export default function EventosManager() {
     if (!nome.trim()) return setErro("Dê um nome ao evento.");
     setBusy(true);
     try {
-      const r = await fetch("/api/eventos", {
+      const r = await authFetch("/api/eventos", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ data: dataEv, nome: nome.trim(), tipo }),
@@ -96,7 +97,7 @@ export default function EventosManager() {
     setBusy(true);
     setErro("");
     try {
-      const r = await fetch("/api/eventos", {
+      const r = await authFetch("/api/eventos", {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id }),

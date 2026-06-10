@@ -41,6 +41,39 @@ export interface SyncReport {
 }
 
 const isPago = (v: unknown) => String(v ?? "").trim().toLowerCase() === "pago";
+
+// Estado do sync no Blob: { syncedAt, celulasAlteradas, ultimaFalhaAt?, ultimaFalhaMsg? }.
+// O admin (/api/admin/status) lê isso pra mostrar "Excel Bônus: último sync há X / ERRO".
+async function lerSyncState(): Promise<Record<string, unknown>> {
+  try {
+    const { blobs } = await list({ prefix: SYNC_STATE_BLOB });
+    const hit = blobs.find((b) => b.pathname === SYNC_STATE_BLOB) ?? blobs[0];
+    if (!hit) return {};
+    const res = await fetch(hit.url, { cache: "no-store" });
+    if (!res.ok) return {};
+    return (await res.json()) as Record<string, unknown>;
+  } catch {
+    return {};
+  }
+}
+
+async function gravarSyncState(state: Record<string, unknown>): Promise<void> {
+  await put(SYNC_STATE_BLOB, JSON.stringify(state), {
+    access: "public", addRandomSuffix: false, allowOverwrite: true, contentType: "application/json",
+  }).catch(() => {});
+}
+
+/**
+ * Registra uma falha do sync (OneDrive fora, token expirado, Graph erro…).
+ * Sem isso a falha era engolida (.catch(() => {})) e o Excel ficava
+ * desatualizado sem ninguém saber. O admin exibe a última falha.
+ */
+export async function logSyncFalha(e: unknown): Promise<void> {
+  const msg = e instanceof Error ? e.message : String(e);
+  console.error("excel-bonus-sync FALHOU:", msg);
+  const atual = await lerSyncState();
+  await gravarSyncState({ ...atual, ultimaFalhaAt: new Date().toISOString(), ultimaFalhaMsg: msg.slice(0, 300) });
+}
 // Status de bônus escrito por nós (limpável quando o lote sai da lista). "pago" é manual → nunca limpa.
 const isStatusBonus = (v: unknown) => {
   const s = String(v ?? "").trim().toLowerCase();
@@ -141,16 +174,11 @@ export async function syncBonusToExcel(opts: { dryRun?: boolean; force?: boolean
 
   // Throttle no caminho automático: não relê o Excel se sincronizou há < 5 min.
   if (!dryRun && !force) {
-    try {
-      const { blobs } = await list({ prefix: SYNC_STATE_BLOB });
-      const hit = blobs.find((b) => b.pathname === SYNC_STATE_BLOB) ?? blobs[0];
-      if (hit) {
-        const st = await (await fetch(hit.url, { cache: "no-store" })).json();
-        if (st?.syncedAt && Date.now() - new Date(st.syncedAt).getTime() < 5 * 60 * 1000) {
-          return { ok: true, motivo: "sincronizado há pouco (throttle)", mudou: false };
-        }
-      }
-    } catch { /* sem estado: segue normal */ }
+    const st = await lerSyncState();
+    const syncedAt = typeof st.syncedAt === "string" ? st.syncedAt : "";
+    if (syncedAt && Date.now() - new Date(syncedAt).getTime() < 5 * 60 * 1000) {
+      return { ok: true, motivo: "sincronizado há pouco (throttle)", mudou: false };
+    }
   }
 
   const tracking = await getBonusTracking();
@@ -262,9 +290,8 @@ export async function syncBonusToExcel(opts: { dryRun?: boolean; force?: boolean
   }
 
   // Marca o horário do sync (mesmo sem mudança) p/ o throttle do caminho automático.
-  await put(SYNC_STATE_BLOB, JSON.stringify({ syncedAt: new Date().toISOString(), celulasAlteradas: alteradas }), {
-    access: "public", addRandomSuffix: false, allowOverwrite: true, contentType: "application/json",
-  }).catch(() => {});
+  // Sucesso LIMPA a última falha registrada (admin volta a mostrar verde).
+  await gravarSyncState({ syncedAt: new Date().toISOString(), celulasAlteradas: alteradas });
 
   return report;
 }

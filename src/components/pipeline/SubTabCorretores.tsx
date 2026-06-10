@@ -47,7 +47,7 @@ type SortField = "vgv" | "lotes" | "ultima" | "nome";
 
 export default function SubTabCorretores() {
   const { data, isLoading } = useSWR<CrmContratosResp>("/api/crm/contratos");
-  const { data: bonusData } = useSWR<{ bonus?: { loteId: string; entradaQuitada: boolean; valorTotal: number }[] }>("/api/bonus");
+  const { data: bonusData } = useSWR<{ bonus?: { loteId: string; entradaQuitada: boolean; autorizado?: boolean; valorTotal: number }[] }>("/api/bonus");
   const [sortField, setSortField] = useState<SortField>("vgv");
   const [sortAsc, setSortAsc] = useState(false);
   const [drawerCorretor, setDrawerCorretor] = useState<string | null>(null);

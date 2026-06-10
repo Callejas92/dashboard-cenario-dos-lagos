@@ -6,6 +6,7 @@
  */
 import { list, put } from "@vercel/blob";
 import { NextResponse } from "next/server";
+import { checkWriteAuth } from "@/lib/server-auth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -30,6 +31,9 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
+  // PIX é alvo de fraude direta (trocar a chave = receber o pagamento) — escrita protegida.
+  const negado = checkWriteAuth(req);
+  if (negado) return negado;
   const body = (await req.json().catch(() => null)) as { doc?: string; pix?: string } | null;
   const doc = String(body?.doc ?? "").trim();
   const pix = String(body?.pix ?? "").trim();

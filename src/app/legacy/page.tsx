@@ -19,6 +19,7 @@ import TabContratos from "@/components/_deprecated/TabContratos";
 import TabBonus from "@/components/_deprecated/TabBonus";
 import FormSemanal from "@/components/_deprecated/FormSemanal";
 import LoginScreen from "@/components/LoginScreen";
+import { setDashKey } from "@/lib/client-auth";
 import { MetricsData, FinanceiroResponse } from "@/lib/types";
 
 type Tab = "geral" | "canais" | "qualidade" | "analytics" | "estoque" | "financeiro" | "bonus" | "marketing" | "contratos" | "crm" | "instagram" | "metaads" | "googleads" | "whatsapp" | "integracoes" | "inserir";
@@ -168,7 +169,7 @@ export default function Home() {
   }, [activeTab, financeiroFetched, financeiroLoading]);
 
   if (!authenticated) {
-    return <LoginScreen onLogin={(pwd) => { setAuthToken(pwd); setAuthenticated(true); }} dark={dark} onToggleTheme={toggleTheme} />;
+    return <LoginScreen onLogin={(pwd) => { setAuthToken(pwd); setDashKey(pwd); setAuthenticated(true); }} dark={dark} onToggleTheme={toggleTheme} />;
   }
 
   if (loading) {

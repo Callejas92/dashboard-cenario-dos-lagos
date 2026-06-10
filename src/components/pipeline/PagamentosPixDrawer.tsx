@@ -10,6 +10,7 @@ import { useEffect, useState } from "react";
 import useSWR, { mutate } from "swr";
 import { X, CheckCircle2, Clock, Wallet } from "lucide-react";
 import { formatBRL } from "@/lib/utils/formatters";
+import { authFetch } from "@/lib/client-auth";
 
 const NOMES_IMOBILIARIA = ["EGGS", "GESTÃO", "GESTAO", "INTELIGENCIA EM VENDAS"];
 const isImob = (nome: string) => {
@@ -59,7 +60,8 @@ export default function PagamentosPixDrawer({ bonus, onClose }: { bonus: BonusPi
   const imobs = new Map<string, Recebedor>();
   for (const b of bonus) {
     if (b.pagamento?.isento || b.cancelado) continue;
-    const aut = b.autorizado ?? b.entradaQuitada ?? false;
+    // Estrito: só a regra atual (≥1,5% pago) autoriza — nunca cai pra entradaQuitada (regra antiga).
+    const aut = b.autorizado === true;
     // Corretor R$3k (só PF real, não imobiliária atuando como corretor)
     if (b.corretorNome && !isImob(b.corretorNome)) {
       const doc = (b.corretorCpf || b.corretorNome).trim();
@@ -91,7 +93,8 @@ export default function PagamentosPixDrawer({ bonus, onClose }: { bonus: BonusPi
   async function salvarPix(doc: string, pix: string) {
     setSalvando(doc);
     try {
-      await fetch("/api/pix", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ doc, pix }) });
+      const res = await authFetch("/api/pix", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ doc, pix }) });
+      if (res.status === 401) alert("Sessão expirada — recarregue a página e faça login de novo.");
       await mutate("/api/pix");
     } finally {
       setSalvando(null);

@@ -2,10 +2,11 @@
 
 /**
  * Scorecard / "LTV" de um corretor.
- *  - Rápido (CRM + bônus): vendas firmes/canceladas, VGV, ticket, custo (bônus + comissão 6,5%), % entrada quitada.
+ *  - Rápido (CRM + bônus): vendas firmes/canceladas, VGV, ticket, custo (bônus + comissão 6,5%), % autorizado.
  *  - UAU (lazy, ao abrir): Mangaba gerado, inadimplência dos clientes → LTV líquido, qualidade e LTV ajustado.
  *
- * Qualidade (0-100) = 50% entrada quitada + 30% adimplência + 20% não-cancelamento.
+ * Qualidade (0-100) = 50% vendas autorizadas (cliente pagou ≥1,5% — regra atual do bônus)
+ *                   + 30% adimplência + 20% não-cancelamento.
  * LTV líquido = Mangaba gerado − (bônus + comissões). LTV ajustado = líquido × qualidade%.
  */
 import { useEffect } from "react";
@@ -21,7 +22,7 @@ interface ContratoMin {
   imobiliaria?: { razaoSocial?: string };
   dataContrato?: string;
 }
-interface BonusMin { loteId: string; entradaQuitada: boolean; valorTotal: number }
+interface BonusMin { loteId: string; entradaQuitada: boolean; autorizado?: boolean; valorTotal: number }
 interface UauVendasResp { vendas?: { identificadorUnidade: string; valorPrincipal: number; valorRecebido: number }[] }
 interface FinancResp { parcelasAReceber?: { identificadorUnidade: string; status: string; valor: number; tipoParcela?: string }[] }
 
@@ -59,7 +60,8 @@ export default function CorretorDrawer({ corretorNome, contratos, bonus, onClose
   const custoComissao = vgv * COMISSAO_PCT;
   const custoTotal = custoBonus + custoComissao;
 
-  const qtdQuitada = bonusMeus.filter((b) => b.entradaQuitada).length;
+  // Regra ATUAL do bônus: autorizado = cliente pagou ≥1,5% do contrato (não mais "entrada quitada").
+  const qtdQuitada = bonusMeus.filter((b) => b.autorizado === true).length;
   const pctQuitada = firmes.length ? qtdQuitada / firmes.length : 0;
   const pctCancel = meus.length ? canceladas.length / meus.length : 0;
 
@@ -150,7 +152,7 @@ export default function CorretorDrawer({ corretorNome, contratos, bonus, onClose
           <div>
             <div style={titulo}>Qualidade da carteira</div>
             <div style={card}>
-              <div style={linha}><span style={lbl}>Entrada/sinal quitada</span><span style={val}>{(pctQuitada * 100).toFixed(0)}% das vendas</span></div>
+              <div style={linha}><span style={lbl}>Autorizado (≥1,5% pago)</span><span style={val}>{(pctQuitada * 100).toFixed(0)}% das vendas</span></div>
               <div style={linha}><span style={lbl}>Clientes inadimplentes</span><span style={val}>{uauPronto ? `${(pctInad * 100).toFixed(0)}% (${inadLotes})` : "…"}</span></div>
               <div style={linha}><span style={lbl}>Cancelamento</span><span style={val}>{(pctCancel * 100).toFixed(0)}%</span></div>
               <div style={{ ...linha, borderTop: "1px solid var(--border)", marginTop: "0.2rem", paddingTop: "0.3rem" }}>
@@ -161,7 +163,7 @@ export default function CorretorDrawer({ corretorNome, contratos, bonus, onClose
               </div>
             </div>
             <div style={{ fontSize: "0.65rem", color: "var(--text-dim)", marginTop: "0.35rem", lineHeight: 1.4 }}>
-              Qualidade = 50% entrada quitada + 30% adimplência + 20% não-cancelamento. LTV líquido = Mangaba − (bônus + comissões).
+              Qualidade = 50% autorizado (≥1,5% pago) + 30% adimplência + 20% não-cancelamento. LTV líquido = Mangaba − (bônus + comissões).
             </div>
           </div>
         </div>

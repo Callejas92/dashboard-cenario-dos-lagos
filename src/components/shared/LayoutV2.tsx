@@ -15,6 +15,7 @@ import { BarChart3, FileText, Megaphone, Settings, Sun, Moon } from "lucide-reac
 import LoginScreen from "@/components/LoginScreen";
 import SwrProvider from "./SwrProvider";
 import BonusBadge from "./BonusBadge";
+import { setDashKey, getDashKey } from "@/lib/client-auth";
 
 const TABS = [
   { href: "/panorama", label: "Panorama", icon: BarChart3 },
@@ -33,8 +34,10 @@ export default function LayoutV2({ children }: { children: ReactNode }) {
     setDark(localStorage.getItem("theme") === "dark");
     document.documentElement.classList.toggle("dark", localStorage.getItem("theme") === "dark");
 
-    // Sessão é mantida no localStorage (mesma lógica da v1 — sem cookie httpOnly por enquanto)
-    const auth = localStorage.getItem("dashboard-auth") === "true";
+    // Sessão é mantida no localStorage (mesma lógica da v1 — sem cookie httpOnly por enquanto).
+    // As rotas de ESCRITA agora exigem a credencial (Bearer) — sessão antiga sem a
+    // chave guardada precisa relogar uma vez, senão as escritas dariam 401 silencioso.
+    const auth = localStorage.getItem("dashboard-auth") === "true" && !!getDashKey();
     setAuthenticated(auth);
 
     // Nota: NÃO fazemos clear-cache automático aqui. Criava race condition com os
@@ -55,8 +58,9 @@ export default function LayoutV2({ children }: { children: ReactNode }) {
     }
   }, [authenticated]);
 
-  function onLoginSuccess() {
+  function onLoginSuccess(senha: string) {
     localStorage.setItem("dashboard-auth", "true");
+    setDashKey(senha); // credencial usada nas chamadas de escrita (Bearer)
     setAuthenticated(true);
   }
 

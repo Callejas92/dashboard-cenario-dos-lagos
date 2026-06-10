@@ -98,6 +98,24 @@ async function pingUau(): Promise<boolean | null> {
   }
 }
 
+// Estado do sync bônus→Excel (gravado por src/lib/excel-bonus-sync.ts).
+// ok=false se a última tentativa FALHOU depois do último sucesso.
+async function statusSyncExcel(): Promise<{ ok: boolean | null; detalhe: string; sync: string | null }> {
+  try {
+    const { blobs } = await list({ prefix: "cache/excel-bonus-sync.json" });
+    if (!blobs.length) return { ok: null, detalhe: "ainda sem sync registrado", sync: null };
+    const st = await (await fetch(blobs[0].url, { cache: "no-store" })).json();
+    const okAt = st?.syncedAt ? new Date(st.syncedAt).getTime() : 0;
+    const falhaAt = st?.ultimaFalhaAt ? new Date(st.ultimaFalhaAt).getTime() : 0;
+    if (falhaAt > okAt) {
+      return { ok: false, detalhe: `falhou: ${String(st.ultimaFalhaMsg || "erro desconhecido").slice(0, 120)}`, sync: st?.syncedAt || null };
+    }
+    return { ok: true, detalhe: "", sync: st?.syncedAt || null };
+  } catch {
+    return { ok: null, detalhe: "estado ilegível", sync: null };
+  }
+}
+
 async function pingOneDrive(): Promise<{ ok: boolean | null; detalhe: string; sync: string | null }> {
   if (!has("ONEDRIVE_CLIENT_ID", "ONEDRIVE_CLIENT_SECRET")) {
     return { ok: null, detalhe: "credenciais ausentes", sync: null };
@@ -126,7 +144,7 @@ async function pingOneDrive(): Promise<{ ok: boolean | null; detalhe: string; sy
 }
 
 export async function GET() {
-  const [meta, whatsapp, google, uau, onedrive, syncCrm, syncCanais, syncVendas] = await Promise.all([
+  const [meta, whatsapp, google, uau, onedrive, syncCrm, syncCanais, syncVendas, excelSync] = await Promise.all([
     pingMeta(),
     pingWhatsApp(),
     pingGoogle(),
@@ -135,6 +153,7 @@ export async function GET() {
     cacheSavedAt("crm-contratos"),
     cacheSavedAt("canais"),
     cacheSavedAt("uau-vendas"),
+    statusSyncExcel(),
   ]);
 
   const integracoes: IntegracaoStatus[] = [
@@ -142,6 +161,11 @@ export async function GET() {
       nome: "OneDrive (Excel marketing)", grupo: "Marketing",
       configurado: has("ONEDRIVE_CLIENT_ID", "ONEDRIVE_CLIENT_SECRET"),
       ok: onedrive.ok, detalhe: onedrive.detalhe, ultimaSync: onedrive.sync,
+    },
+    {
+      nome: "Excel Bônus (sync automático)", grupo: "Vendas",
+      configurado: true,
+      ok: excelSync.ok, detalhe: excelSync.detalhe, ultimaSync: excelSync.sync,
     },
     {
       nome: "Eggs CRM (contratos)", grupo: "Vendas",

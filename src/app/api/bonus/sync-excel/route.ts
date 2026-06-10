@@ -4,7 +4,8 @@
  *  POST → escreve de verdade
  */
 import { NextResponse } from "next/server";
-import { syncBonusToExcel } from "@/lib/excel-bonus-sync";
+import { syncBonusToExcel, logSyncFalha } from "@/lib/excel-bonus-sync";
+import { checkWriteAuth } from "@/lib/server-auth";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -19,11 +20,14 @@ export async function GET() {
   }
 }
 
-export async function POST() {
+export async function POST(request: Request) {
+  const negado = checkWriteAuth(request);
+  if (negado) return negado;
   try {
     const r = await syncBonusToExcel({ dryRun: false, force: true });
     return NextResponse.json(r);
   } catch (e) {
+    await logSyncFalha(e);
     return NextResponse.json({ ok: false, erro: e instanceof Error ? e.message : String(e) }, { status: 500 });
   }
 }

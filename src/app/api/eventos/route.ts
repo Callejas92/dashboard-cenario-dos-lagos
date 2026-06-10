@@ -6,13 +6,13 @@
  * POST   -> adiciona { data, nome, tipo }
  * DELETE -> remove por { id }
  *
- * Sem login: qualquer um que abre o Panorama pode editar. Risco baixo (anotações),
- * dá pra proteger depois (PIN) se necessário.
+ * Escrita protegida (Bearer = senha do dashboard) — ver src/lib/server-auth.ts.
  */
 import { NextResponse } from "next/server";
 import { list, put } from "@vercel/blob";
 import { randomUUID } from "node:crypto";
 import { PROJETO } from "@/lib/constants/projeto";
+import { checkWriteAuth } from "@/lib/server-auth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -67,6 +67,8 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
+  const negado = checkWriteAuth(req);
+  if (negado) return negado;
   try {
     const body = await req.json().catch(() => ({}));
     const data = String(body?.data || "").slice(0, 10);
@@ -91,6 +93,8 @@ export async function POST(req: Request) {
 }
 
 export async function DELETE(req: Request) {
+  const negado = checkWriteAuth(req);
+  if (negado) return negado;
   try {
     const body = await req.json().catch(() => ({}));
     const id = String(body?.id || "");

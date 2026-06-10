@@ -15,6 +15,7 @@ import { DollarSign, AlertTriangle, Award, CheckCircle2, XCircle, RefreshCw, Che
 import BonusDrawer, { type PlanoPagamento } from "./BonusDrawer";
 import PagamentosPixDrawer from "./PagamentosPixDrawer";
 import BonusPagosDrawer from "./BonusPagosDrawer";
+import { authFetch } from "@/lib/client-auth";
 import KpiMedium from "@/components/shared/KpiMedium";
 import KpiSmall from "@/components/shared/KpiSmall";
 import { SkeletonCard } from "@/components/shared/Skeleton";
@@ -376,11 +377,12 @@ function BonusList({ bonus, planoPorLote }: { bonus: BonusItem[]; planoPorLote: 
         patch.pagoImobiliaria = pago;
         patch.dataPagoImobiliaria = pago ? data : "";
       }
-      await fetch("/api/bonus", {
+      const res = await authFetch("/api/bonus", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "mark", chaveVenda: b.chaveVenda, patch }),
       });
+      if (res.status === 401) alert("Sessão expirada — recarregue a página e faça login de novo.");
       // Invalida cache global do bonus pra refetch
       await mutateGlobal("/api/bonus");
     } finally {
@@ -393,11 +395,12 @@ function BonusList({ bonus, planoPorLote }: { bonus: BonusItem[]; planoPorLote: 
   async function liberarManual(b: BonusItem, liberar: boolean) {
     setUpdatingChave(b.chaveVenda);
     try {
-      await fetch("/api/bonus", {
+      const res = await authFetch("/api/bonus", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "mark", chaveVenda: b.chaveVenda, patch: { liberadoManual: liberar } }),
       });
+      if (res.status === 401) alert("Sessão expirada — recarregue a página e faça login de novo.");
       await mutateGlobal("/api/bonus");
     } finally {
       setUpdatingChave(null);
@@ -495,8 +498,9 @@ function BonusCard({
   onAbrir: (b: BonusItem) => void;
 }) {
   const corretorEhImob = isImobiliaria(bonus.corretorNome);
-  // Gatilho de autorização: pagou >= 1,5% (campo do core; fallback p/ entradaQuitada se ausente).
-  const autorizado = bonus.autorizado ?? bonus.entradaQuitada;
+  // Gatilho de autorização: pagou >= 1,5% (regra atual). Estrito: cache antigo sem o
+  // campo NÃO autoriza pela regra velha (entradaQuitada) — fica "aguardando" até revalidar.
+  const autorizado = bonus.autorizado === true;
   const podeMarcarCorretora = ativo && autorizado && !corretorEhImob;
   const podeMarcarImob = ativo && autorizado && !!bonus.imobiliariaRazaoSocial && !isImobiliaria(bonus.imobiliariaRazaoSocial);
   // Mostra "Liberar manualmente" só quando NÃO autorizado (aguardando) e ainda não foi liberado.
