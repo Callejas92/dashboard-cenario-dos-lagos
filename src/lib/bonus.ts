@@ -134,9 +134,34 @@ async function savePagamentos(pagamentos: Record<string, BonusPagamento>) {
     allowOverwrite: true, // sobrescreve o registro de pagamentos a cada marcação
     contentType: "application/json",
   });
-  // Invalida cache (memória + blob) — marcar pago/isento deve refletir na hora
-  cache = null;
-  await invalidateTrackingBlob();
+  // Marcar/desmarcar/isentar é mudança PURA de pagamento — aplica no tracking em memória/blob
+  // SEM reconsultar o UAU (lento/instável). Se não houver base completa, força recompute.
+  const ok = await patchTrackingPagamentos(pagamentos);
+  if (!ok) { cache = null; await invalidateTrackingBlob(); }
+}
+
+// Aplica os pagamentos ao tracking COMPLETO em cache/blob, sem reconsultar o UAU.
+// Retorna false se não há base completa (aí o chamador força um recompute via UAU).
+async function patchTrackingPagamentos(pagamentos: Record<string, BonusPagamento>): Promise<boolean> {
+  let base = cache?.data;
+  if (!base) base = (await readTrackingBlob())?.data;
+  if (!base || !base.bonus?.length || !base.completo) return false;
+  const bonus = base.bonus.map((b) => {
+    const pagamento: BonusPagamento = pagamentos[b.chaveVenda] || {
+      pagoCorretora: false, dataPagoCorretora: "", pagoImobiliaria: false, dataPagoImobiliaria: "",
+    };
+    const status = classifyStatus({ autorizado: b.autorizado, corretorNome: b.corretorNome, cancelado: b.cancelado, pagamento });
+    return { ...b, pagamento, status };
+  });
+  const data: BonusResponse = {
+    bonus: sortBonus(bonus),
+    summary: buildSummary(bonus),
+    completo: true,
+    fetchedAt: new Date().toISOString(),
+  };
+  cache = { data, timestamp: Date.now() };
+  await writeTrackingBlob(data);
+  return true;
 }
 
 export async function setBonusPagamento(
@@ -279,6 +304,63 @@ function classifyStatus(
   return "a_pagar";
 }
 
+function buildSummary(bonus: BonusEntry[]): BonusSummary {
+  return bonus.reduce(
+    (acc, b) => {
+      // Isentos NÃO contam pro comprometido (não vão sair do caixa)
+      if (b.status !== "isento") acc.comprometidoTotal += b.valorTotal;
+
+      if (b.status === "aguardando_entrada") {
+        acc.qtdAguardandoEntrada++;
+        acc.aguardandoEntrada += b.valorTotal;
+      } else if (b.status === "a_pagar") {
+        acc.qtdAPagar++;
+        acc.aPagarAgora += b.valorTotal;
+      } else if (b.status === "pago_total") {
+        acc.qtdPagoTotal++;
+        acc.pagoTotal += b.valorTotal;
+      } else if (b.status === "pago_parcial") {
+        acc.qtdPagoParcial++;
+        if (b.pagamento.pagoCorretora) acc.pagoTotal += b.valorCorretora;
+        if (b.pagamento.pagoImobiliaria) acc.pagoTotal += b.valorImobiliaria;
+        if (!b.pagamento.pagoCorretora) acc.aPagarAgora += b.valorCorretora;
+        if (!b.pagamento.pagoImobiliaria) acc.aPagarAgora += b.valorImobiliaria;
+      } else if (b.status === "isento") {
+        acc.qtdIsento++;
+        acc.isentoTotal += b.valorTotal;
+      } else if (b.status === "revisar") {
+        acc.qtdRevisar++;
+        acc.pendenteRevisar += b.valorTotal;
+      } else if (b.status === "cancelado_pago") {
+        acc.qtdCancelado++;
+        if (b.pagamento.pagoCorretora) acc.pagoTotal += b.valorCorretora;
+        if (b.pagamento.pagoImobiliaria) acc.pagoTotal += b.valorImobiliaria;
+      }
+      return acc;
+    },
+    {
+      qtdValidas: bonus.length,
+      qtdAguardandoEntrada: 0, qtdAPagar: 0, qtdPagoTotal: 0,
+      qtdPagoParcial: 0, qtdIsento: 0, qtdRevisar: 0, qtdCancelado: 0,
+      comprometidoTotal: 0, aPagarAgora: 0, pagoTotal: 0,
+      aguardandoEntrada: 0, pendenteRevisar: 0, isentoTotal: 0,
+    } as BonusSummary,
+  );
+}
+
+function sortBonus(bonus: BonusEntry[]): BonusEntry[] {
+  // a_pagar > pago_parcial > revisar > aguardando_entrada > pago_total > isento > cancelado_pago
+  const order: Record<BonusStatus, number> = {
+    a_pagar: 0, pago_parcial: 1, revisar: 2,
+    aguardando_entrada: 3, pago_total: 4, isento: 5, cancelado_pago: 6,
+  };
+  return bonus.slice().sort((a, b) => {
+    const d = order[a.status] - order[b.status];
+    if (d !== 0) return d;
+    return a.loteId.localeCompare(b.loteId);
+  });
+}
+
 // Compute pesado (Eggs + UAU). NÃO mexe em cache — o wrapper getBonusTracking cuida disso.
 async function computeBonusTracking(): Promise<BonusResponse> {
   const [contratos, pagamentos] = await Promise.all([
@@ -355,61 +437,9 @@ async function computeBonusTracking(): Promise<BonusResponse> {
     return entry;
   });
 
-  // Summary
-  const sum = bonus.reduce(
-    (acc, b) => {
-      // Isentos NÃO contam pro comprometido (não vão sair do caixa)
-      if (b.status !== "isento") acc.comprometidoTotal += b.valorTotal;
-
-      if (b.status === "aguardando_entrada") {
-        acc.qtdAguardandoEntrada++;
-        acc.aguardandoEntrada += b.valorTotal;
-      } else if (b.status === "a_pagar") {
-        acc.qtdAPagar++;
-        acc.aPagarAgora += b.valorTotal;
-      } else if (b.status === "pago_total") {
-        acc.qtdPagoTotal++;
-        acc.pagoTotal += b.valorTotal;
-      } else if (b.status === "pago_parcial") {
-        acc.qtdPagoParcial++;
-        if (b.pagamento.pagoCorretora) acc.pagoTotal += b.valorCorretora;
-        if (b.pagamento.pagoImobiliaria) acc.pagoTotal += b.valorImobiliaria;
-        if (!b.pagamento.pagoCorretora) acc.aPagarAgora += b.valorCorretora;
-        if (!b.pagamento.pagoImobiliaria) acc.aPagarAgora += b.valorImobiliaria;
-      } else if (b.status === "isento") {
-        acc.qtdIsento++;
-        acc.isentoTotal += b.valorTotal;
-      } else if (b.status === "revisar") {
-        acc.qtdRevisar++;
-        acc.pendenteRevisar += b.valorTotal;
-      } else if (b.status === "cancelado_pago") {
-        acc.qtdCancelado++;
-        if (b.pagamento.pagoCorretora) acc.pagoTotal += b.valorCorretora;
-        if (b.pagamento.pagoImobiliaria) acc.pagoTotal += b.valorImobiliaria;
-      }
-      return acc;
-    },
-    {
-      qtdValidas: bonus.length,
-      qtdAguardandoEntrada: 0, qtdAPagar: 0, qtdPagoTotal: 0,
-      qtdPagoParcial: 0, qtdIsento: 0, qtdRevisar: 0, qtdCancelado: 0,
-      comprometidoTotal: 0, aPagarAgora: 0, pagoTotal: 0,
-      aguardandoEntrada: 0, pendenteRevisar: 0, isentoTotal: 0,
-    } as BonusSummary,
-  );
-
   const response: BonusResponse = {
-    bonus: bonus.sort((a, b) => {
-      // Ordena: a_pagar > pago_parcial > revisar > aguardando_entrada > pago_total > isento > cancelado_pago
-      const order: Record<BonusStatus, number> = {
-        a_pagar: 0, pago_parcial: 1, revisar: 2,
-        aguardando_entrada: 3, pago_total: 4, isento: 5, cancelado_pago: 6,
-      };
-      const d = order[a.status] - order[b.status];
-      if (d !== 0) return d;
-      return a.loteId.localeCompare(b.loteId);
-    }),
-    summary: sum,
+    bonus: sortBonus(bonus),
+    summary: buildSummary(bonus),
     completo,
     fetchedAt: new Date().toISOString(),
   };
