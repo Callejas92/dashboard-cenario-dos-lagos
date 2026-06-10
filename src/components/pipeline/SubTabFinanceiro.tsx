@@ -89,7 +89,7 @@ interface BonusItem {
 }
 interface BonusResp {
   summary?: {
-    qtdAPagar?: number; qtdPagoTotal?: number; qtdAguardandoEntrada?: number;
+    qtdAPagar?: number; qtdPagoTotal?: number; qtdPagoParcial?: number; qtdAguardandoEntrada?: number;
     aPagarAgora?: number; pagoTotal?: number; aguardandoEntrada?: number;
     comprometidoTotal?: number;
   };
@@ -323,7 +323,7 @@ export default function SubTabFinanceiro() {
               label="Pago"
               valor={formatBRLCompact(bs.pagoTotal ?? 0)}
               severidade="verde"
-              contexto={`${bs.qtdPagoTotal ?? 0} venda${(bs.qtdPagoTotal ?? 0) === 1 ? "" : "s"}`}
+              contexto={`${(bs.qtdPagoTotal ?? 0) + (bs.qtdPagoParcial ?? 0)} venda${((bs.qtdPagoTotal ?? 0) + (bs.qtdPagoParcial ?? 0)) === 1 ? "" : "s"} c/ pgto`}
               formula="Soma do que já foi marcado como pago (corretora + imobiliária)."
             />
             <KpiMedium
