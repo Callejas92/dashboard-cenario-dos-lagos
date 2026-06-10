@@ -187,6 +187,43 @@ async function resolveLotesSheetName(token: string, fileId: string): Promise<str
 }
 
 /**
+ * Configura o DROPDOWN (validação de dados) das colunas de status com as 3 opções
+ * combinadas: "aguardando pgt" / "autorizado pgt" / "pago". Substitui a lista antiga
+ * do Felipe ("A pagar"/"Pago"/"—"). Rodar de novo é inofensivo.
+ */
+export async function configurarDropdownStatus(): Promise<{ ok: boolean; detalhe: string }> {
+  const token = await getAccessToken();
+  const fileId = await resolveComercialFileId(token);
+  const wsName = await resolveLotesSheetName(token, fileId);
+  const wsPath = `${GRAPH}/me/drive/items/${fileId}/workbook/worksheets('${encodeURIComponent(wsName)}')`;
+  const ur = await graph(token, `${wsPath}/usedRange(valuesOnly=true)?$select=values`);
+  const values = (ur.values as unknown[][]) || [];
+  const headerRow = values[PRIMEIRA_LINHA_DADOS - 1] || [];
+  const header = headerRow.map((c) => String(c ?? "").trim().toLowerCase());
+  const achaCol = (re: RegExp, fb: number) => { const i = header.findIndex((h) => re.test(h)); return i >= 0 ? i : fb; };
+  const cols = [achaCol(/status.*corretor/i, COL_V), achaCol(/status.*imob/i, COL_X)];
+  const primeira = PRIMEIRA_LINHA_DADOS + 1;
+  const ultima = values.length;
+  const resultados: string[] = [];
+  for (const col of cols) {
+    const addr = `${colLetter(col)}${primeira}:${colLetter(col)}${ultima}`;
+    try {
+      await graph(token, `${wsPath}/range(address='${addr}')/dataValidation`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          rule: { list: { inCellDropDown: true, source: "aguardando pgt, autorizado pgt, pago" } },
+          ignoreBlanks: true,
+        }),
+      });
+      resultados.push(`${colLetter(col)}: ok`);
+    } catch (e) {
+      resultados.push(`${colLetter(col)}: erro ${(e instanceof Error ? e.message : String(e)).slice(0, 100)}`);
+    }
+  }
+  return { ok: resultados.every((r) => r.endsWith("ok")), detalhe: resultados.join(" · ") };
+}
+
+/**
  * Diagnóstico: mostra QUAL arquivo/aba o sync está usando (nome, caminho completo,
  * link, última modificação) + TODOS os candidatos que a busca encontrou no OneDrive.
  * Usado pra conferir se o dashboard mexe no MESMO arquivo que o Felipe abre.
@@ -333,8 +370,10 @@ export async function syncBonusToExcel(opts: { dryRun?: boolean; force?: boolean
         casadasLotes.add(loteId);
         const b = bonusPorLote.get(loteId);
         // "pago" na célula é do Felipe: preserva SEMPRE e importa pro dashboard se faltar.
+        // (normaliza a caixa: "Pago"/"PAGO" do dropdown antigo vira "pago")
         if (isPago(curV)) {
           preservadas++;
+          if (String(curV) !== "pago") nv = "pago";
           if (b && !b.pagamento.pagoCorretora) paraImportar.push({ chaveVenda: b.chaveVenda, loteId, parte: "corretor" });
         } else {
           nv = alvo.v;
@@ -345,6 +384,7 @@ export async function syncBonusToExcel(opts: { dryRun?: boolean; force?: boolean
         }
         if (isPago(curX)) {
           preservadas++;
+          if (String(curX) !== "pago") nx = "pago";
           if (b && !b.pagamento.pagoImobiliaria) paraImportar.push({ chaveVenda: b.chaveVenda, loteId, parte: "imobiliaria" });
         } else {
           nx = alvo.x;
