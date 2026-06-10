@@ -74,7 +74,7 @@ Status ao vivo das integrações: OneDrive, **Excel Bônus (sync automático)**,
 | 11 | Meta do VSO: briefing diz ≥5% (mensal?), painel usa outra régua — **conferir com o Felipe qual é a certa** | ⬜ pendente decisão |
 | 12 | 21 componentes V1 deprecated + rota `/legacy` ainda no bundle | ⬜ Fase 4 |
 | 13 | Interfaces de bônus duplicadas (BonusEntry vs BonusItem vs BonusMin) — risco de dessincronizar | ⬜ Fase 4 (unificar tipo) |
-| 14 | Colunas U ("Bônus Corretor") e W ("Bônus Imob") do Excel são valor fixo — Felipe pediu pra deletar | 🔶 Fase 2 (sync já é robusto à remoção — detecta colunas pelo cabeçalho) |
+| 14 | Colunas U ("Bônus Corretor") e W ("Bônus Imob") do Excel são valor fixo — Felipe pediu pra deletar | ✅ **Deletadas (10/06)** — status agora em U/V; sync acha pelo cabeçalho |
 | 15 | Rate-limit do Meta tratado como "não testado" no admin (pode parecer ok throttled) | ⬜ Fase 3 |
 
 ### Arquitetura de dados (referência)

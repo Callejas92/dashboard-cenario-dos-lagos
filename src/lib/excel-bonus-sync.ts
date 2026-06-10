@@ -1,7 +1,9 @@
 /**
  * Sincroniza o status de bônus no Excel "Cenário_Comercial.xlsx" (aba "🏘️ LOTES").
  *
- *  Coluna V = Status Corretor · Coluna X = Status Imob · casa por Quadra (A) + Lote (B).
+ *  Coluna U = Status Corretor · Coluna V = Status Imob (desde a remoção das colunas de
+ *  valor fixo em 10/06/2026) · casa por Quadra (A) + Lote (B). As colunas são achadas
+ *  pelo CABEÇALHO (robusto a mover/inserir colunas); os índices abaixo são só fallback.
  *  Escreve POR COLUNA (corretor e imob têm status independentes):
  *    - "pago"            → marcado como pago no dashboard (pagoCorretora/pagoImobiliaria)
  *    - "autorizado"      → cliente pagou >= 1,5% do contrato (bônus liberado)
@@ -18,8 +20,8 @@ import { getBonusTracking } from "@/lib/bonus";
 
 const GRAPH = "https://graph.microsoft.com/v1.0";
 const SYNC_STATE_BLOB = "cache/excel-bonus-sync.json";
-const COL_V = 21; // Status Corretor (coluna V)
-const COL_X = 23; // Status Imob (coluna X)
+const COL_V = 20; // Status Corretor (coluna U — fallback se o header não for achado)
+const COL_X = 21; // Status Imob (coluna V — fallback se o header não for achado)
 const PRIMEIRA_LINHA_DADOS = 3; // 0-based → Excel linha 4 (linhas 1-3 = título/seções/cabeçalho)
 
 export interface SyncReport {
