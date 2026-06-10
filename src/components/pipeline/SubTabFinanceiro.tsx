@@ -96,6 +96,7 @@ interface BonusResp {
     comprometidoTotal?: number;
   };
   bonus?: BonusItem[];
+  completo?: boolean; // false = ERP UAU falhou parcialmente — dado pode estar incompleto
 }
 
 const NOMES_IMOBILIARIA = ["EGGS", "GESTÃO", "GESTAO", "INTELIGENCIA EM VENDAS"];
@@ -310,6 +311,18 @@ export default function SubTabFinanceiro() {
         <h2 style={{ fontSize: "0.95rem", fontWeight: 700, color: "var(--text)", marginBottom: "0.75rem", display: "flex", alignItems: "center", gap: "0.4rem" }}>
           <Award size={14} /> Bônus de corretores e imobiliárias
         </h2>
+
+        {/* Dado parcial: o ERP falhou em parte da consulta — avisa em vez de fingir que está tudo certo */}
+        {bonus && bonus.completo === false ? (
+          <div style={{ display: "flex", alignItems: "flex-start", gap: "0.5rem", padding: "0.6rem 0.9rem", marginBottom: "0.875rem", background: "#f59e0b12", borderLeft: "3px solid #f59e0b", borderRadius: "0.4rem", fontSize: "0.78rem", color: "var(--text-muted)", lineHeight: 1.45 }}>
+            <AlertTriangle size={14} style={{ color: "#f59e0b", flexShrink: 0, marginTop: "0.1rem" }} />
+            <span>
+              <strong style={{ color: "#f59e0b" }}>ERP UAU instável agora</strong> — parte das consultas falhou e alguns
+              status podem aparecer como &quot;aguardando&quot; sem ser. Os <strong>pagamentos marcados estão preservados</strong>.
+              Atualiza sozinho em alguns minutos.
+            </span>
+          </div>
+        ) : null}
 
         {/* KPIs */}
         {bs && (

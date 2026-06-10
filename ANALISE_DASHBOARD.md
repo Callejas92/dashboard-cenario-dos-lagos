@@ -64,18 +64,18 @@ Status ao vivo das integrações: OneDrive, **Excel Bônus (sync automático)**,
 | 5 | **Regras de negócio espalhadas**: fator Mangaba 0,935 em 3 lugares, comissão 6,5% em 3, bônus 3k/1k, 1,5% | ✅ **Corrigido (Fase 2)** — `src/lib/constants/negocio.ts` é a fonte única |
 | 6 | Excel não recebia **"pago"** do dashboard (só autorizado/aguardando) | ✅ **Corrigido (Fase 2)** — escreve "pago" por coluna + cor verde forte; "pago" manual preservado |
 | 7 | `investor-lots.json` hardcoded (39 lotes do investidor) — mudança exige deploy | ⬜ Fase 4 |
-| 8 | Sem retry/backoff em Eggs CRM e Graph; UAU com retry linear | ⬜ Fase 3 |
-| 9 | Blob `onedrive-token.json` com access público (URL determinística) | ⬜ Fase 3 (mover p/ acesso privado) |
+| 8 | Sem retry/backoff em Eggs CRM e Graph; UAU com retry linear | ✅ **Eggs com retry + stale-fallback (Fase 3)** — UAU já tinha 3 rodadas; Graph tem retry por faixa no sync |
+| 9 | Blob `onedrive-token.json` com access público (URL determinística) | ✅ **Cifrado AES-256-GCM (Fase 3)** — chave derivada do client_secret; migração transparente do legado |
 
 ### 🟡 P2 — Médios
 | # | Problema | Status |
 |---|---|---|
-| 10 | UAU instável → `completo=false` invisível pro usuário (badge some sem explicação; telas não indicam "dado parcial") | ⬜ Fase 3 |
+| 10 | UAU instável → `completo=false` invisível pro usuário (badge some sem explicação; telas não indicam "dado parcial") | ✅ **Banner "ERP instável" na aba Financeiro (Fase 3)**; badge segue oculto quando incompleto (correto) |
 | 11 | Meta do VSO: briefing diz ≥5% (mensal?), painel usa outra régua — **conferir com o Felipe qual é a certa** | ⬜ pendente decisão |
 | 12 | 21 componentes V1 deprecated + rota `/legacy` ainda no bundle | ⬜ Fase 4 |
 | 13 | Interfaces de bônus duplicadas (BonusEntry vs BonusItem vs BonusMin) — risco de dessincronizar | ⬜ Fase 4 (unificar tipo) |
 | 14 | Colunas U ("Bônus Corretor") e W ("Bônus Imob") do Excel são valor fixo — Felipe pediu pra deletar | ✅ **Deletadas (10/06)** — status agora em U/V; sync acha pelo cabeçalho |
-| 15 | Rate-limit do Meta tratado como "não testado" no admin (pode parecer ok throttled) | ⬜ Fase 3 |
+| 15 | Rate-limit do Meta tratado como "não testado" no admin (pode parecer ok throttled) | ✅ Já estava correto (pingGraph trata #4/#17/#32 como "não testado", amarelo) |
 
 ### Arquitetura de dados (referência)
 - **Fontes:** Eggs CRM (contratos/leads, autoridade de vendas) · UAU ERP (financeiro/estoque, lento ~40s frio, instável) · OneDrive Graph (planilhas) · Meta/Google/GA/WhatsApp/Instagram (mídia) · Vercel Blob (persistência: pagamentos de bônus, PIX, eventos, tokens, caches).
@@ -90,7 +90,7 @@ Status ao vivo das integrações: OneDrive, **Excel Bônus (sync automático)**,
 |---|---|---|
 | **1. Blindar** | Proteger APIs de escrita + regra 1,5% estrita + log de falha do sync no Admin | ✅ concluída (10/06) |
 | **2. Consolidar** | `constants/negocio.ts` (fonte única) + Excel escreve "pago" + fix "pago intermitente" + deletar U/W | ✅ concluída (10/06) |
-| **3. Resiliência** | Indicador "dado parcial/ERP instável" + retry/backoff + token blob privado + admin mais fiel | ⬜ |
+| **3. Resiliência** | Indicador "dado parcial/ERP instável" + retry/stale-fallback no Eggs + token OneDrive cifrado | ✅ concluída (10/06) |
 | **4. Limpeza** | Remover /legacy + 21 deprecated + unificar tipos de bônus + investor-lots editável sem deploy | ⬜ |
 | **5. Produto** | Cron do sync Excel (independente de acesso) + notificação de bônus autorizado + LTV no ranking + histórico de inadimplência + funil completo (Faturado/Entregue) quando o comercial alimentar | ⬜ |
 

@@ -1,30 +1,16 @@
 import { NextResponse } from "next/server";
-import { list } from "@vercel/blob";
-
-const TOKEN_BLOB_NAME = "onedrive-token.json";
+import { loadOneDriveToken } from "@/lib/onedrive-token";
 
 export async function GET() {
   try {
-    // Verificar se há token salvo no Blob
-    const { blobs } = await list({ prefix: TOKEN_BLOB_NAME });
-
-    if (blobs.length === 0) {
+    // Ler o token (cifrado no Blob)
+    const tokenData = await loadOneDriveToken();
+    if (!tokenData) {
       return NextResponse.json({
         connected: false,
         message: "OneDrive não conectado. Configure as credenciais e autorize o acesso.",
       });
     }
-
-    // Ler o token
-    const tokenRes = await fetch(blobs[0].url, { cache: "no-store" });
-    if (!tokenRes.ok) {
-      return NextResponse.json({
-        connected: false,
-        message: "Erro ao ler token salvo.",
-      });
-    }
-
-    const tokenData = await tokenRes.json();
 
     // Verificar se o token ainda é válido fazendo um refresh
     const CLIENT_ID = process.env.ONEDRIVE_CLIENT_ID || "";

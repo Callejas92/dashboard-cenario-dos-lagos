@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { list } from "@vercel/blob";
+import { loadOneDriveToken } from "@/lib/onedrive-token";
 
 export const maxDuration = 30;
 
@@ -121,9 +122,8 @@ async function pingOneDrive(): Promise<{ ok: boolean | null; detalhe: string; sy
     return { ok: null, detalhe: "credenciais ausentes", sync: null };
   }
   try {
-    const { blobs } = await list({ prefix: "onedrive-token.json" });
-    if (!blobs.length) return { ok: false, detalhe: "não conectado — autorize em /api/onedrive/auth", sync: null };
-    const tk = await (await fetch(blobs[0].url, { cache: "no-store" })).json();
+    const tk = await loadOneDriveToken();
+    if (!tk) return { ok: false, detalhe: "não conectado — autorize em /api/onedrive/auth", sync: null };
     const r = await fetch("https://login.microsoftonline.com/consumers/oauth2/v2.0/token", {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },

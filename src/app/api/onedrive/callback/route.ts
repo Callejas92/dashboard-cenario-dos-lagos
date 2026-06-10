@@ -1,11 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { put } from "@vercel/blob";
+import { saveOneDriveToken } from "@/lib/onedrive-token";
 
 const CLIENT_ID = (process.env.ONEDRIVE_CLIENT_ID || "").trim();
 const CLIENT_SECRET = (process.env.ONEDRIVE_CLIENT_SECRET || "").trim();
 const REDIRECT_URI = (process.env.ONEDRIVE_REDIRECT_URI || "").trim();
-
-const TOKEN_BLOB_NAME = "onedrive-token.json";
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
@@ -52,19 +50,13 @@ export async function GET(request: NextRequest) {
 
     const tokenData = await tokenRes.json();
 
-    // Salvar refresh_token no Vercel Blob (persiste entre deploys)
-    const tokenPayload = {
+    // Salvar refresh_token no Vercel Blob (cifrado — ver lib/onedrive-token.ts)
+    await saveOneDriveToken({
       refresh_token: tokenData.refresh_token,
       access_token: tokenData.access_token,
       expires_at: Date.now() + (tokenData.expires_in * 1000),
       scope: tokenData.scope,
       connected_at: new Date().toISOString(),
-    };
-
-    await put(TOKEN_BLOB_NAME, JSON.stringify(tokenPayload), {
-      access: "public",
-      addRandomSuffix: false,
-      allowOverwrite: true, // o token já existe da 1ª conexão — precisa sobrescrever
     });
 
     // Verificar acesso - listar root do OneDrive

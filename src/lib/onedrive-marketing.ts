@@ -11,12 +11,11 @@
  * O lib também é fonte para a camada legacy `onedrive-custos.ts` que projeta
  * os dados em `LancamentoOffline[]` para os endpoints antigos.
  */
-import { list, put } from "@vercel/blob";
 import * as XLSX from "xlsx";
+import { loadOneDriveToken, saveOneDriveToken } from "@/lib/onedrive-token";
 
 const ONEDRIVE_FILE_PATH = (process.env.ONEDRIVE_CUSTOS_FILE_PATH ||
   "/Cenário dos Lagos/90-100 Pessoal/Cenario_Marketing.xlsx").trim().replace(/\\n/g, "");
-const TOKEN_BLOB_NAME = "onedrive-token.json";
 
 const CACHE_TTL = 60 * 1000; // 60s — TabMarketing chama clear-cache no mount, isso é só pra burst protection
 let dataCache: { data: MarketingData; timestamp: number } | null = null;
@@ -493,15 +492,10 @@ export async function getAccessToken(): Promise<string> {
     throw new Error("ONEDRIVE_CLIENT_ID e ONEDRIVE_CLIENT_SECRET não configurados");
   }
 
-  const { blobs } = await list({ prefix: TOKEN_BLOB_NAME });
-  if (blobs.length === 0) {
+  const tokenData = await loadOneDriveToken();
+  if (!tokenData) {
     throw new Error("OneDrive não conectado. Vá em APIs → OneDrive e autorize o acesso.");
   }
-
-  const tokenRes = await fetch(blobs[0].url, { cache: "no-store" });
-  if (!tokenRes.ok) throw new Error("Erro ao ler token do OneDrive");
-
-  const tokenData = await tokenRes.json();
   if (tokenData.access_token && tokenData.expires_at && Date.now() < tokenData.expires_at - 60000) {
     return tokenData.access_token;
   }
@@ -525,18 +519,13 @@ export async function getAccessToken(): Promise<string> {
 
   const newTokens = await refreshRes.json();
   if (newTokens.refresh_token) {
-    const updatedPayload = {
+    saveOneDriveToken({
       refresh_token: newTokens.refresh_token,
       access_token: newTokens.access_token,
       expires_at: Date.now() + (newTokens.expires_in * 1000),
       scope: newTokens.scope,
       connected_at: tokenData.connected_at,
       last_refreshed: new Date().toISOString(),
-    };
-    put(TOKEN_BLOB_NAME, JSON.stringify(updatedPayload), {
-      access: "public",
-      addRandomSuffix: false,
-      allowOverwrite: true,
     }).catch((err) => console.warn("Falha ao salvar novo refresh token:", err));
   }
   return newTokens.access_token;

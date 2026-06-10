@@ -155,15 +155,25 @@ export async function getContratosEggs(): Promise<ContratoEnriquecido[]> {
     }
 
     const url = `${EGGS_API}?${params.toString()}`;
-    const res = await fetch(url, {
-      headers: { token_autorizacao: token },
-      cache: "no-store",
-      signal: AbortSignal.timeout(20000),
-    });
-
-    if (!res.ok) {
-      throw new Error(`Eggs Contratos retornou ${res.status}`);
+    // 1 retry com pausa de 2s: falha pontual do Eggs não pode derrubar
+    // contratos/velocidade/bônus inteiros (várias abas dependem daqui).
+    let res: Response | null = null;
+    let ultimoErro: unknown = null;
+    for (let tentativa = 0; tentativa < 2 && !res; tentativa++) {
+      if (tentativa > 0) await new Promise((r) => setTimeout(r, 2000));
+      try {
+        const r = await fetch(url, {
+          headers: { token_autorizacao: token },
+          cache: "no-store",
+          signal: AbortSignal.timeout(20000),
+        });
+        if (r.ok) res = r;
+        else ultimoErro = new Error(`Eggs Contratos retornou ${r.status}`);
+      } catch (e) {
+        ultimoErro = e;
+      }
     }
+    if (!res) throw ultimoErro instanceof Error ? ultimoErro : new Error(String(ultimoErro));
 
     const raw: EggsContrato[] = await res.json();
 
@@ -244,6 +254,11 @@ export async function getContratosEggs(): Promise<ContratoEnriquecido[]> {
     return contratos;
   } catch (err) {
     console.error("getContratosEggs error:", err);
+    // Stale fallback: melhor servir o último dado bom (mesmo vencido) que tela vazia.
+    if (cache) {
+      console.warn("getContratosEggs: servindo cache vencido após falha (stale fallback)");
+      return cache.data;
+    }
     throw err;
   }
 }
