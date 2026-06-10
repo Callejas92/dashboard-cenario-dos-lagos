@@ -36,6 +36,7 @@ export interface SyncReport {
   orfaosLotes?: string[];      // loteIds cujo status foi limpo (pra conferência)
   colunasStatus?: string;      // colunas de status detectadas (corretor/imob) — pelo header
   amostraHeader?: Record<string, string>; // headers das colunas U/V/W/X (inspeção)
+  resumoStatus?: { pago: number; autorizado: number; aguardando: number }; // alvo por célula (V+X)
   dryRun?: boolean;
   mudou?: boolean;
   destaque?: string; // status da formatação condicional (âmbar/verde)
@@ -314,6 +315,17 @@ export async function syncBonusToExcel(opts: { dryRun?: boolean; force?: boolean
     orfaosLimpos: orfaos.length,
     orfaosLotes: Array.from(orfaosLotes),
     colunasStatus: `corretor=${colLetter(colV)}(${colV}) imob=${colLetter(colX)}(${colX})`,
+    resumoStatus: Array.from(porLote.values()).reduce(
+      (acc, s) => {
+        for (const v of [s.v, s.x]) {
+          if (v === "pago") acc.pago++;
+          else if (v === "autorizado") acc.autorizado++;
+          else acc.aguardando++;
+        }
+        return acc;
+      },
+      { pago: 0, autorizado: 0, aguardando: 0 },
+    ),
     amostraHeader: { U: String(headerRow[20] ?? ""), V: String(headerRow[21] ?? ""), W: String(headerRow[22] ?? ""), X: String(headerRow[23] ?? "") },
     dryRun,
     mudou,
