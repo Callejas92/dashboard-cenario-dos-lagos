@@ -70,7 +70,7 @@ export default function BonusPagosDrawer({ bonus, onClose }: { bonus: BonusPagoI
 
           {pagos.length === 0 ? (
             <div style={{ padding: "1.5rem", textAlign: "center", color: "var(--text-dim)", fontSize: "0.82rem", fontStyle: "italic" }}>
-              Nenhum bônus pago ainda. Marque na lista &quot;A PAGAR&quot; quando pagar.
+              Nenhum bônus pago ainda. Anote &quot;pago&quot; na planilha (Status Corretor / Status Imob) — aparece aqui em até 5 min.
             </div>
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>

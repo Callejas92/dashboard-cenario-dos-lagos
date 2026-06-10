@@ -1,4 +1,5 @@
-import { NextResponse } from "next/server";
+import { NextResponse, after } from "next/server";
+import { salvarSnapshotInadimplencia } from "@/lib/inadimplencia-historico";
 import { authenticate, isUauConfigured, uauFetch } from "@/lib/uau-auth";
 import { getContratosEggs } from "@/lib/eggs-contratos";
 import { getBonusComoCustoMensal } from "@/lib/bonus";
@@ -405,6 +406,13 @@ export async function GET() {
     };
 
     cache.set(cacheKey, { data: response, timestamp: Date.now() });
+    // Snapshot diário do histórico de inadimplência (pós-resposta, não atrasa a UI)
+    after(() => salvarSnapshotInadimplencia({
+      pct: percentualInadimplencia,
+      totalVencido,
+      qtdClientes: clientesInadimplentes.size,
+      qtdParcelas: vencidas.length,
+    }));
     return NextResponse.json(response);
   } catch (error) {
     const errMsg = error instanceof Error ? error.message : String(error);

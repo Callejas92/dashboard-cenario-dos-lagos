@@ -15,6 +15,7 @@
 import { NextResponse } from "next/server";
 import { getVendas } from "@/lib/uau-vendas";
 import { getContratosEggs } from "@/lib/eggs-contratos";
+import { getBonusTracking } from "@/lib/bonus";
 
 export const maxDuration = 60; // Vercel: até 60s pra aquecer
 
@@ -81,6 +82,17 @@ export async function GET(request: Request) {
       ms: Date.now() - t3,
       error: e instanceof Error ? e.message : String(e),
     };
+  }
+
+  // 4. Tracking de bônus: mantém quente E dispara a revalidação em background,
+  //    que detecta bônus recém-autorizados (≥1,5%) e notifica por e-mail —
+  //    mesmo sem ninguém abrir o dashboard.
+  const t4 = Date.now();
+  try {
+    const b = await getBonusTracking();
+    results.bonus = { ok: b.completo, ms: Date.now() - t4, size: b.bonus.length };
+  } catch (e) {
+    results.bonus = { ok: false, ms: Date.now() - t4, error: e instanceof Error ? e.message : String(e) };
   }
 
   return NextResponse.json({

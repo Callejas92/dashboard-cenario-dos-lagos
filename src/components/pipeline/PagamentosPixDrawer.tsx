@@ -167,7 +167,7 @@ export default function PagamentosPixDrawer({ bonus, onClose }: { bonus: BonusPi
             {cardTotal("Já pago", totJaPagoQtd, totJaPagoVal, "#10b981", CheckCircle2)}
           </div>
           <div style={{ fontSize: "0.68rem", color: "var(--text-dim)", lineHeight: 1.4 }}>
-            Corretor recebe R$ 3.000/bônus · imobiliária R$ 1.000/bônus. &quot;A pagar&quot; = autorizado (≥1,5% pago) ainda não pago. &quot;Pago&quot; vem automático do que você marca na lista. O PIX é salvo por CPF/CNPJ.
+            Corretor recebe R$ 3.000/bônus · imobiliária R$ 1.000/bônus. &quot;A pagar&quot; = autorizado (≥1,5% pago) ainda não pago. &quot;Pago&quot; vem do que está anotado no Excel. O PIX é salvo por CPF/CNPJ.
           </div>
           {renderSecao("Corretores", listaCorr)}
           {renderSecao("Imobiliárias", listaImob)}

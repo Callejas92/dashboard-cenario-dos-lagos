@@ -11,7 +11,8 @@
  */
 import { useState, useMemo } from "react";
 import useSWR, { mutate as mutateGlobal } from "swr";
-import { DollarSign, AlertTriangle, Award, CheckCircle2, XCircle, RefreshCw, ChevronRight, Wallet } from "lucide-react";
+import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip } from "recharts";
+import { DollarSign, AlertTriangle, Award, CheckCircle2, ChevronRight, Wallet } from "lucide-react";
 import BonusDrawer, { type PlanoPagamento } from "./BonusDrawer";
 import PagamentosPixDrawer from "./PagamentosPixDrawer";
 import BonusPagosDrawer from "./BonusPagosDrawer";
@@ -111,6 +112,7 @@ export default function SubTabFinanceiro() {
   const { data: financ, isLoading: lF } = useSWR<FinancResp>("/api/uau/financeiro");
   const { data: bonus, isLoading: lB } = useSWR<BonusResp>("/api/bonus");
   const { data: crm, isLoading: lC } = useSWR<CrmContratosRespMin>("/api/crm/contratos");
+  const { data: histInad } = useSWR<{ dias?: { data: string; pct: number; totalVencido: number }[] }>("/api/inadimplencia-historico");
 
   // Só bloqueia a tela toda no que é RÁPIDO (bônus + CRM). O financeiro do UAU é lento
   // (cold start 30-57s) e carrega numa seção própria — não segura mais a lista de bônus.
@@ -301,6 +303,31 @@ export default function SubTabFinanceiro() {
               </table>
             </div>
           )}
+
+          {/* Evolução da inadimplência (snapshots diários — coletando desde 10/06/2026) */}
+          {(histInad?.dias?.length ?? 0) >= 2 ? (
+            <div style={{ marginTop: "1rem" }}>
+              <div style={{ fontSize: "0.7rem", color: "var(--text-dim)", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "0.4rem" }}>
+                Evolução da inadimplência
+              </div>
+              <ResponsiveContainer width="100%" height={150}>
+                <LineChart data={histInad!.dias} margin={{ top: 6, right: 8, left: 0, bottom: 0 }}>
+                  <XAxis dataKey="data" tick={{ fontSize: 10, fill: "var(--text-dim)" }} tickFormatter={(d: string) => d.slice(8, 10) + "/" + d.slice(5, 7)} stroke="var(--border)" />
+                  <YAxis width={36} tick={{ fontSize: 10, fill: "var(--text-dim)" }} tickFormatter={(v: number) => `${v.toFixed(1)}%`} stroke="var(--border)" />
+                  <Tooltip
+                    formatter={(v) => [`${Number(v ?? 0).toFixed(2)}%`, "inadimplência"]}
+                    labelFormatter={(d) => formatData(String(d))}
+                    contentStyle={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "0.4rem", fontSize: "0.75rem" }}
+                  />
+                  <Line type="monotone" dataKey="pct" stroke="#f59e0b" strokeWidth={2} dot={{ r: 2 }} isAnimationActive={false} />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          ) : (
+            <div style={{ marginTop: "0.75rem", fontSize: "0.68rem", color: "var(--text-dim)", fontStyle: "italic" }}>
+              Histórico diário de inadimplência começou a acumular em 10/06/2026 — o gráfico de evolução aparece a partir do 2º dia.
+            </div>
+          )}
         </div>
         </>
         )}
@@ -339,7 +366,7 @@ export default function SubTabFinanceiro() {
               valor={formatBRLCompact(bs.pagoTotal ?? 0)}
               severidade="verde"
               contexto={`${(bs.qtdPagoTotal ?? 0) + (bs.qtdPagoParcial ?? 0)} venda${((bs.qtdPagoTotal ?? 0) + (bs.qtdPagoParcial ?? 0)) === 1 ? "" : "s"} c/ pgto`}
-              formula="Soma do que já foi marcado como pago (corretora + imobiliária)."
+              formula="Soma do que está anotado como 'pago' no Excel (corretora + imobiliária) — o dashboard lê a planilha sozinho."
             />
             <KpiMedium
               label="Aguardando 1,5%"
@@ -380,33 +407,6 @@ function BonusList({ bonus, planoPorLote }: { bonus: BonusItem[]; planoPorLote: 
     return { aPagar, pagos, aguardando };
   }, [bonus]);
 
-  async function marcar(b: BonusItem, tipo: "corretora" | "imobiliaria", pago: boolean, data: string, observacao?: string) {
-    setUpdatingChave(b.chaveVenda);
-    try {
-      const patch: Record<string, unknown> = observacao !== undefined ? { observacao } : {};
-      if (tipo === "corretora") {
-        patch.pagoCorretora = pago;
-        patch.dataPagoCorretora = pago ? data : "";
-      } else {
-        patch.pagoImobiliaria = pago;
-        patch.dataPagoImobiliaria = pago ? data : "";
-      }
-      const res = await authFetch("/api/bonus", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "mark", chaveVenda: b.chaveVenda, patch }),
-      });
-      if (res.status === 401) alert("Sessão expirada — recarregue a página e faça login de novo.");
-      // Read-your-writes: o POST devolve o tracking atualizado — aplica direto, sem
-      // refetch (o blob pode servir versão velha por ~60s após a escrita).
-      const j = await res.json().catch(() => null);
-      if (j?.tracking?.bonus) await mutateGlobal("/api/bonus", j.tracking, { revalidate: false });
-      else await mutateGlobal("/api/bonus");
-    } finally {
-      setUpdatingChave(null);
-    }
-  }
-
   // Libera o bônus manualmente (override do check de entrada/sinal do UAU).
   // Usado quando não tem entrada nem sinal (venda à vista, acordo fora do sistema).
   async function liberarManual(b: BonusItem, liberar: boolean) {
@@ -436,7 +436,10 @@ function BonusList({ bonus, planoPorLote }: { bonus: BonusItem[]; planoPorLote: 
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "0.875rem" }}>
-      <div style={{ display: "flex", justifyContent: "flex-end", gap: "0.5rem" }}>
+      <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: "0.5rem", flexWrap: "wrap" }}>
+        <span style={{ fontSize: "0.68rem", color: "var(--text-dim)", marginRight: "auto" }}>
+          O pagamento é anotado no <strong>Excel</strong> (digite &quot;pago&quot; na célula) — o dashboard lê sozinho em até 5 min.
+        </span>
         <button
           onClick={() => setPagosOpen(true)}
           style={{ display: "flex", alignItems: "center", gap: "0.35rem", padding: "0.4rem 0.8rem", fontSize: "0.78rem", fontWeight: 600, color: "var(--text)", background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "0.5rem", cursor: "pointer" }}
@@ -450,9 +453,9 @@ function BonusList({ bonus, planoPorLote }: { bonus: BonusItem[]; planoPorLote: 
           <Wallet size={13} /> Pagamentos por PIX
         </button>
       </div>
-      <Grupo titulo="🟢 A PAGAR" cor="#10b981" itens={agrupados.aPagar} ativo updatingChave={updatingChave} onMarcar={marcar} onLiberar={liberarManual} onAbrir={setDrawerBonus} />
-      <Grupo titulo="🔵 AGUARDANDO 1,5%" cor="#4285f4" itens={agrupados.aguardando} colapsado updatingChave={updatingChave} onMarcar={marcar} onLiberar={liberarManual} onAbrir={setDrawerBonus} />
-      <Grupo titulo="⚪ JÁ PAGO" cor="#6b7280" itens={agrupados.pagos} colapsado updatingChave={updatingChave} onMarcar={marcar} onLiberar={liberarManual} onAbrir={setDrawerBonus} />
+      <Grupo titulo="🟢 AUTORIZADO PGT" cor="#10b981" itens={agrupados.aPagar} ativo updatingChave={updatingChave} onLiberar={liberarManual} onAbrir={setDrawerBonus} />
+      <Grupo titulo="🔵 AGUARDANDO 1,5%" cor="#4285f4" itens={agrupados.aguardando} colapsado updatingChave={updatingChave} onLiberar={liberarManual} onAbrir={setDrawerBonus} />
+      <Grupo titulo="⚪ JÁ PAGO" cor="#6b7280" itens={agrupados.pagos} colapsado updatingChave={updatingChave} onLiberar={liberarManual} onAbrir={setDrawerBonus} />
       {drawerBonus ? <BonusDrawer bonus={drawerBonus} plano={planoPorLote.get(drawerBonus.loteId)} onClose={() => setDrawerBonus(null)} /> : null}
       {pixOpen ? <PagamentosPixDrawer bonus={bonus} onClose={() => setPixOpen(false)} /> : null}
       {pagosOpen ? <BonusPagosDrawer bonus={bonus} onClose={() => setPagosOpen(false)} /> : null}
@@ -461,7 +464,7 @@ function BonusList({ bonus, planoPorLote }: { bonus: BonusItem[]; planoPorLote: 
 }
 
 function Grupo({
-  titulo, cor, itens, ativo, colapsado, updatingChave, onMarcar, onLiberar, onAbrir,
+  titulo, cor, itens, ativo, colapsado, updatingChave, onLiberar, onAbrir,
 }: {
   titulo: string;
   cor: string;
@@ -469,7 +472,6 @@ function Grupo({
   ativo?: boolean;
   colapsado?: boolean;
   updatingChave: string | null;
-  onMarcar: (b: BonusItem, tipo: "corretora" | "imobiliaria", pago: boolean, data: string, observacao?: string) => Promise<void>;
   onLiberar: (b: BonusItem, liberar: boolean) => Promise<void>;
   onAbrir: (b: BonusItem) => void;
 }) {
@@ -495,7 +497,6 @@ function Grupo({
               bonus={b}
               ativo={!!ativo}
               updating={updatingChave === b.chaveVenda}
-              onMarcar={onMarcar}
               onLiberar={onLiberar}
               onAbrir={onAbrir}
             />
@@ -507,12 +508,11 @@ function Grupo({
 }
 
 function BonusCard({
-  bonus, ativo, updating, onMarcar, onLiberar, onAbrir,
+  bonus, ativo, updating, onLiberar, onAbrir,
 }: {
   bonus: BonusItem;
   ativo: boolean;
   updating: boolean;
-  onMarcar: (b: BonusItem, tipo: "corretora" | "imobiliaria", pago: boolean, data: string, observacao?: string) => Promise<void>;
   onLiberar: (b: BonusItem, liberar: boolean) => Promise<void>;
   onAbrir: (b: BonusItem) => void;
 }) {
@@ -520,8 +520,8 @@ function BonusCard({
   // Gatilho de autorização: pagou >= 1,5% (regra atual). Estrito: cache antigo sem o
   // campo NÃO autoriza pela regra velha (entradaQuitada) — fica "aguardando" até revalidar.
   const autorizado = bonus.autorizado === true;
-  const podeMarcarCorretora = ativo && autorizado && !corretorEhImob;
-  const podeMarcarImob = ativo && autorizado && !!bonus.imobiliariaRazaoSocial && !isImobiliaria(bonus.imobiliariaRazaoSocial);
+  const corretoraElegivel = ativo && autorizado && !corretorEhImob;
+  const imobElegivel = ativo && autorizado && !!bonus.imobiliariaRazaoSocial && !isImobiliaria(bonus.imobiliariaRazaoSocial);
   // Mostra "Liberar manualmente" só quando NÃO autorizado (aguardando) e ainda não foi liberado.
   const mostrarLiberar = !autorizado && !bonus.pagamento.liberadoManual;
 
@@ -580,12 +580,11 @@ function BonusCard({
         <div style={{ fontSize: "0.825rem", color: "var(--text)", marginTop: "0.125rem" }}>
           {truncate(bonus.corretorNome || "(sem corretor)", 28)}
         </div>
-        <BonusActionRow
-          ativo={podeMarcarCorretora}
+        <StatusPagamento
+          elegivel={corretoraElegivel}
           pago={bonus.pagamento.pagoCorretora}
           data={bonus.pagamento.dataPagoCorretora}
-          updating={updating}
-          onConfirm={(pago, data) => onMarcar(bonus, "corretora", pago, data)}
+          viaExcel={(bonus.pagamento.observacao || "").includes("pago via Excel")}
         />
       </div>
 
@@ -597,95 +596,42 @@ function BonusCard({
         <div style={{ fontSize: "0.825rem", color: "var(--text)", marginTop: "0.125rem" }}>
           {truncate(bonus.imobiliariaNomeFantasia || bonus.imobiliariaRazaoSocial || "—", 28)}
         </div>
-        <BonusActionRow
-          ativo={podeMarcarImob}
+        <StatusPagamento
+          elegivel={imobElegivel}
           pago={bonus.pagamento.pagoImobiliaria}
           data={bonus.pagamento.dataPagoImobiliaria}
-          updating={updating}
-          onConfirm={(pago, data) => onMarcar(bonus, "imobiliaria", pago, data)}
+          viaExcel={(bonus.pagamento.observacao || "").includes("pago via Excel")}
         />
       </div>
     </div>
   );
 }
 
-function BonusActionRow({
-  ativo, pago, data, updating, onConfirm,
+// Status read-only: o "pago" é anotado NO EXCEL pelo Felipe (o sync lê e marca aqui sozinho).
+function StatusPagamento({
+  elegivel, pago, data, viaExcel,
 }: {
-  ativo: boolean;
+  elegivel: boolean;
   pago: boolean;
   data: string;
-  updating: boolean;
-  onConfirm: (pago: boolean, data: string) => Promise<void>;
+  viaExcel: boolean;
 }) {
-  const [edit, setEdit] = useState(false);
-  const [obs, setObs] = useState("");
-  const [dataTemp, setDataTemp] = useState(data || new Date().toISOString().split("T")[0]);
-
-  if (updating) return <RefreshCw size={12} className="animate-spin" style={{ marginTop: "0.4rem", color: "var(--text-dim)" }} />;
-
   if (pago) {
     return (
       <div style={{ display: "flex", alignItems: "center", gap: "0.4rem", marginTop: "0.375rem" }}>
         <CheckCircle2 size={12} style={{ color: "#10b981" }} />
-        <span style={{ fontSize: "0.7rem", color: "#10b981", fontWeight: 600 }}>Pago em {formatData(data)}</span>
-        <button
-          onClick={() => onConfirm(false, "")}
-          title="Desmarcar"
-          style={{ marginLeft: "auto", padding: "0.125rem", color: "var(--text-dim)", background: "transparent", border: 0, cursor: "pointer" }}
-        >
-          <XCircle size={11} />
-        </button>
+        <span style={{ fontSize: "0.7rem", color: "#10b981", fontWeight: 600 }}>
+          Pago em {formatData(data)}{viaExcel ? " · via Excel" : ""}
+        </span>
       </div>
     );
   }
-
-  if (!ativo) {
-    return <div style={{ fontSize: "0.7rem", color: "var(--text-dim)", marginTop: "0.375rem", fontStyle: "italic" }}>aguardando</div>;
-  }
-
-  if (edit) {
+  if (elegivel) {
     return (
-      <div style={{ display: "flex", flexDirection: "column", gap: "0.3rem", marginTop: "0.375rem" }}>
-        <input
-          type="date" value={dataTemp} onChange={(e) => setDataTemp(e.target.value)}
-          style={{ fontSize: "0.7rem", padding: "0.2rem 0.35rem", borderRadius: "0.25rem", background: "var(--bg, transparent)", border: "1px solid var(--border)", color: "var(--text)" }}
-        />
-        <input
-          type="text" value={obs} onChange={(e) => setObs(e.target.value)}
-          placeholder="observação (opcional)"
-          style={{ fontSize: "0.7rem", padding: "0.2rem 0.35rem", borderRadius: "0.25rem", background: "var(--bg, transparent)", border: "1px solid var(--border)", color: "var(--text)" }}
-        />
-        <div style={{ display: "flex", gap: "0.25rem" }}>
-          <button
-            onClick={async () => { await onConfirm(true, dataTemp); setEdit(false); setObs(""); }}
-            style={{ padding: "0.25rem 0.6rem", fontSize: "0.7rem", fontWeight: 700, background: "#10b981", color: "white", border: 0, borderRadius: "0.25rem", cursor: "pointer", flex: 1 }}
-          >
-            Confirmar
-          </button>
-          <button
-            onClick={() => setEdit(false)}
-            style={{ padding: "0.25rem 0.6rem", fontSize: "0.7rem", color: "var(--text-dim)", background: "transparent", border: "1px solid var(--border)", borderRadius: "0.25rem", cursor: "pointer" }}
-          >
-            ×
-          </button>
-        </div>
+      <div style={{ fontSize: "0.7rem", color: "#10b981", marginTop: "0.375rem", fontWeight: 600 }}>
+        autorizado — anote &quot;pago&quot; no Excel quando pagar
       </div>
     );
   }
-
-  return (
-    <button
-      onClick={() => setEdit(true)}
-      style={{
-        marginTop: "0.375rem",
-        padding: "0.3rem 0.6rem",
-        fontSize: "0.7rem", fontWeight: 700,
-        background: "#10b981", color: "white",
-        border: 0, borderRadius: "0.25rem", cursor: "pointer", width: "100%",
-      }}
-    >
-      ✓ Marcar como pago
-    </button>
-  );
+  return <div style={{ fontSize: "0.7rem", color: "var(--text-dim)", marginTop: "0.375rem", fontStyle: "italic" }}>aguardando</div>;
 }

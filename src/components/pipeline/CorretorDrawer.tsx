@@ -26,7 +26,7 @@ interface BonusMin { loteId: string; entradaQuitada: boolean; autorizado?: boole
 interface UauVendasResp { vendas?: { identificadorUnidade: string; valorPrincipal: number; valorRecebido: number }[] }
 interface FinancResp { parcelasAReceber?: { identificadorUnidade: string; status: string; valor: number; tipoParcela?: string }[] }
 
-import { COMISSAO_TOTAL_PCT as COMISSAO_PCT, FATOR_MANGABA } from "@/lib/constants/negocio";
+import { calcularLtvCorretor } from "@/lib/calculations/ltv";
 
 export default function CorretorDrawer({ corretorNome, contratos, bonus, onClose }: {
   corretorNome: string | null;
@@ -47,49 +47,15 @@ export default function CorretorDrawer({ corretorNome, contratos, bonus, onClose
 
   const meus = contratos.filter((c) => c.corretor?.nome === corretorNome);
   const firmes = meus.filter((c) => !c.cancelado);
-  const canceladas = meus.filter((c) => c.cancelado);
-  const loteIds = new Set(firmes.map((c) => c.loteId));
-  const vgv = firmes.reduce((s, c) => s + (c.valor || 0), 0);
-  const ticket = firmes.length ? vgv / firmes.length : 0;
   const creci = meus.find((c) => c.corretor?.creci)?.corretor?.creci || "";
   const imob = meus.find((c) => c.imobiliaria?.razaoSocial)?.imobiliaria?.razaoSocial || "";
   const ultimaVenda = firmes.reduce((m, c) => (c.dataContrato && c.dataContrato > m ? c.dataContrato : m), "");
 
-  const bonusMeus = bonus.filter((b) => loteIds.has(b.loteId));
-  const custoBonus = bonusMeus.reduce((s, b) => s + (b.valorTotal || 0), 0);
-  const custoComissao = vgv * COMISSAO_PCT;
-  const custoTotal = custoBonus + custoComissao;
-
-  // Regra ATUAL do bônus: autorizado = cliente pagou ≥1,5% do contrato (não mais "entrada quitada").
-  const qtdQuitada = bonusMeus.filter((b) => b.autorizado === true).length;
-  const pctQuitada = firmes.length ? qtdQuitada / firmes.length : 0;
-  const pctCancel = meus.length ? canceladas.length / meus.length : 0;
-
-  const uauPronto = !!uauVendas && !!financ;
-  let mangaba = 0, inadLotes = 0, pctInad = 0, ltvLiquido = 0, qualidade = 0, ltvAjustado = 0;
-  if (uauPronto) {
-    const vmap = new Map((uauVendas?.vendas || []).map((v) => [v.identificadorUnidade, v]));
-    // Mangaba por lote firme: usa o valorPrincipal do UAU; se o lote ainda não está no
-    // ERP (venda recente), estima por valor × 0,935 — assim Mangaba e custo cobrem os
-    // mesmos lotes (senão o LTV ficaria subestimado p/ quem tem venda fora do UAU).
-    for (const c of firmes) {
-      const v = vmap.get(c.loteId);
-      mangaba += v?.valorPrincipal && v.valorPrincipal > 0 ? v.valorPrincipal : (c.valor || 0) * FATOR_MANGABA;
-    }
-    // Inadimplência = parcelas vencidas que NÃO são entrada/sinal (E/S).
-    // Entrada atrasada já aparece em "entrada quitada"; contar aqui seria penalizar 2x
-    // e ficaria inconsistente com a aba Financeiro (que não trata entrada como inadimplência).
-    const vencidos = new Set(
-      (financ?.parcelasAReceber || [])
-        .filter((p) => p.status === "vencida" && p.tipoParcela !== "E" && p.tipoParcela !== "S" && loteIds.has(p.identificadorUnidade))
-        .map((p) => p.identificadorUnidade)
-    );
-    inadLotes = vencidos.size;
-    pctInad = firmes.length ? inadLotes / firmes.length : 0;
-    ltvLiquido = mangaba - custoTotal;
-    qualidade = Math.max(0, Math.round(100 * (pctQuitada * 0.5 + (1 - pctInad) * 0.3 + (1 - pctCancel) * 0.2)));
-    ltvAjustado = ltvLiquido * (qualidade / 100);
-  }
+  // Cálculo compartilhado (mesma conta da coluna LTV do ranking) — lib/calculations/ltv.ts
+  const ltv = calcularLtvCorretor(corretorNome, contratos, bonus, uauVendas?.vendas ?? null, financ?.parcelasAReceber ?? null);
+  const { vgv, ticket, custoBonus, custoComissao, custoTotal, uauPronto, mangaba, inadLotes, pctInad, ltvLiquido, qualidade, ltvAjustado } = ltv;
+  const pctQuitada = ltv.pctAutorizado;
+  const pctCancel = ltv.pctCancel;
 
   const card = { background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "0.5rem", padding: "0.7rem 0.9rem" } as const;
   const titulo = { fontSize: "0.7rem", color: "var(--text-dim)", fontWeight: 700 as const, textTransform: "uppercase" as const, letterSpacing: "0.05em", marginBottom: "0.4rem" };
@@ -129,7 +95,7 @@ export default function CorretorDrawer({ corretorNome, contratos, bonus, onClose
           <div>
             <div style={titulo}>Vendas</div>
             <div style={card}>
-              <div style={linha}><span style={lbl}>Firmes × canceladas</span><span style={val}>{firmes.length} × {canceladas.length}</span></div>
+              <div style={linha}><span style={lbl}>Firmes × canceladas</span><span style={val}>{ltv.firmes} × {ltv.canceladas}</span></div>
               <div style={linha}><span style={lbl}>VGV gerado</span><span style={val}>{formatBRL(vgv)}</span></div>
               <div style={linha}><span style={lbl}>Ticket médio</span><span style={val}>{formatBRL(ticket)}</span></div>
               {ultimaVenda ? <div style={linha}><span style={lbl}>Última venda</span><span style={val}>{formatData(ultimaVenda)}</span></div> : null}

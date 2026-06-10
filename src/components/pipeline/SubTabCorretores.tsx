@@ -17,6 +17,7 @@ import { SkeletonCard } from "@/components/shared/Skeleton";
 import LoadingCard from "@/components/shared/LoadingCard";
 import { formatBRLCompact, formatInt, formatData, formatTempoRelativo, truncate } from "@/lib/utils/formatters";
 import CorretorDrawer from "./CorretorDrawer";
+import { calcularLtvCorretor } from "@/lib/calculations/ltv";
 
 interface Contrato {
   loteId: string; valor: number; cancelado: boolean;
@@ -41,13 +42,18 @@ interface LinhaCorretor {
   pctVGV: number;
   ultimaVenda: string;
   ativoUltimos30d: boolean;
+  ltvAjustado: number | null; // null = UAU ainda carregando
+  qualidade: number | null;
 }
 
-type SortField = "vgv" | "lotes" | "ultima" | "nome";
+type SortField = "vgv" | "lotes" | "ultima" | "nome" | "ltv";
 
 export default function SubTabCorretores() {
   const { data, isLoading } = useSWR<CrmContratosResp>("/api/crm/contratos");
   const { data: bonusData } = useSWR<{ bonus?: { loteId: string; entradaQuitada: boolean; autorizado?: boolean; valorTotal: number }[] }>("/api/bonus");
+  // ERP UAU (lento ~40s frio): alimenta a coluna LTV ajustado — a tabela carrega antes
+  const { data: uauVendas } = useSWR<{ vendas?: { identificadorUnidade: string; valorPrincipal: number; valorRecebido: number }[] }>("/api/uau/vendas");
+  const { data: financ } = useSWR<{ parcelasAReceber?: { identificadorUnidade: string; status: string; valor: number; tipoParcela?: string }[] }>("/api/uau/financeiro");
   const [sortField, setSortField] = useState<SortField>("vgv");
   const [sortAsc, setSortAsc] = useState(false);
   const [drawerCorretor, setDrawerCorretor] = useState<string | null>(null);
@@ -70,6 +76,8 @@ export default function SubTabCorretores() {
           lotes: 0, vgv: 0, pctVGV: 0,
           ultimaVenda: "",
           ativoUltimos30d: false,
+          ltvAjustado: null,
+          qualidade: null,
         };
         map.set(nome, l);
       }
@@ -91,8 +99,18 @@ export default function SubTabCorretores() {
       }
     }
 
+    // LTV ajustado por corretor (mesma conta do drawer — lib/calculations/ltv.ts).
+    // Só preenche quando o UAU chegou; antes fica null ("…" na coluna).
+    if (uauVendas?.vendas && financ?.parcelasAReceber && bonusData?.bonus) {
+      for (const l of map.values()) {
+        const r = calcularLtvCorretor(l.nome, data?.contratos || [], bonusData.bonus, uauVendas.vendas, financ.parcelasAReceber);
+        l.ltvAjustado = r.ltvAjustado;
+        l.qualidade = r.qualidade;
+      }
+    }
+
     return Array.from(map.values());
-  }, [data]);
+  }, [data, bonusData, uauVendas, financ]);
 
   const linhasOrdenadas = useMemo(() => {
     const arr = [...linhas];
@@ -103,6 +121,7 @@ export default function SubTabCorretores() {
         case "lotes":  cmp = a.lotes - b.lotes; break;
         case "ultima": cmp = a.ultimaVenda.localeCompare(b.ultimaVenda); break;
         case "nome":   cmp = a.nome.localeCompare(b.nome); break;
+        case "ltv":    cmp = (a.ltvAjustado ?? -Infinity) - (b.ltvAjustado ?? -Infinity); break;
       }
       return sortAsc ? cmp : -cmp;
     });
@@ -218,6 +237,7 @@ export default function SubTabCorretores() {
               <th style={{ padding: "0.5rem 0.25rem" }}>Imobiliária</th>
               <SortableTh field="lotes" current={sortField} asc={sortAsc} onClick={toggleSort} align="right">Lotes</SortableTh>
               <SortableTh field="vgv" current={sortField} asc={sortAsc} onClick={toggleSort} align="right">VGV</SortableTh>
+              <SortableTh field="ltv" current={sortField} asc={sortAsc} onClick={toggleSort} align="right">LTV ajustado</SortableTh>
               <SortableTh field="ultima" current={sortField} asc={sortAsc} onClick={toggleSort}>Última venda</SortableTh>
               <th style={{ padding: "0.5rem 0.25rem", textAlign: "center" }}>Status</th>
             </tr>
@@ -230,6 +250,18 @@ export default function SubTabCorretores() {
                 <td style={{ padding: "0.5rem 0.25rem", color: "var(--text-muted)", fontSize: "0.75rem" }}>{truncate(l.imobiliaria || "—", 22)}</td>
                 <td style={{ padding: "0.5rem 0.25rem", textAlign: "right", color: "var(--text)" }}>{l.lotes}</td>
                 <td style={{ padding: "0.5rem 0.25rem", textAlign: "right", color: "var(--text)", fontWeight: 600 }}>{formatBRLCompact(l.vgv)}</td>
+                <td style={{ padding: "0.5rem 0.25rem", textAlign: "right" }} title="LTV líquido (Mangaba − bônus − comissões) × qualidade. Clique no corretor pra ver o detalhe.">
+                  {l.ltvAjustado === null ? (
+                    <span style={{ color: "var(--text-dim)", fontSize: "0.7rem", fontStyle: "italic" }}>…</span>
+                  ) : (
+                    <span style={{ fontWeight: 600, color: l.ltvAjustado >= 0 ? "var(--text)" : "#dc2626" }}>
+                      {formatBRLCompact(l.ltvAjustado)}
+                      <span style={{ marginLeft: "0.3rem", fontSize: "0.65rem", fontWeight: 700, color: (l.qualidade ?? 0) >= 70 ? "#10b981" : (l.qualidade ?? 0) >= 45 ? "#f59e0b" : "#dc2626" }}>
+                        {l.qualidade}
+                      </span>
+                    </span>
+                  )}
+                </td>
                 <td style={{ padding: "0.5rem 0.25rem", color: "var(--text-muted)", fontSize: "0.75rem" }}>
                   {l.ultimaVenda ? (
                     <span title={formatData(l.ultimaVenda)}>{formatTempoRelativo(l.ultimaVenda)}</span>

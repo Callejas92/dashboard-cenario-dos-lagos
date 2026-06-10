@@ -14,6 +14,7 @@ import { after } from "next/server";
 import { getContratosEggs, type ContratoEnriquecido } from "@/lib/eggs-contratos";
 import { authenticate, isUauConfigured, uauFetch } from "@/lib/uau-auth";
 import { getInvestorLots } from "@/lib/investor-lots";
+import { detectarENotificarAutorizados } from "@/lib/bonus-notify";
 
 // Regras de negócio centralizadas em constants/negocio.ts (re-exportadas p/ compat).
 import { BONUS_CORRETORA, BONUS_IMOBILIARIA, BONUS_TOTAL_POR_VENDA, PCT_AUTORIZACAO } from "@/lib/constants/negocio";
@@ -517,6 +518,8 @@ export async function getBonusTracking(): Promise<BonusResponse> {
           if (fresh.completo) {
             cache = { data: fresh, timestamp: Date.now() };
             await writeTrackingBlob(fresh);
+            // Notifica bônus que acabaram de cruzar 1,5% (e-mail; ver lib/bonus-notify)
+            void detectarENotificarAutorizados(fresh);
           }
         } catch (err) {
           console.warn("bonus: revalidação em background falhou:", err);
@@ -535,6 +538,7 @@ export async function getBonusTracking(): Promise<BonusResponse> {
   if (fresh.completo) {
     cache = { data: fresh, timestamp: Date.now() };
     await writeTrackingBlob(fresh);
+    void detectarENotificarAutorizados(fresh);
   }
   return fresh;
 }

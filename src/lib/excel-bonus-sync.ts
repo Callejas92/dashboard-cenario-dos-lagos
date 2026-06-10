@@ -4,11 +4,15 @@
  *  Coluna U = Status Corretor · Coluna V = Status Imob (desde a remoção das colunas de
  *  valor fixo em 10/06/2026) · casa por Quadra (A) + Lote (B). As colunas são achadas
  *  pelo CABEÇALHO (robusto a mover/inserir colunas); os índices abaixo são só fallback.
- *  Escreve POR COLUNA (corretor e imob têm status independentes):
- *    - "pago"            → marcado como pago no dashboard (pagoCorretora/pagoImobiliaria)
- *    - "autorizado"      → cliente pagou >= 1,5% do contrato (bônus liberado)
- *    - "aguardando pgt"  → cliente pagou < 1,5% do contrato
- *    - "pago" digitado À MÃO pelo Felipe é preservado (só o "pago" do dashboard escreve por cima)
+ *
+ *  FLUXO (decidido pelo Felipe em 10/06/2026): o "pago" é ANOTADO NO EXCEL, e o
+ *  dashboard só acompanha. 3 status por célula (corretor e imob independentes):
+ *    - "aguardando pgt"  → cliente pagou < 1,5% do contrato      (dashboard escreve)
+ *    - "autorizado pgt"  → cliente pagou >= 1,5% — pode pagar    (dashboard escreve)
+ *    - "pago"            → FELIPE digita no Excel após pagar     (dashboard LÊ e importa)
+ *  O sync importa automaticamente o "pago" da célula pro dashboard (data do dia,
+ *  observação "pago via Excel") e desmarca se o "pago" for apagado da célula
+ *  (somente os que vieram do Excel — marcação antiga do dashboard fica intacta).
  *
  * Só age sobre dado COMPLETO (bonus.completo). Reescreve as colunas V/X inteiras
  * (preservando o que não muda) e só faz PATCH se algo realmente mudou.
@@ -16,7 +20,7 @@
  */
 import { list, put } from "@vercel/blob";
 import { getAccessToken } from "@/lib/onedrive-marketing";
-import { getBonusTracking } from "@/lib/bonus";
+import { getBonusTracking, setBonusPagamento } from "@/lib/bonus";
 
 const GRAPH = "https://graph.microsoft.com/v1.0";
 const SYNC_STATE_BLOB = "cache/excel-bonus-sync.json";
@@ -38,7 +42,10 @@ export interface SyncReport {
   orfaosLotes?: string[];      // loteIds cujo status foi limpo (pra conferência)
   colunasStatus?: string;      // colunas de status detectadas (corretor/imob) — pelo header
   amostraHeader?: Record<string, string>; // headers das colunas U/V/W/X (inspeção)
-  resumoStatus?: { pago: number; autorizado: number; aguardando: number }; // alvo por célula (V+X)
+  resumoStatus?: { pago: number; autorizado: number; aguardando: number }; // estado FINAL das células
+  importarDoExcel?: string[];   // "pago" na célula ainda não marcado no dashboard (importa)
+  desmarcarDoExcel?: string[];  // "pago" removido da célula → desmarca no dashboard
+  importadosAplicados?: number; // quantos foram efetivamente aplicados nesta rodada
   dryRun?: boolean;
   mudou?: boolean;
   destaque?: string; // status da formatação condicional (âmbar/verde)
@@ -78,11 +85,13 @@ export async function logSyncFalha(e: unknown): Promise<void> {
   const atual = await lerSyncState();
   await gravarSyncState({ ...atual, ultimaFalhaAt: new Date().toISOString(), ultimaFalhaMsg: msg.slice(0, 300) });
 }
-// Status de bônus escrito por nós (limpável quando o lote sai da lista). "pago" é manual → nunca limpa.
+// Status de bônus escrito por nós (limpável quando o lote sai da lista). "pago" é do Felipe → nunca limpa.
 const isStatusBonus = (v: unknown) => {
   const s = String(v ?? "").trim().toLowerCase();
-  return s === "autorizado" || s === "aguardando pgt";
+  return s === "autorizado" || s === "autorizado pgt" || s === "aguardando pgt";
 };
+const AGUARDANDO_TXT = "aguardando pgt";
+const AUTORIZADO_TXT = "autorizado pgt";
 
 function colLetter(idx: number): string {
   let s = "", n = idx;
@@ -108,7 +117,7 @@ async function graph(token: string, url: string, init?: RequestInit): Promise<Re
 // consecutivas de mesma cor em faixas (menos chamadas). Erro aqui NÃO quebra a escrita.
 async function aplicarCores(token: string, wsPath: string, values: unknown[][], porLote: Map<string, { v: string; x: string }>, cols: { letter: string; idx: number; key: "v" | "x" }[], orfaos: string[] = []): Promise<string> {
   const AMBAR = "#FBBF24", VERDE = "#86EFAC", VERDE_PAGO = "#4ADE80";
-  const corDe = (status: string) => (status === "pago" ? VERDE_PAGO : status === "autorizado" ? VERDE : AMBAR);
+  const corDe = (status: string) => (status === "pago" ? VERDE_PAGO : status === AUTORIZADO_TXT ? VERDE : AMBAR);
   // 1) Monta as faixas (linhas consecutivas de mesma cor) — sem chamadas ainda.
   const ops: { addr: string; color: string }[] = [];
   for (const { letter, idx, key } of cols) {
@@ -230,17 +239,16 @@ export async function syncBonusToExcel(opts: { dryRun?: boolean; force?: boolean
   const tracking = await getBonusTracking();
   if (!tracking.completo) return { ok: false, motivo: "dado de bônus incompleto (UAU) — sync adiado" };
 
-  // loteId → status desejado POR COLUNA (V=corretor, X=imob).
+  // loteId → status desejado POR COLUNA (corretor/imob). O dashboard escreve SÓ
+  // aguardando/autorizado — "pago" é do Felipe (lido da célula, nunca escrito).
   // Defensivo: um cache de tracking antigo pode não ter "autorizado". Sem o campo, não
   // escreve aquele lote (evita marcar tudo "aguardando" por engano até revalidar).
   const porLote = new Map<string, { v: string; x: string }>();
+  const bonusPorLote = new Map(tracking.bonus.map((b) => [b.loteId, b]));
   for (const b of tracking.bonus) {
     if (typeof b.autorizado !== "boolean") continue;
-    const base = b.autorizado ? "autorizado" : "aguardando pgt";
-    porLote.set(b.loteId, {
-      v: b.pagamento?.pagoCorretora ? "pago" : base,
-      x: b.pagamento?.pagoImobiliaria ? "pago" : base,
-    });
+    const base = b.autorizado ? AUTORIZADO_TXT : AGUARDANDO_TXT;
+    porLote.set(b.loteId, { v: base, x: base });
   }
 
   const token = await getAccessToken();
@@ -266,6 +274,11 @@ export async function syncBonusToExcel(opts: { dryRun?: boolean; force?: boolean
   const casadasLotes = new Set<string>();
   const orfaos: string[] = []; // células V/X de lote que saiu do bônus (venda desfeita) — limpar
   const orfaosLotes = new Set<string>();
+  // Mão de volta Excel→dashboard: "pago" digitado pelo Felipe importa; apagado, desmarca.
+  type ParteImport = { chaveVenda: string; loteId: string; parte: "corretor" | "imobiliaria" };
+  const paraImportar: ParteImport[] = [];
+  const paraDesmarcar: ParteImport[] = [];
+  let resumoPago = 0, resumoAut = 0, resumoAg = 0;
 
   for (let i = PRIMEIRA_LINHA_DADOS; i < totalLinhas; i++) {
     const row = values[i] || [];
@@ -284,11 +297,34 @@ export async function syncBonusToExcel(opts: { dryRun?: boolean; force?: boolean
       if (alvo) {
         casadas++;
         casadasLotes.add(loteId);
-        // "pago" manual do Felipe é preservado; "pago" vindo do dashboard escreve por cima.
-        if (isPago(curV) && alvo.v !== "pago") { preservadas++; } else { nv = alvo.v; }
-        if (isPago(curX) && alvo.x !== "pago") { preservadas++; } else { nx = alvo.x; }
+        const b = bonusPorLote.get(loteId);
+        // "pago" na célula é do Felipe: preserva SEMPRE e importa pro dashboard se faltar.
+        if (isPago(curV)) {
+          preservadas++;
+          if (b && !b.pagamento.pagoCorretora) paraImportar.push({ chaveVenda: b.chaveVenda, loteId, parte: "corretor" });
+        } else {
+          nv = alvo.v;
+          // célula deixou de ser "pago": desmarca no dashboard SE a marcação veio do Excel
+          if (b?.pagamento.pagoCorretora && (b.pagamento.observacao || "").includes("pago via Excel")) {
+            paraDesmarcar.push({ chaveVenda: b.chaveVenda, loteId, parte: "corretor" });
+          }
+        }
+        if (isPago(curX)) {
+          preservadas++;
+          if (b && !b.pagamento.pagoImobiliaria) paraImportar.push({ chaveVenda: b.chaveVenda, loteId, parte: "imobiliaria" });
+        } else {
+          nx = alvo.x;
+          if (b?.pagamento.pagoImobiliaria && (b.pagamento.observacao || "").includes("pago via Excel")) {
+            paraDesmarcar.push({ chaveVenda: b.chaveVenda, loteId, parte: "imobiliaria" });
+          }
+        }
         if (nv !== curV) alteradas++;
         if (nx !== curX) alteradas++;
+        for (const fin of [String(nv), String(nx)]) {
+          if (isPago(fin)) resumoPago++;
+          else if (fin === AUTORIZADO_TXT) resumoAut++;
+          else resumoAg++;
+        }
       } else if (isStatusBonus(curV) || isStatusBonus(curX)) {
         // Órfão: lote saiu da lista de bônus (venda desfeita/liberada) mas ficou com status
         // antigo no Excel. Limpa "autorizado"/"aguardando pgt" (nunca mexe em "pago").
@@ -317,17 +353,9 @@ export async function syncBonusToExcel(opts: { dryRun?: boolean; force?: boolean
     orfaosLimpos: orfaos.length,
     orfaosLotes: Array.from(orfaosLotes),
     colunasStatus: `corretor=${colLetter(colV)}(${colV}) imob=${colLetter(colX)}(${colX})`,
-    resumoStatus: Array.from(porLote.values()).reduce(
-      (acc, s) => {
-        for (const v of [s.v, s.x]) {
-          if (v === "pago") acc.pago++;
-          else if (v === "autorizado") acc.autorizado++;
-          else acc.aguardando++;
-        }
-        return acc;
-      },
-      { pago: 0, autorizado: 0, aguardando: 0 },
-    ),
+    resumoStatus: { pago: resumoPago, autorizado: resumoAut, aguardando: resumoAg },
+    importarDoExcel: paraImportar.map((p) => `${p.loteId} (${p.parte})`),
+    desmarcarDoExcel: paraDesmarcar.map((p) => `${p.loteId} (${p.parte})`),
     amostraHeader: { U: String(headerRow[20] ?? ""), V: String(headerRow[21] ?? ""), W: String(headerRow[22] ?? ""), X: String(headerRow[23] ?? "") },
     dryRun,
     mudou,
@@ -352,6 +380,23 @@ export async function syncBonusToExcel(opts: { dryRun?: boolean; force?: boolean
       report.destaque = "erro: " + (e instanceof Error ? e.message : String(e));
     }
   }
+
+  // Mão de volta Excel→dashboard: aplica os "pago" lidos da célula (e desmarca os removidos).
+  let aplicados = 0;
+  const hoje = new Date().toISOString().split("T")[0];
+  for (const p of paraImportar) {
+    const patch = p.parte === "corretor"
+      ? { pagoCorretora: true, dataPagoCorretora: hoje, observacao: "pago via Excel" }
+      : { pagoImobiliaria: true, dataPagoImobiliaria: hoje, observacao: "pago via Excel" };
+    try { await setBonusPagamento(p.chaveVenda, patch); aplicados++; } catch (e) { console.warn("importar pago do Excel falhou:", p.loteId, e); }
+  }
+  for (const p of paraDesmarcar) {
+    const patch = p.parte === "corretor"
+      ? { pagoCorretora: false, dataPagoCorretora: "" }
+      : { pagoImobiliaria: false, dataPagoImobiliaria: "" };
+    try { await setBonusPagamento(p.chaveVenda, patch); aplicados++; } catch (e) { console.warn("desmarcar pago do Excel falhou:", p.loteId, e); }
+  }
+  report.importadosAplicados = aplicados;
 
   // Marca o horário do sync (mesmo sem mudança) p/ o throttle do caminho automático.
   // Sucesso LIMPA a última falha registrada (admin volta a mostrar verde).

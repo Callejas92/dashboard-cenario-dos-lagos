@@ -92,7 +92,7 @@ Status ao vivo das integrações: OneDrive, **Excel Bônus (sync automático)**,
 | **2. Consolidar** | `constants/negocio.ts` (fonte única) + Excel escreve "pago" + fix "pago intermitente" + deletar U/W | ✅ concluída (10/06) |
 | **3. Resiliência** | Indicador "dado parcial/ERP instável" + retry/stale-fallback no Eggs + token OneDrive cifrado | ✅ concluída (10/06) |
 | **4. Limpeza** | Remover /legacy + 21 deprecated + investor-lots editável sem deploy + CLAUDE.md modernizado (sem segredos inline) | ✅ concluída (10/06) |
-| **5. Produto** | Cron do sync Excel (independente de acesso) + notificação de bônus autorizado + LTV no ranking + histórico de inadimplência + funil completo (Faturado/Entregue) quando o comercial alimentar | ⬜ |
+| **5. Produto** | Notificação de bônus autorizado (e-mail via Resend) + coluna LTV ajustado no ranking + importar "pago" do Excel (botão com confirmação) + histórico diário de inadimplência (gráfico). Cron do Excel **dispensado pelo Felipe** (sync por alteração basta). Funil Faturado/Entregue fica pra quando o comercial alimentar | ✅ concluída (10/06) — e-mail ativa ao configurar `RESEND_API_KEY` na Vercel |
 
 ---
 
