@@ -13,11 +13,13 @@ import { list, put } from "@vercel/blob";
 import { randomUUID } from "node:crypto";
 import { PROJETO } from "@/lib/constants/projeto";
 import { checkWriteAuth } from "@/lib/server-auth";
+import { edgeRead, edgeWrite } from "@/lib/edge-store";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const BLOB_PATH = "config/eventos.json";
+const EDGE_KEY = "eventos";
 const TIPOS = ["marco", "midia", "evento", "imobiliaria", "outro"] as const;
 type Tipo = (typeof TIPOS)[number];
 
@@ -33,22 +35,32 @@ const DEFAULT_EVENTOS: Evento[] = [
 ];
 
 async function lerEventos(): Promise<Evento[]> {
-  try {
-    const { blobs } = await list({ prefix: BLOB_PATH });
-    const hit = blobs.find((b) => b.pathname === BLOB_PATH) ?? blobs[0];
-    if (!hit) return DEFAULT_EVENTOS;
-    const res = await fetch(hit.url, { cache: "no-store" }); // fura cache CDN do Blob
-    if (!res.ok) return DEFAULT_EVENTOS;
-    const j = await res.json();
-    const arr = Array.isArray(j?.eventos) ? (j.eventos as Evento[]) : [];
-    // "Lançamento" é marco fixo: garante que sempre exista, mesmo que removido.
-    return arr.some((e) => e.id === "lancamento") ? arr : [DEFAULT_EVENTOS[0], ...arr];
-  } catch {
-    return DEFAULT_EVENTOS;
+  let arr: Evento[] | null = null;
+  // 1) Edge Config (sobrevive a bloqueio do Blob)
+  const e = await edgeRead<Evento[]>(EDGE_KEY);
+  if (Array.isArray(e)) arr = e;
+  // 2) Fallback Blob
+  if (!arr) {
+    try {
+      const { blobs } = await list({ prefix: BLOB_PATH });
+      const hit = blobs.find((b) => b.pathname === BLOB_PATH) ?? blobs[0];
+      if (hit) {
+        const res = await fetch(hit.url, { cache: "no-store" });
+        if (res.ok) {
+          const j = await res.json();
+          if (Array.isArray(j?.eventos)) arr = j.eventos as Evento[];
+        }
+      }
+    } catch { /* Blob indisponível */ }
   }
+  if (!arr) return DEFAULT_EVENTOS;
+  // "Lançamento" é marco fixo: garante que sempre exista, mesmo que removido.
+  return arr.some((e) => e.id === "lancamento") ? arr : [DEFAULT_EVENTOS[0], ...arr];
 }
 
 async function salvarEventos(eventos: Evento[]): Promise<void> {
+  // 1) Edge Config. 2) fallback Blob (sem token de escrita no Edge).
+  if (await edgeWrite(EDGE_KEY, eventos)) return;
   await put(BLOB_PATH, JSON.stringify({ eventos, savedAt: new Date().toISOString() }), {
     access: "public",
     contentType: "application/json",

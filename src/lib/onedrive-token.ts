@@ -12,8 +12,15 @@
  */
 import crypto from "crypto";
 import { list, put } from "@vercel/blob";
+import { edgeRead, edgeWrite } from "@/lib/edge-store";
 
 const TOKEN_BLOB_NAME = "onedrive-token.json";
+const EDGE_KEY = "onedrive_token";
+
+// Read-your-writes na instância: o Edge Config propaga a escrita em alguns segundos.
+// Sem isto, logo após o callback OAuth / refresh, a leitura podia não ver o token novo.
+let tokenMem: { at: number; data: OneDriveToken } | null = null;
+const MEM_TTL = 2 * 60 * 1000;
 
 export interface OneDriveToken {
   refresh_token: string;
@@ -49,33 +56,48 @@ export async function saveOneDriveToken(data: OneDriveToken): Promise<void> {
   const k = chave();
   // Sem o secret não há como cifrar — grava como antes (e sem secret o refresh
   // tampouco funciona, então não há perda de segurança relativa).
-  const body = k ? JSON.stringify({ v: 1, enc: cifrar(data, k) }) : JSON.stringify(data);
-  await put(TOKEN_BLOB_NAME, body, {
-    access: "public",
-    addRandomSuffix: false,
-    allowOverwrite: true,
-    contentType: "application/json",
-  });
+  const payload = k ? { v: 1, enc: cifrar(data, k) } : data;
+  tokenMem = { at: Date.now(), data };
+  // 1) Edge Config (sobrevive a bloqueio do Blob). 2) fallback Blob (sem token de escrita).
+  const okEdge = await edgeWrite(EDGE_KEY, payload);
+  if (!okEdge) {
+    await put(TOKEN_BLOB_NAME, JSON.stringify(payload), {
+      access: "public",
+      addRandomSuffix: false,
+      allowOverwrite: true,
+      contentType: "application/json",
+    });
+  }
 }
 
-/** Lê o token (cifrado ou legado em texto puro). Legado é re-gravado cifrado. */
+/** Lê o token (cifrado ou legado em texto puro). Edge Config primeiro, Blob como fallback. */
 export async function loadOneDriveToken(): Promise<OneDriveToken | null> {
-  const { blobs } = await list({ prefix: TOKEN_BLOB_NAME });
-  const hit = blobs.find((b) => b.pathname === TOKEN_BLOB_NAME) ?? blobs[0];
-  if (!hit) return null;
-  const res = await fetch(hit.url, { cache: "no-store" });
-  if (!res.ok) return null;
-  const j = (await res.json().catch(() => null)) as ({ v?: number; enc?: string } & Partial<OneDriveToken>) | null;
+  if (tokenMem && Date.now() - tokenMem.at < MEM_TTL) return tokenMem.data;
+
+  // 1) Edge Config (leitura grátis, sobrevive a bloqueio do Blob)
+  let j = await edgeRead<{ v?: number; enc?: string } & Partial<OneDriveToken>>(EDGE_KEY);
+
+  // 2) Fallback Blob (token legado / antes da migração)
+  if (!j) {
+    try {
+      const { blobs } = await list({ prefix: TOKEN_BLOB_NAME });
+      const hit = blobs.find((b) => b.pathname === TOKEN_BLOB_NAME) ?? blobs[0];
+      if (hit) {
+        const res = await fetch(hit.url, { cache: "no-store" });
+        if (res.ok) j = (await res.json().catch(() => null)) as typeof j;
+      }
+    } catch { /* Blob bloqueado/indisponível — segue sem token */ }
+  }
   if (!j) return null;
+
+  let out: OneDriveToken | null = null;
   if (typeof j.enc === "string") {
     const k = chave();
-    if (!k) return null;
-    try { return decifrar(j.enc, k); } catch { return null; }
+    if (k) { try { out = decifrar(j.enc, k); } catch { out = null; } }
+  } else if (j.refresh_token) {
+    out = j as OneDriveToken;
+    saveOneDriveToken(out).catch(() => {}); // migra pro Edge cifrado (best effort)
   }
-  if (j.refresh_token) {
-    const legado = j as OneDriveToken;
-    saveOneDriveToken(legado).catch(() => {}); // migra pra cifrado (best effort)
-    return legado;
-  }
-  return null;
+  if (out) tokenMem = { at: Date.now(), data: out };
+  return out;
 }
