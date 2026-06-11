@@ -15,12 +15,14 @@ import { getContratosEggs, type ContratoEnriquecido } from "@/lib/eggs-contratos
 import { authenticate, isUauConfigured, uauFetch } from "@/lib/uau-auth";
 import { getInvestorLots } from "@/lib/investor-lots";
 import { detectarENotificarAutorizados } from "@/lib/bonus-notify";
+import { edgeRead, edgeWrite } from "@/lib/edge-store";
 
 // Regras de negócio centralizadas em constants/negocio.ts (re-exportadas p/ compat).
 import { BONUS_CORRETORA, BONUS_IMOBILIARIA, BONUS_TOTAL_POR_VENDA, PCT_AUTORIZACAO } from "@/lib/constants/negocio";
 export { BONUS_CORRETORA, BONUS_IMOBILIARIA, BONUS_TOTAL_POR_VENDA, PCT_AUTORIZACAO };
 
 const PAGAMENTOS_BLOB = "bonus-payments.json";
+const PAGAMENTOS_EDGE_KEY = "bonus_payments"; // espelho no Edge Config (sobrevive a bloqueio do Blob)
 const TRACKING_BLOB = "cache/bonus-tracking.json"; // último resultado COMPLETO (compartilhado entre instâncias)
 
 export type BonusStatus =
@@ -109,25 +111,35 @@ export interface BonusResponse {
 let cache: { data: BonusResponse; timestamp: number } | null = null;
 const CACHE_TTL = 5 * 60 * 1000;
 
-// ── Storage de pagamentos manuais (Vercel Blob) ────────────────────────────
-// Retorna NULL quando o storage está indisponível (ex.: store suspenso) — diferente
-// de {} (ninguém pago). Sem essa distinção, uma falha de leitura zerava os pagos na
-// tela como se fosse verdade (aconteceu em 11/06 com o store suspenso).
+// ── Storage de pagamentos manuais (Edge Config + Vercel Blob) ──────────────
+// Espelhado no Edge Config (sobrevive a bloqueio do Blob; Blob é fallback). Retorna
+// NULL quando NENHUM storage está legível (≠ de {} "ninguém pago") — sem essa
+// distinção, uma falha de leitura zerava os pagos na tela como se fosse verdade
+// (aconteceu em 11/06 com o store do Blob bloqueado).
+function aplicarRecentes(mapa: Record<string, BonusPagamento>): Record<string, BonusPagamento> {
+  for (const [chave, e] of escritasRecentes) {
+    if (Date.now() - e.at < JANELA_PROPAGACAO) mapa[chave] = e.pagamento;
+    else escritasRecentes.delete(chave);
+  }
+  return mapa;
+}
+
 async function loadPagamentos(): Promise<Record<string, BonusPagamento> | null> {
+  // 1) Edge Config (leitura grátis, sobrevive a bloqueio do Blob)
+  try {
+    const e = await edgeRead<Record<string, BonusPagamento>>(PAGAMENTOS_EDGE_KEY);
+    if (e && typeof e === "object" && !Array.isArray(e)) return aplicarRecentes(e);
+  } catch { /* segue pro Blob */ }
+  // 2) Fallback Blob
   try {
     const { blobs } = await list({ prefix: PAGAMENTOS_BLOB });
-    if (blobs.length === 0) return {};
+    if (blobs.length === 0) return aplicarRecentes({});
     const res = await fetch(blobs[0].url, { cache: "no-store" });
-    if (!res.ok) return null;
+    if (!res.ok) return null; // existe mas ilegível (ex.: store bloqueado) → não zera a tela
     const mapa = (await res.json()) as Record<string, BonusPagamento>;
-    // Escritas recentes desta instância vencem o blob (propagação da sobrescrita ~60s).
-    for (const [chave, e] of escritasRecentes) {
-      if (Date.now() - e.at < JANELA_PROPAGACAO) mapa[chave] = e.pagamento;
-      else escritasRecentes.delete(chave);
-    }
-    return mapa;
+    return aplicarRecentes(mapa);
   } catch (e) {
-    console.error("Erro carregando bonus-payments.json:", e);
+    console.error("Erro carregando bonus-payments (Edge+Blob):", e);
     return null;
   }
 }
@@ -139,12 +151,17 @@ const escritasRecentes = new Map<string, { at: number; pagamento: BonusPagamento
 const JANELA_PROPAGACAO = 2 * 60 * 1000;
 
 async function savePagamentos(pagamentos: Record<string, BonusPagamento>): Promise<BonusResponse | null> {
-  await put(PAGAMENTOS_BLOB, JSON.stringify(pagamentos, null, 2), {
-    access: "public",
-    addRandomSuffix: false,
-    allowOverwrite: true, // sobrescreve o registro de pagamentos a cada marcação
-    contentType: "application/json",
-  });
+  // 1) Edge Config (sobrevive a bloqueio do Blob). 2) fallback Blob se o Edge não
+  //    estiver disponível p/ escrita, ou se estourar o teto (~8KB) — aí o Blob assume.
+  const okEdge = await edgeWrite(PAGAMENTOS_EDGE_KEY, pagamentos);
+  if (!okEdge) {
+    await put(PAGAMENTOS_BLOB, JSON.stringify(pagamentos, null, 2), {
+      access: "public",
+      addRandomSuffix: false,
+      allowOverwrite: true, // sobrescreve o registro de pagamentos a cada marcação
+      contentType: "application/json",
+    });
+  }
   // Marcar/desmarcar/isentar é mudança PURA de pagamento — aplica no tracking em memória/blob
   // SEM reconsultar o UAU (lento/instável). Se não houver base completa, força recompute.
   const tracking = await patchTrackingPagamentos(pagamentos);
