@@ -63,7 +63,7 @@ export async function loadOneDriveToken(): Promise<OneDriveToken | null> {
   const { blobs } = await list({ prefix: TOKEN_BLOB_NAME });
   const hit = blobs.find((b) => b.pathname === TOKEN_BLOB_NAME) ?? blobs[0];
   if (!hit) return null;
-  const res = await fetch(`${hit.url}?_=${Date.now()}`, { cache: "no-store" });
+  const res = await fetch(hit.url, { cache: "no-store" });
   if (!res.ok) return null;
   const j = (await res.json().catch(() => null)) as ({ v?: number; enc?: string } & Partial<OneDriveToken>) | null;
   if (!j) return null;

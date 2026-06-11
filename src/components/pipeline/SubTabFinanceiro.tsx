@@ -344,9 +344,9 @@ export default function SubTabFinanceiro() {
           <div style={{ display: "flex", alignItems: "flex-start", gap: "0.5rem", padding: "0.6rem 0.9rem", marginBottom: "0.875rem", background: "#f59e0b12", borderLeft: "3px solid #f59e0b", borderRadius: "0.4rem", fontSize: "0.78rem", color: "var(--text-muted)", lineHeight: 1.45 }}>
             <AlertTriangle size={14} style={{ color: "#f59e0b", flexShrink: 0, marginTop: "0.1rem" }} />
             <span>
-              <strong style={{ color: "#f59e0b" }}>ERP UAU instável agora</strong> — parte das consultas falhou e alguns
-              status podem aparecer como &quot;aguardando&quot; sem ser. Os <strong>pagamentos marcados estão preservados</strong>.
-              Atualiza sozinho em alguns minutos.
+              <strong style={{ color: "#f59e0b" }}>Fonte de dados instável agora</strong> (ERP UAU ou armazenamento) —
+              status e pagos podem aparecer incompletos. <strong>Nada foi perdido</strong>: o registro real está
+              preservado (Excel/storage) e a tela se corrige sozinha quando a fonte volta.
             </span>
           </div>
         ) : null}

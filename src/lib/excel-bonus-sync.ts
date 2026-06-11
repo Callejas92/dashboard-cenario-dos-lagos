@@ -60,7 +60,7 @@ async function lerSyncState(): Promise<Record<string, unknown>> {
     const { blobs } = await list({ prefix: SYNC_STATE_BLOB });
     const hit = blobs.find((b) => b.pathname === SYNC_STATE_BLOB) ?? blobs[0];
     if (!hit) return {};
-    const res = await fetch(`${hit.url}?_=${Date.now()}`, { cache: "no-store" }); // fura cache CDN do Blob
+    const res = await fetch(hit.url, { cache: "no-store" }); // fura cache CDN do Blob
     if (!res.ok) return {};
     return (await res.json()) as Record<string, unknown>;
   } catch {

@@ -20,7 +20,7 @@ export async function getInvestorLots(): Promise<Set<string>> {
     const { blobs } = await list({ prefix: BLOB });
     const hit = blobs.find((b) => b.pathname === BLOB) ?? blobs[0];
     if (hit) {
-      const j = await (await fetch(`${hit.url}?_=${Date.now()}`, { cache: "no-store" })).json();
+      const j = await (await fetch(hit.url, { cache: "no-store" })).json();
       if (Array.isArray(j?.lots) && j.lots.length > 0) {
         cacheIL = { lots: new Set<string>(j.lots.map(String)), origem: "blob", ts: Date.now() };
         return cacheIL.lots;

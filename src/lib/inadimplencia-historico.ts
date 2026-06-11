@@ -22,7 +22,7 @@ export async function lerHistoricoInadimplencia(): Promise<SnapshotInadimplencia
     const { blobs } = await list({ prefix: BLOB });
     const hit = blobs.find((b) => b.pathname === BLOB) ?? blobs[0];
     if (!hit) return [];
-    const j = await (await fetch(`${hit.url}?_=${Date.now()}`, { cache: "no-store" })).json();
+    const j = await (await fetch(hit.url, { cache: "no-store" })).json();
     return Array.isArray(j?.dias) ? j.dias : [];
   } catch {
     return [];

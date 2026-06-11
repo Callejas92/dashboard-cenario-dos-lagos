@@ -22,7 +22,7 @@ async function lerRegistro(): Promise<Registro | null> {
     const { blobs } = await list({ prefix: BLOB });
     const hit = blobs.find((b) => b.pathname === BLOB) ?? blobs[0];
     if (!hit) return null; // null = primeira vez → seed silencioso
-    const j = await (await fetch(`${hit.url}?_=${Date.now()}`, { cache: "no-store" })).json();
+    const j = await (await fetch(hit.url, { cache: "no-store" })).json();
     return j && typeof j === "object" ? (j as Registro) : {};
   } catch {
     return {}; // erro transitório: segue (cap de envios limita qualquer estrago)

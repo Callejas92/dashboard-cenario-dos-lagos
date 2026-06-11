@@ -110,13 +110,15 @@ let cache: { data: BonusResponse; timestamp: number } | null = null;
 const CACHE_TTL = 5 * 60 * 1000;
 
 // ── Storage de pagamentos manuais (Vercel Blob) ────────────────────────────
-async function loadPagamentos(): Promise<Record<string, BonusPagamento>> {
+// Retorna NULL quando o storage está indisponível (ex.: store suspenso) — diferente
+// de {} (ninguém pago). Sem essa distinção, uma falha de leitura zerava os pagos na
+// tela como se fosse verdade (aconteceu em 11/06 com o store suspenso).
+async function loadPagamentos(): Promise<Record<string, BonusPagamento> | null> {
   try {
     const { blobs } = await list({ prefix: PAGAMENTOS_BLOB });
     if (blobs.length === 0) return {};
-    // ?_=Date.now() fura o cache do CDN do Blob (URL sobrescrita serve conteúdo velho ~60s)
-    const res = await fetch(`${blobs[0].url}?_=${Date.now()}`, { cache: "no-store" });
-    if (!res.ok) return {};
+    const res = await fetch(blobs[0].url, { cache: "no-store" });
+    if (!res.ok) return null;
     const mapa = (await res.json()) as Record<string, BonusPagamento>;
     // Escritas recentes desta instância vencem o blob (propagação da sobrescrita ~60s).
     for (const [chave, e] of escritasRecentes) {
@@ -126,7 +128,7 @@ async function loadPagamentos(): Promise<Record<string, BonusPagamento>> {
     return mapa;
   } catch (e) {
     console.error("Erro carregando bonus-payments.json:", e);
-    return {};
+    return null;
   }
 }
 
@@ -178,7 +180,10 @@ export async function setBonusPagamento(
   chaveVenda: string,
   patch: Partial<BonusPagamento>,
 ): Promise<{ pagamento: BonusPagamento; tracking: BonusResponse | null }> {
-  const pagamentos = await loadPagamentos();
+  const carregados = await loadPagamentos();
+  // Sem base legível NÃO dá pra mesclar — salvar em cima apagaria os outros pagamentos.
+  if (carregados === null) throw new Error("Storage de pagamentos indisponível (store suspenso?) — marcação não salva.");
+  const pagamentos = carregados;
   const atual = pagamentos[chaveVenda] || {
     pagoCorretora: false, dataPagoCorretora: "",
     pagoImobiliaria: false, dataPagoImobiliaria: "",
@@ -199,7 +204,9 @@ export async function setBonusPagamentosEmLote(
   itens: { chaveVenda: string; patch: Partial<BonusPagamento> }[],
 ): Promise<BonusResponse | null> {
   if (!itens.length) return null;
-  const pagamentos = await loadPagamentos();
+  const carregados = await loadPagamentos();
+  if (carregados === null) throw new Error("Storage de pagamentos indisponível (store suspenso?) — importação não salva.");
+  const pagamentos = carregados;
   for (const { chaveVenda, patch } of itens) {
     const atual = pagamentos[chaveVenda] || {
       pagoCorretora: false, dataPagoCorretora: "",
@@ -396,11 +403,15 @@ function sortBonus(bonus: BonusEntry[]): BonusEntry[] {
 
 // Compute pesado (Eggs + UAU). NÃO mexe em cache — o wrapper getBonusTracking cuida disso.
 async function computeBonusTracking(): Promise<BonusResponse> {
-  const [contratos, pagamentos, INVESTOR_LOTS] = await Promise.all([
+  const [contratos, pagamentosRaw, INVESTOR_LOTS] = await Promise.all([
     getContratosEggs(),
     loadPagamentos(),
     getInvestorLots(),
   ]);
+  // Pagamentos ilegíveis (store suspenso etc.) → dado INCOMPLETO: não persiste, badge
+  // some e o banner avisa — em vez de mostrar "ninguém pago" como se fosse verdade.
+  const pagamentosOk = pagamentosRaw !== null;
+  const pagamentos = pagamentosRaw ?? {};
 
   // Filtra contratos válidos pro cálculo:
   // - Status ASSINADO apenas (ENVIADO PARA ASSINATURA não conta — ainda pode mudar)
@@ -423,7 +434,8 @@ async function computeBonusTracking(): Promise<BonusResponse> {
 
   // Pega status das entradas em batch (com retry; completo=false se alguma chamada falhou)
   const loteIds = contratosValidos.map((c) => c.loteId);
-  const { map: entradasMap, completo } = await getEntradasStatus(loteIds);
+  const { map: entradasMap, completo: uauCompleto } = await getEntradasStatus(loteIds);
+  const completo = uauCompleto && pagamentosOk;
 
   const bonus: BonusEntry[] = contratosValidos.map((c) => {
     const chaveVenda = `${c.id}-${c.loteId}`;
@@ -487,9 +499,9 @@ async function readTrackingBlob(): Promise<{ savedAt: number; data: BonusRespons
     const { blobs } = await list({ prefix: TRACKING_BLOB });
     const hit = blobs.find((b) => b.pathname === TRACKING_BLOB) ?? blobs[0];
     if (!hit) return null;
-    // ?_=Date.now() fura o cache do CDN do Blob — sem isso, depois de marcar pago a
+    // Nota: depois de marcar pago, a leitura pode servir versão anterior por ~60s — a
     // leitura servia a versão ANTERIOR por ~30-60s ("dei pago e não foi").
-    const res = await fetch(`${hit.url}?_=${Date.now()}`, { cache: "no-store" });
+    const res = await fetch(hit.url, { cache: "no-store" });
     if (!res.ok) return null;
     return (await res.json()) as { savedAt: number; data: BonusResponse };
   } catch {
