@@ -73,14 +73,14 @@ export default function ListaAlertas() {
       node: (
         <AlertCard
           severidade="amarelo"
-          titulo={`${qtd} bônus a pagar agora`}
+          titulo={`${qtd} bônus autorizado${qtd > 1 ? "s" : ""} pra pagar`}
           descricao={
             <>
-              {qtd} corretor{qtd > 1 ? "es" : ""} com entrada quitada esperando pagamento.
-              Total comprometido: <strong>{formatBRLCompact(valor)}</strong>.
+              {qtd} venda{qtd > 1 ? "s" : ""} cruzou{qtd > 1 ? "ram" : ""} 1,5% pago — bônus liberado.
+              Total: <strong>{formatBRLCompact(valor)}</strong>. Pague e anote &quot;pago&quot; no Excel.
             </>
           }
-          acao={{ texto: "Ver na aba Pipeline > Bônus", href: "/pipeline?tab=bonus" }}
+          acao={{ texto: "Ver na aba Financeiro & Bônus", href: "/pipeline?tab=financeiro" }}
         />
       ),
     });
@@ -89,7 +89,9 @@ export default function ListaAlertas() {
   // 2. Inadimplência (sempre mostra se há vencido)
   const inad = financ?.inadimplencia;
   if (inad && (inad.totalVencido ?? 0) > 0) {
-    const pct = inad.percentualInadimplencia ?? 0;
+    // A API devolve em PONTOS percentuais (0.28 = 0,28%); formatPct/corInadimplencia
+    // esperam decimal — sem o ÷100 o card mostrava "28,2%" pra 0,28% (vermelho à toa).
+    const pct = (inad.percentualInadimplencia ?? 0) / 100;
     const sev = corInadimplencia(pct);
     alertas.push({
       key: "inadimplencia",
