@@ -19,6 +19,7 @@ import KpiMedium from "@/components/shared/KpiMedium";
 import LoadingCard from "@/components/shared/LoadingCard";
 import { formatBRL, formatBRLCompact, formatPct, formatData, truncate } from "@/lib/utils/formatters";
 import { corMetaInversa } from "@/lib/utils/cores";
+import { PROJETO } from "@/lib/constants/projeto";
 
 interface Premissas {
   vgv: number;
@@ -102,17 +103,20 @@ export default function SubTabPainel() {
           formula={`Budget total ÷ lotes vendáveis = ${formatBRL(p.budgetMarketing)} ÷ ${p.totalLotes}.\nValor máximo aceitável por lote vendido.`}
           icon={<Target size={11} style={{ color: "var(--text-dim)" }} />}
         />
+        {/* Meta OFICIAL = constante do projeto (decisão do Felipe: 14,5/mês, 12 meses).
+            Se a planilha PREMISSAS divergir, avisa pra atualizar lá. */}
         <KpiMedium
           label="Velocidade alvo"
-          valor={`${p.velocidadeAlvo.toFixed(1)}/mês`}
-          formula={`Lotes ÷ prazo = ${p.totalLotes} ÷ ${p.prazoComercializacaoMeses} meses.\nLotes que precisamos vender por mês pra esgotar no prazo.`}
-          contexto={`${p.prazoComercializacaoMeses} meses pra esgotar`}
+          valor={`${PROJETO.VELOCIDADE_ALVO_LOTES_MES.toFixed(1)}/mês`}
+          formula={`OFICIAL do projeto: ${PROJETO.LOTES_VENDAVEIS} lotes ÷ ${PROJETO.PRAZO_COMERCIALIZACAO_MESES} meses.${Math.abs(p.velocidadeAlvo - PROJETO.VELOCIDADE_ALVO_LOTES_MES) > 0.05 ? `\n⚠ Planilha PREMISSAS diz ${p.velocidadeAlvo.toFixed(1)}/mês — atualizar lá pra alinhar.` : ""}`}
+          contexto={Math.abs(p.velocidadeAlvo - PROJETO.VELOCIDADE_ALVO_LOTES_MES) > 0.05 ? `⚠ planilha: ${p.velocidadeAlvo.toFixed(1)}/mês` : `${PROJETO.PRAZO_COMERCIALIZACAO_MESES} meses pra esgotar`}
           icon={<Target size={11} style={{ color: "var(--text-dim)" }} />}
         />
         <KpiMedium
           label="Prazo comercial"
-          valor={`${p.prazoComercializacaoMeses} meses`}
-          formula="Premissa estratégica de comercialização."
+          valor={`${PROJETO.PRAZO_COMERCIALIZACAO_MESES} meses`}
+          formula={`OFICIAL do projeto (decisão: fechar em 12 meses).${p.prazoComercializacaoMeses !== PROJETO.PRAZO_COMERCIALIZACAO_MESES ? `\n⚠ Planilha PREMISSAS diz ${p.prazoComercializacaoMeses} meses — atualizar lá pra alinhar.` : ""}`}
+          contexto={p.prazoComercializacaoMeses !== PROJETO.PRAZO_COMERCIALIZACAO_MESES ? `⚠ planilha: ${p.prazoComercializacaoMeses}m` : undefined}
           icon={<Calendar size={11} style={{ color: "var(--text-dim)" }} />}
         />
       </div>

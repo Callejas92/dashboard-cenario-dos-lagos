@@ -300,6 +300,16 @@ function calcOfflineForRange(lancamentos: LancamentoOffline[], from: string, to:
   return result;
 }
 
+// Teto de tempo POR FONTE: uma fonte lenta (ex.: cross-sell com UAU frio, ~75s) não
+// pode derrubar o agregador inteiro (maxDuration 60s → 504 e a aba Digital quebrava).
+// Estourou o teto → entra o fallback e o payload sai PARCIAL (melhor que erro).
+function comTeto<T>(p: Promise<T>, ms: number, fallback: T): Promise<T> {
+  return Promise.race([
+    p.catch(() => fallback),
+    new Promise<T>((resolve) => setTimeout(() => resolve(fallback), ms)),
+  ]);
+}
+
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const to = searchParams.get("to") || new Date().toISOString().split("T")[0];
@@ -308,16 +318,16 @@ export async function GET(request: Request) {
   })();
 
   const payload = await cachedJson(`canais-${from}-${to}`, CACHE_TTL, async () => {
-  // Fetch all sources in parallel
+  // Fetch all sources in parallel (cada uma com teto — pior caso ~25s total)
   const [metaAds, crmLeads, uauVendas, custosOffline, whatsApp, crossSell, googleAds, bonusPagos] = await Promise.all([
-    fetchMetaAds(from, to),
-    fetchCRMLeads(from, to),
-    fetchUAUVendas(from, to),
-    fetchCustosOffline(),
-    fetchWhatsAppCost(from, to),
-    fetchCrossSell(from, to),
-    fetchGoogleAdsCost(from, to),
-    getBonusComoCustoMensal(from, to).catch(() => ({ totalPago: 0, detalhes: [] })),
+    comTeto(fetchMetaAds(from, to), 15000, { spend: 0, leads: 0, reach: 0, impressions: 0, clicks: 0, daily: [] }),
+    comTeto(fetchCRMLeads(from, to), 18000, { totals: {}, daily: {} }),
+    comTeto(fetchUAUVendas(from, to), 25000, { qtdVendas: 0, valorTotal: 0, porDia: [] }),
+    comTeto(fetchCustosOffline(), 20000, []),
+    comTeto(fetchWhatsAppCost(from, to), 12000, { custoBRL: 0, conversas: 0, mensagensRecebidas: 0, daily: {}, fonte: "none" as const }),
+    comTeto(fetchCrossSell(from, to), 25000, { porCanal: {}, matches: [], totalMatches: 0, taxaMatching: 0 }),
+    comTeto(fetchGoogleAdsCost(from, to), 12000, { custoBRL: 0, conversoes: 0, clicks: 0, impressions: 0, campaignCount: 0 }),
+    comTeto(getBonusComoCustoMensal(from, to), 15000, { totalPago: 0, detalhes: [] }),
   ]);
 
   // Calculate offline costs for the selected date range

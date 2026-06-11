@@ -24,7 +24,7 @@ import { formatBRLCompact, formatPct, formatInt } from "@/lib/utils/formatters";
 import { corMeta } from "@/lib/utils/cores";
 
 interface UauResp {
-  summary?: { total?: number; vendido?: number; disponivel?: number };
+  summary?: { total?: number; vendido?: number; disponivel?: number; emVenda?: number; foraDeVenda?: number };
 }
 interface CrmContratosResp {
   contratos?: { loteId: string; valor: number; status: string; cancelado: boolean; dataContrato?: string }[];
@@ -50,6 +50,14 @@ export default function LinhaKpisGigantes() {
 
   const contratos = crm?.contratos || [];
 
+  // ── Progresso esperado pela curva do projeto (régua temporal dos cards) ──
+  // Sem isso, o VGV era medido contra "50% do total" fixo: ficava VERMELHO por meses
+  // no início do projeto mesmo vendendo ACIMA da meta (contradizia a Velocidade verde).
+  const lancamento = new Date(PROJETO.DATA_LANCAMENTO + "T00:00:00");
+  const mesesDecorridos = Math.max(0.1, (Date.now() - lancamento.getTime()) / (30 * 86_400_000));
+  const fracEsperada = Math.min(1, mesesDecorridos / PROJETO.PRAZO_COMERCIALIZACAO_MESES);
+  const vgvEsperadoHoje = PROJETO.VGV_INICIAL * fracEsperada;
+
   // ── VGV ──
   const vgv = calcularVgv({
     contratos: contratos.map((c) => ({
@@ -59,11 +67,19 @@ export default function LinhaKpisGigantes() {
       cancelado: c.cancelado,
     })),
   });
+  const aFrente = vgv.vgvVendido - vgvEsperadoHoje;
 
-  // ── VSO ──
+  // ── VSO — vendas FIRMES (mesma contagem do card VGV; o espelho UAU contava
+  // "CONTRATO"=enviado p/ assinatura como vendido e divergia: 54 vs 46) ──
+  const s = uau?.summary;
+  const foraDeVenda = Math.max(
+    0,
+    (s?.total ?? PROJETO.LOTES_VENDAVEIS) - (s?.vendido ?? 0) - (s?.disponivel ?? 0) - (s?.emVenda ?? 0),
+  );
   const vso = calcularVso({
-    vendidos: uau?.summary?.vendido ?? 0,
-    disponivel: uau?.summary?.disponivel ?? 0,
+    vendidos: vgv.lotesVendidos,
+    foraDeVenda,
+    mesesDecorridos,
   });
 
   // ── Velocidade (mês comercial atual) via Eggs ──
@@ -93,9 +109,9 @@ export default function LinhaKpisGigantes() {
       <KpiHero
         label="VGV Vendido"
         valor={formatBRLCompact(vgv.vgvVendido)}
-        severidade={corMeta(vgv.vgvVendido, PROJETO.VGV_INICIAL * 0.5)}
-        formula={`VGV vendido = soma valor contratado de contratos ASSINADO/FATURADO/ENTREGUE (excluindo investidor)\n${formatBRLCompact(vgv.vgvVendido)} de ${formatBRLCompact(vgv.vgvTotal)} total\nFonte: CRM Eggs Contratos`}
-        contexto={`de ${formatBRLCompact(vgv.vgvTotal)} · ${vgv.lotesVendidos}/${vgv.lotesTotal} lotes`}
+        severidade={corMeta(vgv.vgvVendido, vgvEsperadoHoje)}
+        formula={`VGV vendido = soma valor contratado de contratos ASSINADO/FATURADO/ENTREGUE (excluindo investidor)\n${formatBRLCompact(vgv.vgvVendido)} de ${formatBRLCompact(vgv.vgvTotal)} total\nEsperado p/ hoje (curva ${PROJETO.PRAZO_COMERCIALIZACAO_MESES}m): ${formatBRLCompact(vgvEsperadoHoje)}\nFonte: CRM Eggs Contratos`}
+        contexto={`${aFrente >= 0 ? `${formatBRLCompact(aFrente)} à frente da curva` : `${formatBRLCompact(-aFrente)} atrás da curva`} · ${vgv.lotesVendidos}/${vgv.lotesTotal} lotes`}
         progresso={vgv.pctVendido}
       />
 
@@ -103,8 +119,8 @@ export default function LinhaKpisGigantes() {
         label="VSO Acumulado"
         valor={formatPct(vso.valor)}
         severidade={vso.severidade}
-        formula={`${vso.formula}\nMeta: ≥ ${formatPct(vso.meta, { casas: 0 })}\nFonte: ERP UAU (espelho)`}
-        contexto={`meta ≥ ${formatPct(vso.meta, { casas: 0 })}`}
+        formula={vso.formula}
+        contexto={`esperado p/ hoje ≥ ${formatPct(vso.esperadoHoje)}`}
       />
 
       <KpiHero

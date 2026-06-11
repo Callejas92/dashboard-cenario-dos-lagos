@@ -12,8 +12,9 @@
 import useSWR from "swr";
 import AlertCard from "@/components/shared/AlertCard";
 import { SkeletonCard } from "@/components/shared/Skeleton";
-import { formatBRLCompact, formatPct } from "@/lib/utils/formatters";
+import { formatBRLCompact, formatPct, formatData } from "@/lib/utils/formatters";
 import { corInadimplencia } from "@/lib/utils/cores";
+import { isVenda } from "@/lib/constants/projeto";
 
 interface BonusResp {
   summary?: { qtdAPagar?: number; aPagarAgora?: number };
@@ -35,6 +36,33 @@ export default function ListaAlertas() {
   if (lB && lF && lC) return <SkeletonCard height={100} />;
 
   const alertas: { node: React.ReactNode; key: string }[] = [];
+
+  // 0. Estagnação de vendas — X dias sem fechar contrato.
+  // O "ritmo 30d" verde esconde paradas (um pico antigo segura o número por semanas).
+  const vendasFirmes = (crm?.contratos || []).filter((c) => !c.cancelado && isVenda(c.status) && c.dataContrato);
+  let ultimaVenda = "";
+  for (const c of vendasFirmes) if ((c.dataContrato as string) > ultimaVenda) ultimaVenda = c.dataContrato as string;
+  if (ultimaVenda) {
+    const diasSemVenda = Math.max(0, Math.floor((Date.now() - new Date(ultimaVenda + "T12:00:00").getTime()) / 86_400_000));
+    if (diasSemVenda >= 5) {
+      alertas.push({
+        key: "estagnacao",
+        node: (
+          <AlertCard
+            severidade={diasSemVenda >= 10 ? "vermelho" : "amarelo"}
+            titulo={`${diasSemVenda} dias sem venda`}
+            descricao={
+              <>
+                Última venda assinada em <strong>{formatData(ultimaVenda)}</strong>.
+                {diasSemVenda >= 10 ? " Ritmo parado — acionar corretores/imobiliárias." : " Atenção ao ritmo da semana."}
+              </>
+            }
+            acao={{ texto: "Ver corretores ativos/parados", href: "/pipeline?tab=corretores" }}
+          />
+        ),
+      });
+    }
+  }
 
   // 1. Bônus a pagar
   if ((bonus?.summary?.qtdAPagar ?? 0) > 0) {

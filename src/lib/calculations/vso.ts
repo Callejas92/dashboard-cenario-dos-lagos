@@ -1,44 +1,48 @@
 /**
- * VSO — Velocidade Sobre Oferta. ÚNICA fonte de verdade pro V2.
+ * VSO — Vendas Sobre Oferta. ÚNICA fonte de verdade pro V2.
  *
- * Corrige D2: dashboard atual mostra 23% (Visão Geral) vs 28.2% (Estoque) — inconsistente.
+ * Fórmula (acumulado): VSO = vendidos / ofertaTotal
+ *  - "vendidos"   = vendas FIRMES (assinado+) do CRM Eggs — a MESMA contagem dos
+ *    outros cards (antes vinha do espelho UAU, que contava "CONTRATO" = enviado
+ *    p/ assinatura como vendido → 54 vs 46 na mesma tela).
+ *  - "ofertaTotal" = lotes vendáveis (174) menos os fora-de-venda.
  *
- * Fórmula padrão (mercado imobiliário):
- *   VSO = vendidos / (vendidos + disponivel)
- *
- * Onde:
- *  - "vendidos" = lotes em estágio assinado/faturado/entregue
- *  - "disponivel" = lotes liberados pra venda (não bloqueados, não fora-de-venda)
- *
- * Meta: ≥ 5% acumulado.
+ * Régua: o VSO ESPERADO até hoje pela curva do projeto (meses decorridos ÷ prazo).
+ * A meta fixa de 5% era inútil num acumulado (sempre verde a partir do mês 1).
  */
 import { PROJETO } from "@/lib/constants/projeto";
 import { corMeta, type Severidade } from "@/lib/utils/cores";
 
 export interface VsoInput {
+  /** Vendas firmes (assinado+), fonte CRM Eggs. */
   vendidos: number;
-  disponivel: number;
+  /** Lotes fora de venda/bloqueados (subtraem da oferta). Default 0. */
+  foraDeVenda?: number;
+  /** Meses desde o lançamento (pra régua da curva). */
+  mesesDecorridos: number;
 }
 
 export interface VsoResultado {
-  /** Percentual decimal (0.282 = 28.2%). */
+  /** Percentual decimal (0.264 = 26,4%). */
   valor: number;
-  /** Meta (0.05 = 5%). */
-  meta: number;
-  /** Classificação visual semântica. */
+  /** VSO esperado até hoje pela curva (decimal). */
+  esperadoHoje: number;
   severidade: Severidade;
-  /** Texto explicativo da fórmula pra tooltip. */
   formula: string;
 }
 
 export function calcularVso(input: VsoInput): VsoResultado {
-  const denom = input.vendidos + input.disponivel;
-  const valor = denom > 0 ? input.vendidos / denom : 0;
+  const oferta = Math.max(1, PROJETO.LOTES_VENDAVEIS - (input.foraDeVenda ?? 0));
+  const valor = input.vendidos / oferta;
+  const esperadoHoje = Math.min(1, input.mesesDecorridos / PROJETO.PRAZO_COMERCIALIZACAO_MESES);
 
   return {
     valor,
-    meta: PROJETO.VSO_META_PERCENT,
-    severidade: corMeta(valor, PROJETO.VSO_META_PERCENT),
-    formula: `VSO = vendidos / (vendidos + disponivel) = ${input.vendidos} / ${denom}`,
+    esperadoHoje,
+    severidade: corMeta(valor, esperadoHoje),
+    formula:
+      `VSO = vendas firmes / oferta = ${input.vendidos} / ${oferta}\n` +
+      `Esperado p/ hoje (curva ${PROJETO.PRAZO_COMERCIALIZACAO_MESES}m): ${(esperadoHoje * 100).toFixed(1)}%\n` +
+      `Fonte: CRM Eggs (assinado+) — mesma contagem dos demais cards`,
   };
 }

@@ -62,6 +62,12 @@ export default function VelocidadeVendas() {
           contexto={formatBRLCompact(velocidade.ultimos7d.valorTotal)}
         />
         <KpiSmall
+          label="Últimos 14 dias"
+          valor={`${formatInt(velocidade.ultimos14d.qtdVendas)} lotes`}
+          contexto={formatBRLCompact(velocidade.ultimos14d.valorTotal)}
+          formula="Janela intermediária: revela desaceleração que um pico antigo ainda segura no número de 30 dias."
+        />
+        <KpiSmall
           label="Últimos 30 dias"
           valor={`${formatInt(velocidade.ultimos30d.qtdVendas)} lotes`}
           contexto={formatBRLCompact(velocidade.ultimos30d.valorTotal)}
