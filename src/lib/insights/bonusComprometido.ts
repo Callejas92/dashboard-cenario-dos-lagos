@@ -22,7 +22,7 @@ export function calcularBonusComprometido(dados: DadosBonus): Insight | null {
     return {
       id: "bonus-a-pagar",
       titulo: "Bônus prontos pra pagar",
-      texto: `${dados.qtdAPagar} corretor${dados.qtdAPagar > 1 ? "es" : ""} com bônus liberado (${formatBRLCompact(dados.aPagarAgora)}). Marque na aba Pipeline > Bônus quando pagar.`,
+      texto: `${dados.qtdAPagar} corretor${dados.qtdAPagar > 1 ? "es" : ""} com bônus liberado (${formatBRLCompact(dados.aPagarAgora)}). Pague e anote "pago" no Excel — o painel lê sozinho.`,
       severidade,
       icon: Award,
       prioridade: 70,
