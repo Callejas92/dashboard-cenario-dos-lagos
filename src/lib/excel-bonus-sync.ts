@@ -21,9 +21,11 @@
 import { list, put } from "@vercel/blob";
 import { getAccessToken } from "@/lib/onedrive-marketing";
 import { getBonusTracking, setBonusPagamentosEmLote } from "@/lib/bonus";
+import { edgeRead, edgeWrite } from "@/lib/edge-store";
 
 const GRAPH = "https://graph.microsoft.com/v1.0";
 const SYNC_STATE_BLOB = "cache/excel-bonus-sync.json";
+const SYNC_STATE_EDGE_KEY = "excel_sync_state"; // Edge Config (sobrevive a bloqueio do Blob)
 const COL_V = 20; // Status Corretor (coluna U — fallback se o header não for achado)
 const COL_X = 21; // Status Imob (coluna V — fallback se o header não for achado)
 const PRIMEIRA_LINHA_DADOS = 3; // 0-based → Excel linha 4 (linhas 1-3 = título/seções/cabeçalho)
@@ -56,11 +58,17 @@ const isPago = (v: unknown) => String(v ?? "").trim().toLowerCase() === "pago";
 // Estado do sync no Blob: { syncedAt, celulasAlteradas, ultimaFalhaAt?, ultimaFalhaMsg? }.
 // O admin (/api/admin/status) lê isso pra mostrar "Excel Bônus: último sync há X / ERRO".
 async function lerSyncState(): Promise<Record<string, unknown>> {
+  // 1) Edge Config (sobrevive a bloqueio do Blob)
+  try {
+    const e = await edgeRead<Record<string, unknown>>(SYNC_STATE_EDGE_KEY);
+    if (e && typeof e === "object" && !Array.isArray(e)) return e;
+  } catch { /* segue pro Blob */ }
+  // 2) Fallback Blob
   try {
     const { blobs } = await list({ prefix: SYNC_STATE_BLOB });
     const hit = blobs.find((b) => b.pathname === SYNC_STATE_BLOB) ?? blobs[0];
     if (!hit) return {};
-    const res = await fetch(hit.url, { cache: "no-store" }); // fura cache CDN do Blob
+    const res = await fetch(hit.url, { cache: "no-store" });
     if (!res.ok) return {};
     return (await res.json()) as Record<string, unknown>;
   } catch {
@@ -69,6 +77,8 @@ async function lerSyncState(): Promise<Record<string, unknown>> {
 }
 
 async function gravarSyncState(state: Record<string, unknown>): Promise<void> {
+  // 1) Edge Config. 2) fallback Blob.
+  if (await edgeWrite(SYNC_STATE_EDGE_KEY, state)) return;
   await put(SYNC_STATE_BLOB, JSON.stringify(state), {
     access: "public", addRandomSuffix: false, allowOverwrite: true, contentType: "application/json",
   }).catch(() => {});
