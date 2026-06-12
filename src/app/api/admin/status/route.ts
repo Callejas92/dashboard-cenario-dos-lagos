@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { list } from "@vercel/blob";
 import { loadOneDriveToken } from "@/lib/onedrive-token";
+import { edgeRead } from "@/lib/edge-store";
 
 export const maxDuration = 30;
 
@@ -102,19 +103,26 @@ async function pingUau(): Promise<boolean | null> {
 // Estado do sync bônus→Excel (gravado por src/lib/excel-bonus-sync.ts).
 // ok=false se a última tentativa FALHOU depois do último sucesso.
 async function statusSyncExcel(): Promise<{ ok: boolean | null; detalhe: string; sync: string | null }> {
+  // Lê o estado do Edge Config (escrito pelo sync); fallback Blob. Sem isso o admin
+  // dizia "estado ilegível" quando o Blob estava bloqueado, mesmo com o sync OK.
+  let st: { syncedAt?: string; ultimaFalhaAt?: string; ultimaFalhaMsg?: string } | null = null;
   try {
-    const { blobs } = await list({ prefix: "cache/excel-bonus-sync.json" });
-    if (!blobs.length) return { ok: null, detalhe: "ainda sem sync registrado", sync: null };
-    const st = await (await fetch(blobs[0].url, { cache: "no-store" })).json();
-    const okAt = st?.syncedAt ? new Date(st.syncedAt).getTime() : 0;
-    const falhaAt = st?.ultimaFalhaAt ? new Date(st.ultimaFalhaAt).getTime() : 0;
-    if (falhaAt > okAt) {
-      return { ok: false, detalhe: `falhou: ${String(st.ultimaFalhaMsg || "erro desconhecido").slice(0, 120)}`, sync: st?.syncedAt || null };
-    }
-    return { ok: true, detalhe: "", sync: st?.syncedAt || null };
-  } catch {
-    return { ok: null, detalhe: "estado ilegível", sync: null };
+    const e = await edgeRead<typeof st>("excel_sync_state");
+    if (e && typeof e === "object" && !Array.isArray(e)) st = e;
+  } catch { /* segue pro Blob */ }
+  if (!st) {
+    try {
+      const { blobs } = await list({ prefix: "cache/excel-bonus-sync.json" });
+      if (blobs.length) st = await (await fetch(blobs[0].url, { cache: "no-store" })).json();
+    } catch { return { ok: null, detalhe: "estado ilegível", sync: null }; }
   }
+  if (!st) return { ok: null, detalhe: "ainda sem sync registrado", sync: null };
+  const okAt = st.syncedAt ? new Date(st.syncedAt).getTime() : 0;
+  const falhaAt = st.ultimaFalhaAt ? new Date(st.ultimaFalhaAt).getTime() : 0;
+  if (falhaAt > okAt) {
+    return { ok: false, detalhe: `falhou: ${String(st.ultimaFalhaMsg || "erro desconhecido").slice(0, 120)}`, sync: st.syncedAt || null };
+  }
+  return { ok: true, detalhe: "", sync: st.syncedAt || null };
 }
 
 async function pingOneDrive(): Promise<{ ok: boolean | null; detalhe: string; sync: string | null }> {
