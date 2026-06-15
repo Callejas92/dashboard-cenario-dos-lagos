@@ -17,3 +17,4 @@ next-env.d.ts
 # Windows / Google Drive (evita lixo de sincronização no repo)
 desktop.ini
 *(1).*
+.gstack/

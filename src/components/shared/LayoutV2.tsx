@@ -11,7 +11,7 @@
  */
 import { useState, useEffect, type ReactNode } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { BarChart3, FileText, Megaphone, Settings, Sun, Moon } from "lucide-react";
+import { BarChart3, FileText, Megaphone, FileBarChart2, Settings, Sun, Moon } from "lucide-react";
 import LoginScreen from "@/components/LoginScreen";
 import SwrProvider from "./SwrProvider";
 import BonusBadge from "./BonusBadge";
@@ -21,6 +21,7 @@ const TABS = [
   { href: "/panorama", label: "Panorama", icon: BarChart3 },
   { href: "/pipeline", label: "Pipeline", icon: FileText },
   { href: "/marketing", label: "Marketing", icon: Megaphone },
+  { href: "/relatorio", label: "Relatório", icon: FileBarChart2 },
 ] as const;
 
 export default function LayoutV2({ children }: { children: ReactNode }) {
