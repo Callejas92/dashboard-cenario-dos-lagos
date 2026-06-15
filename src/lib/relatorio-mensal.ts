@@ -69,6 +69,14 @@ export interface RelatorioMensal {
 
   rankingCorretores: RankingItem[];
   rankingImobiliarias: RankingItem[];
+
+  /**
+   * Auditoria de datas: contratos que TOCAM este mês comercial (pela data_contrato OU
+   * pela data_emissao) mas cujas duas datas caem em meses comerciais DIFERENTES. São
+   * exatamente os contratos onde a escolha da data muda o mês — confira no Eggs se a
+   * data_contrato = data da assinatura do comprador.
+   */
+  auditoriaDatas: { loteId: string; cliente: string; dataContrato: string; dataEmissao: string }[];
 }
 
 const DIA_MS = 86_400_000;
@@ -138,6 +146,15 @@ export function montarRelatorio(
     projecaoTerminoISO = t.toISOString().split("T")[0];
   }
 
+  // ── Auditoria de datas: contratos que tocam o mês mas com data_contrato e
+  // data_emissao em meses comerciais diferentes (a escolha da data muda o mês). ──
+  const mesKey = (iso: string) => getMesComercial(new Date(iso + "T12:00:00")).inicioISO;
+  const auditoriaDatas = contratos
+    .filter((c) => contratoValido(c) && !!c.dataEmissao)
+    .filter((c) => dataNoMesComercial(c.dataContrato!, mes) || dataNoMesComercial(c.dataEmissao!, mes))
+    .filter((c) => mesKey(c.dataContrato!) !== mesKey(c.dataEmissao!))
+    .map((c) => ({ loteId: c.loteId, cliente: c.cliente || "", dataContrato: c.dataContrato!, dataEmissao: c.dataEmissao! }));
+
   return {
     mesISO: `${mes.inicio.getFullYear()}-${String(mes.inicio.getMonth() + 1).padStart(2, "0")}`,
     periodo: { inicioISO: mes.inicioISO, fimISO: mes.fimISO, label: mes.label, labelCurto: mes.labelCurto },
@@ -173,6 +190,7 @@ export function montarRelatorio(
 
     rankingCorretores: ranking(vendasMes, (c) => c.corretor?.nome || ""),
     rankingImobiliarias: ranking(vendasMes, (c) => c.imobiliaria?.razaoSocial || c.imobiliaria?.nomeFantasia || ""),
+    auditoriaDatas,
   };
 }
 

@@ -27,6 +27,7 @@ interface Relatorio {
   acumulado: { lotes: number; vgv: number; vgvTotal: number; pctVendido: number; vso: number; vsoEsperado: number; vsoSeveridade: Severidade; ritmoMedioLotesMes: number; mesesParaTermino: number | null; projecaoTerminoISO: string | null; lotesRestantes: number };
   rankingCorretores: RankingItem[];
   rankingImobiliarias: RankingItem[];
+  auditoriaDatas: { loteId: string; cliente: string; dataContrato: string; dataEmissao: string }[];
 }
 interface MesDisp { mesISO: string; labelCurto: string; label: string; fechado: boolean }
 interface RelatorioResp { relatorio: Relatorio; mesesDisponiveis: MesDisp[]; error?: string }
@@ -85,6 +86,7 @@ export default function RelatorioMensalView() {
   const r = data.relatorio;
   const meses = data.mesesDisponiveis || [];
   const valorSel = mesSel || r.mesISO;
+  const auditoria = r.auditoriaDatas || []; // snapshots antigos podem não ter o campo
 
   // ── Bônus pago DENTRO do mês comercial (datas de pagamento) ──
   const ini = r.periodo.inicioISO, fim = r.periodo.fimISO;
@@ -230,6 +232,40 @@ export default function RelatorioMensalView() {
           />
         </div>
       </div>
+
+      {/* ── SEÇÃO 5 — Auditoria de datas (só aparece se houver divergência) ── */}
+      {auditoria.length > 0 && (
+        <div className="rel-secao" style={{ ...card, borderColor: cor("amarelo").value, background: cor("amarelo").bg }}>
+          <div style={{ ...secaoTitulo, color: cor("amarelo").value, marginBottom: "0.5rem" }}>
+            ⚠ Auditoria de datas — {auditoria.length} contrato(s) pra conferir no Eggs
+          </div>
+          <div style={{ fontSize: "0.78rem", color: "var(--text-muted)", marginBottom: "0.75rem" }}>
+            Nestes contratos a <strong>data do contrato</strong> e a <strong>data de emissão</strong> caem em meses comerciais
+            diferentes — então a escolha da data muda em qual mês a venda entra. Confira se a <code>data_contrato</code> no Eggs
+            é a <strong>data em que o comprador assinou</strong>.
+          </div>
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.78rem" }}>
+            <thead>
+              <tr style={{ color: "var(--text-dim)", textAlign: "left" }}>
+                <th style={{ padding: "0.3rem 0", fontWeight: 600 }}>Lote</th>
+                <th style={{ padding: "0.3rem 0", fontWeight: 600 }}>Cliente</th>
+                <th style={{ padding: "0.3rem 0", fontWeight: 600, textAlign: "right" }}>Data contrato</th>
+                <th style={{ padding: "0.3rem 0", fontWeight: 600, textAlign: "right" }}>Data emissão</th>
+              </tr>
+            </thead>
+            <tbody>
+              {auditoria.map((a, i) => (
+                <tr key={a.loteId + i} style={{ borderTop: "1px solid var(--border)" }}>
+                  <td style={{ padding: "0.4rem 0", fontWeight: 600 }}>{a.loteId}</td>
+                  <td style={{ padding: "0.4rem 0" }}>{a.cliente || "—"}</td>
+                  <td style={{ padding: "0.4rem 0", textAlign: "right" }}>{formatData(a.dataContrato)}</td>
+                  <td style={{ padding: "0.4rem 0", textAlign: "right", color: "var(--text-muted)" }}>{formatData(a.dataEmissao)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
 
       {/* ── Rodapé ── */}
       <div style={{ fontSize: "0.7rem", color: "var(--text-dim)", textAlign: "right", marginTop: "0.5rem" }}>
