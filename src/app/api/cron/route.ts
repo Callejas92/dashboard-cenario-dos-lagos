@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+import { gerarRelatorioMensal } from "@/lib/relatorio-mensal";
+import { congelarRelatorio } from "@/lib/relatorio-snapshot";
 
 const META_TOKEN_URL = "https://graph.facebook.com/v21.0/oauth/access_token";
 const META_DEBUG_URL = "https://graph.facebook.com/debug_token";
@@ -121,8 +123,20 @@ export async function GET(request: Request) {
     );
   }
 
+  // Congela o relatório do último mês comercial FECHADO (idempotente — se já existe
+  // snapshot, é no-op). Garante o relatório oficial mesmo que ninguém abra a aba.
+  let relatorioCongelado: string | null = null;
+  try {
+    const rel = await gerarRelatorioMensal(); // sem arg = último mês fechado
+    const congelou = await congelarRelatorio(rel, true);
+    relatorioCongelado = congelou ? rel.mesISO : `${rel.mesISO} (já estava)`;
+  } catch (e) {
+    relatorioCongelado = `falhou: ${e instanceof Error ? e.message : String(e)}`;
+  }
+
   return NextResponse.json({
     timestamp: new Date().toISOString(),
     meta: metaStatus,
+    relatorioCongelado,
   });
 }
