@@ -36,7 +36,8 @@ interface FinanceiroResp {
   inadimplencia?: { percentualInadimplencia: number; totalVencido: number; totalPago: number; qtdClientesInadimplentes: number; qtdParcelasVencidas: number };
 }
 interface RecebidoMensalResp { porMes?: Record<string, number>; total?: number; parcial?: boolean; vendas?: number }
-interface BonusResp { summary?: { aPagarAgora: number; pagoTotal: number; comprometidoTotal: number } }
+interface BonusEntry { cancelado: boolean; valorCorretora: number; valorImobiliaria: number; pagamento: { pagoCorretora: boolean; dataPagoCorretora: string; pagoImobiliaria: boolean; dataPagoImobiliaria: string } }
+interface BonusResp { bonus?: BonusEntry[]; summary?: { aPagarAgora: number; pagoTotal: number; comprometidoTotal: number } }
 
 const PRINT_CSS = `@media print {
   body * { visibility: hidden !important; }
@@ -96,8 +97,15 @@ export default function RelatorioMensalView() {
       ? { txt: "FECHADO · ao vivo", sev: "amarelo" as Severidade }
       : { txt: "EM CURSO · ao vivo", sev: "cinza" as Severidade };
 
-  // Bônus: acumulado + a pagar (o Excel não guarda a data real do pagamento, então
-  // não dá pra recortar "pago no mês" com honestidade — mostramos acumulado).
+  // Bônus pago DENTRO do mês comercial (pela data digitada na coluna W do Excel).
+  const ini = r.periodo.inicioISO, fim = r.periodo.fimISO;
+  let bonusPagoMes = 0;
+  for (const b of bonusData?.bonus || []) {
+    if (b.cancelado) continue;
+    if (b.pagamento?.pagoCorretora && b.pagamento.dataPagoCorretora >= ini && b.pagamento.dataPagoCorretora <= fim) bonusPagoMes += b.valorCorretora || 0;
+    if (b.pagamento?.pagoImobiliaria && b.pagamento.dataPagoImobiliaria >= ini && b.pagamento.dataPagoImobiliaria <= fim) bonusPagoMes += b.valorImobiliaria || 0;
+  }
+  const bonusPagoMesVal = bonusData?.bonus ? bonusPagoMes : null; // null = ainda carregando
   const bonusPagoAcum = bonusData?.summary?.pagoTotal ?? null;
   const bonusAPagar = bonusData?.summary?.aPagarAgora ?? null;
   const inad = fin?.inadimplencia;
@@ -230,10 +238,10 @@ export default function RelatorioMensalView() {
             contexto={recebErr ? "ERP UAU fora do ar agora" : receb?.total != null ? `recebido total (acum.): ${formatBRLCompact(receb.total)}${receb.parcial ? " · parcial" : ""}` : "somando recebimentos (pode levar ~30s)..."}
           />
           <KpiHero
-            label="Bônus pago (acumulado)"
-            valor={bonusPagoAcum === null ? "…" : formatBRLCompact(bonusPagoAcum)}
-            formula={"Total de bônus baixado como pago, acumulado.\nFonte: você digita \"pago\" na célula do Excel → o dashboard importa.\nO Excel não guarda a DATA do pagamento, então não há recorte mensal confiável."}
-            contexto={bonusAPagar !== null ? `a pagar agora: ${formatBRLCompact(bonusAPagar)}` : ""}
+            label="Bônus pago no mês"
+            valor={bonusPagoMesVal === null ? "…" : formatBRLCompact(bonusPagoMesVal)}
+            formula={`Bônus com data de pagamento (coluna "Data Pgto Bônus" do Excel) dentro de ${r.periodo.label}.\nR$ 3.000 corretora + R$ 1.000 imobiliária.`}
+            contexto={bonusPagoAcum !== null ? `acumulado: ${formatBRLCompact(bonusPagoAcum)}${bonusAPagar ? ` · a pagar ${formatBRLCompact(bonusAPagar)}` : ""}` : ""}
           />
         </div>
       </div>
