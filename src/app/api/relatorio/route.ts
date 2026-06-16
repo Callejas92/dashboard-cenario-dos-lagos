@@ -9,9 +9,11 @@
  * Resposta: { relatorio, mesesDisponiveis: [{mesISO, labelCurto, label, fechado}] }
  */
 import { NextResponse } from "next/server";
-import { gerarRelatorioMensal, mesComercialDaChave } from "@/lib/relatorio-mensal";
+import { gerarRelatorioMensal, gerarRelatorioPeriodo, mesComercialDaChave } from "@/lib/relatorio-mensal";
 import { lerSnapshot, congelarRelatorio } from "@/lib/relatorio-snapshot";
 import { listarUltimosMesesComerciais, type MesComercial } from "@/lib/utils/mesComercial";
+
+const ISO_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -29,6 +31,15 @@ export async function GET(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
     const mesParam = searchParams.get("mes") || undefined;
+    const de = searchParams.get("de") || "";
+    const ate = searchParams.get("ate") || "";
+
+    // PERÍODO LIVRE (data X a data Y) — sempre ao vivo, sem congelamento.
+    if (ISO_RE.test(de) && ISO_RE.test(ate)) {
+      const relatorio = await gerarRelatorioPeriodo(de, ate);
+      const fechado = relatorio.periodo.fimISO < hojeISO();
+      return NextResponse.json({ relatorio, fechado, custom: true, mesesDisponiveis: listarMeses() });
+    }
 
     const mes = mesComercialDaChave(mesParam);
     const mesISO = chaveDoMes(mes);

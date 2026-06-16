@@ -30,12 +30,12 @@ interface Relatorio {
   auditoriaDatas: { loteId: string; cliente: string; dataContrato: string; dataEmissao: string; divergente: boolean }[];
 }
 interface MesDisp { mesISO: string; labelCurto: string; label: string; fechado: boolean }
-interface RelatorioResp { relatorio: Relatorio; fechado?: boolean; mesesDisponiveis: MesDisp[]; error?: string }
+interface RelatorioResp { relatorio: Relatorio; fechado?: boolean; custom?: boolean; mesesDisponiveis: MesDisp[]; error?: string }
 
 interface FinanceiroResp {
   inadimplencia?: { percentualInadimplencia: number; totalVencido: number; totalPago: number; qtdClientesInadimplentes: number; qtdParcelasVencidas: number };
 }
-interface RecebidoMensalResp { porMes?: Record<string, number>; total?: number; parcial?: boolean; vendas?: number }
+interface RecebidoMensalResp { porMes?: Record<string, number>; porDia?: Record<string, number>; total?: number; parcial?: boolean; vendas?: number }
 interface BonusEntry { cancelado: boolean; valorCorretora: number; valorImobiliaria: number; pagamento: { pagoCorretora: boolean; dataPagoCorretora: string; pagoImobiliaria: boolean; dataPagoImobiliaria: string } }
 interface BonusResp { bonus?: BonusEntry[]; summary?: { aPagarAgora: number; pagoTotal: number; comprometidoTotal: number } }
 
@@ -57,17 +57,25 @@ const secaoTitulo: React.CSSProperties = {
   fontSize: "0.75rem", fontWeight: 700, letterSpacing: "0.05em", textTransform: "uppercase",
   color: "var(--text-dim)", marginBottom: "0.75rem", display: "flex", alignItems: "center", gap: "0.5rem",
 };
+const inputStyle: React.CSSProperties = { padding: "0.5rem 0.75rem", borderRadius: "0.5rem", border: "1px solid var(--border)", background: "var(--surface)", color: "var(--text)", fontSize: "0.85rem" };
+const btnStyle: React.CSSProperties = { display: "flex", alignItems: "center", gap: "0.4rem", padding: "0.5rem 0.9rem", borderRadius: "0.5rem", border: "1px solid var(--border)", background: "var(--surface)", color: "var(--text)", cursor: "pointer", fontSize: "0.85rem" };
 
-function deltaLabel(delta: number, fmt: (n: number) => string): { txt: string; sev: Severidade } {
-  if (delta > 0) return { txt: `▲ ${fmt(delta)} vs mês anterior`, sev: "verde" };
-  if (delta < 0) return { txt: `▼ ${fmt(-delta)} vs mês anterior`, sev: "vermelho" };
-  return { txt: `= mesmo do mês anterior`, sev: "cinza" };
+function deltaLabel(delta: number, fmt: (n: number) => string, antLabel: string): { txt: string; sev: Severidade } {
+  if (delta > 0) return { txt: `▲ ${fmt(delta)} vs ${antLabel}`, sev: "verde" };
+  if (delta < 0) return { txt: `▼ ${fmt(-delta)} vs ${antLabel}`, sev: "vermelho" };
+  return { txt: `= mesmo do ${antLabel}`, sev: "cinza" };
 }
 
 export default function RelatorioMensalView() {
+  const [modo, setModo] = useState<"mes" | "periodo">("mes");
   const [mesSel, setMesSel] = useState<string>(""); // "" = default (mês que fechou)
+  const [de, setDe] = useState<string>("");
+  const [ate, setAte] = useState<string>("");
+  const [rangeAplicado, setRangeAplicado] = useState<{ de: string; ate: string } | null>(null);
 
-  const qs = mesSel ? `?mes=${mesSel}` : "";
+  const qs = modo === "periodo" && rangeAplicado
+    ? `?de=${rangeAplicado.de}&ate=${rangeAplicado.ate}`
+    : mesSel ? `?mes=${mesSel}` : "";
   const { data, isLoading, error } = useSWR<RelatorioResp>(`/api/relatorio${qs}`);
   const { data: fin, error: finErr } = useSWR<FinanceiroResp>("/api/uau/financeiro");
   const { data: bonusData } = useSWR<BonusResp>("/api/bonus");
@@ -90,12 +98,14 @@ export default function RelatorioMensalView() {
   const valorSel = mesSel || r.mesISO;
   const auditoria = r.auditoriaDatas || []; // snapshots antigos podem não ter o campo
 
-  // Selo de estado: oficial congelado / fechado ao vivo (congela quando o storage voltar) / em curso
-  const selo = r.congelado
-    ? { txt: "OFICIAL · congelado", sev: "verde" as Severidade }
-    : data.fechado
-      ? { txt: "FECHADO · ao vivo", sev: "amarelo" as Severidade }
-      : { txt: "EM CURSO · ao vivo", sev: "cinza" as Severidade };
+  // Selo de estado: período livre / oficial congelado / fechado ao vivo / em curso
+  const selo = data.custom
+    ? { txt: "PERÍODO · ao vivo", sev: "cinza" as Severidade }
+    : r.congelado
+      ? { txt: "OFICIAL · congelado", sev: "verde" as Severidade }
+      : data.fechado
+        ? { txt: "FECHADO · ao vivo", sev: "amarelo" as Severidade }
+        : { txt: "EM CURSO · ao vivo", sev: "cinza" as Severidade };
 
   // Bônus pago DENTRO do mês comercial (pela data digitada na coluna W do Excel).
   const ini = r.periodo.inicioISO, fim = r.periodo.fimISO;
@@ -111,7 +121,12 @@ export default function RelatorioMensalView() {
   const inad = fin?.inadimplencia;
   const pctInad = inad?.percentualInadimplencia ?? null; // já em pontos percentuais (0.28 = 0,28%)
   const erpForaDoAr = !!finErr && !fin; // ERP UAU indisponível (504/erro)
-  const recebMes = receb?.porMes?.[r.mesISO] ?? null; // recebido no mês comercial selecionado
+  const custom = !!data.custom;
+  const escopo = custom ? "no período" : "no mês";
+  // Recebido DENTRO do período: soma porDia em [inicio, fim] — uniforme p/ mês e período livre.
+  let recebPeriodo = 0;
+  for (const [d, v] of Object.entries(receb?.porDia || {})) if (d >= ini && d <= fim) recebPeriodo += v;
+  const recebVal = receb?.porDia ? recebPeriodo : null;
 
   return (
     <div id="relatorio-print" style={{ display: "flex", flexDirection: "column", gap: "1.25rem" }}>
@@ -122,7 +137,7 @@ export default function RelatorioMensalView() {
         <div>
           <h1 style={{ fontSize: "1.4rem", fontWeight: 700, margin: 0 }}>Relatório Comercial</h1>
           <div style={{ fontSize: "0.85rem", color: "var(--text-muted)", marginTop: "0.25rem" }}>
-            Mês comercial <strong>{r.periodo.label}</strong>
+            {data.custom ? "Período" : "Mês comercial"} <strong>{r.periodo.label}</strong>
             {"  "}
             <span style={{
               marginLeft: "0.5rem", fontSize: "0.7rem", fontWeight: 700, padding: "0.15rem 0.5rem", borderRadius: "9999px",
@@ -132,50 +147,67 @@ export default function RelatorioMensalView() {
             </span>
           </div>
         </div>
-        <div className="no-print" style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
-          <select
-            value={valorSel}
-            onChange={(e) => setMesSel(e.target.value)}
-            style={{ padding: "0.5rem 0.75rem", borderRadius: "0.5rem", border: "1px solid var(--border)", background: "var(--surface)", color: "var(--text)", fontSize: "0.85rem" }}
-          >
-            {meses.map((m) => (
-              <option key={m.mesISO} value={m.mesISO}>{m.labelCurto}{m.fechado ? "" : " · em curso"}</option>
+        <div className="no-print" style={{ display: "flex", gap: "0.5rem", alignItems: "center", flexWrap: "wrap" }}>
+          {/* Toggle: mês comercial × período livre */}
+          <div style={{ display: "flex", border: "1px solid var(--border)", borderRadius: "0.5rem", overflow: "hidden" }}>
+            {(["mes", "periodo"] as const).map((m) => (
+              <button key={m} onClick={() => setModo(m)}
+                style={{ padding: "0.45rem 0.75rem", fontSize: "0.8rem", border: "none", cursor: "pointer",
+                  background: modo === m ? cor("verde").value : "var(--surface)", color: modo === m ? "#fff" : "var(--text)" }}>
+                {m === "mes" ? "Mês comercial" : "Período"}
+              </button>
             ))}
-          </select>
-          <button
-            onClick={() => window.print()}
-            style={{ display: "flex", alignItems: "center", gap: "0.4rem", padding: "0.5rem 0.9rem", borderRadius: "0.5rem", border: "1px solid var(--border)", background: "var(--surface)", color: "var(--text)", cursor: "pointer", fontSize: "0.85rem" }}
-          >
+          </div>
+
+          {modo === "mes" ? (
+            <select value={valorSel} onChange={(e) => setMesSel(e.target.value)} style={inputStyle}>
+              {meses.map((m) => (
+                <option key={m.mesISO} value={m.mesISO}>{m.labelCurto}{m.fechado ? "" : " · em curso"}</option>
+              ))}
+            </select>
+          ) : (
+            <>
+              <input type="date" value={de} onChange={(e) => setDe(e.target.value)} style={inputStyle} aria-label="data inicial" />
+              <span style={{ color: "var(--text-dim)", fontSize: "0.85rem" }}>até</span>
+              <input type="date" value={ate} onChange={(e) => setAte(e.target.value)} style={inputStyle} aria-label="data final" />
+              <button disabled={!de || !ate} onClick={() => setRangeAplicado({ de, ate })}
+                style={{ ...btnStyle, opacity: (!de || !ate) ? 0.5 : 1, cursor: (!de || !ate) ? "not-allowed" : "pointer" }}>
+                Gerar
+              </button>
+            </>
+          )}
+
+          <button onClick={() => window.print()} style={btnStyle}>
             <Printer size={15} /> Imprimir / PDF
           </button>
         </div>
       </div>
 
-      {/* ── SEÇÃO 1 — Vendas do mês + meta ── */}
+      {/* ── SEÇÃO 1 — Vendas + meta ── */}
       <div className="rel-secao">
-        <div style={secaoTitulo}>1 · Vendas do mês</div>
+        <div style={secaoTitulo}>1 · Vendas {escopo}</div>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: "0.875rem" }}>
           <KpiHero
             label="Lotes vendidos"
             valor={`${r.vendasMes.lotes} lotes`}
             severidade={r.vendasMes.severidade}
-            formula={`Vendas com data de contrato dentro de ${r.periodo.label}.\nMeta: ${r.vendasMes.meta} lotes/mês.\nFonte: CRM Eggs (data_contrato).`}
-            contexto={`alvo ${formatNum(r.vendasMes.meta)} /mês · ${formatPct(r.vendasMes.pctMeta)} da meta`}
+            formula={`Vendas com data de contrato dentro de ${r.periodo.label}.\nMeta (${custom ? "14,5/mês escalado p/ o período" : "14,5/mês"}): ${formatNum(r.vendasMes.meta)} lotes.\nFonte: CRM Eggs (data_contrato).`}
+            contexto={`alvo ${formatNum(r.vendasMes.meta)} · ${formatPct(r.vendasMes.pctMeta)} da meta`}
             progresso={r.vendasMes.pctMeta}
-            extra={<DeltaLinha {...deltaLabel(r.vendasMes.deltaLotes, (n) => `${formatInt(n)} lote(s)`)} />}
+            extra={<DeltaLinha {...deltaLabel(r.vendasMes.deltaLotes, (n) => `${formatInt(n)} lote(s)`, custom ? "período anterior" : "mês anterior")} />}
           />
           <KpiHero
-            label="VGV do mês"
+            label={`VGV ${escopo}`}
             valor={formatBRLCompact(r.vendasMes.vgv)}
-            formula={`Soma do valor contratado das vendas do mês.\nFonte: CRM Eggs.`}
+            formula={`Soma do valor contratado das vendas ${escopo}.\nFonte: CRM Eggs.`}
             contexto={`ticket médio ${formatBRLCompact(r.vendasMes.ticket)}`}
-            extra={<DeltaLinha {...deltaLabel(r.vendasMes.deltaVgv, (n) => formatBRLCompact(n))} />}
+            extra={<DeltaLinha {...deltaLabel(r.vendasMes.deltaVgv, (n) => formatBRLCompact(n), custom ? "período anterior" : "mês anterior")} />}
           />
           <KpiHero
-            label="Mês anterior"
+            label={custom ? "Período anterior" : "Mês anterior"}
             valor={`${r.vendasMes.anteriorLotes} lotes`}
             severidade="cinza"
-            formula="Vendas no mês comercial anterior, pra comparação."
+            formula={`Vendas no ${custom ? "período de mesma duração imediatamente anterior" : "mês comercial anterior"}, pra comparação.`}
             contexto={`${formatBRLCompact(r.vendasMes.anteriorVgv)} de VGV`}
           />
         </div>
@@ -213,7 +245,7 @@ export default function RelatorioMensalView() {
 
       {/* ── SEÇÃO 3 — Ranking ── */}
       <div className="rel-secao">
-        <div style={secaoTitulo}>3 · Ranking do mês</div>
+        <div style={secaoTitulo}>3 · Ranking {escopo}</div>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: "0.875rem" }}>
           <TabelaRanking titulo="Corretores" itens={r.rankingCorretores} />
           <TabelaRanking titulo="Imobiliárias" itens={r.rankingImobiliarias} />
@@ -232,13 +264,13 @@ export default function RelatorioMensalView() {
             contexto={erpForaDoAr ? "ERP UAU fora do ar agora — recarregue em instantes" : inad ? `${formatInt(inad.qtdClientesInadimplentes)} cliente(s) · ${formatInt(inad.qtdParcelasVencidas)} parcela(s)` : "lendo ERP UAU (pode levar até 60s)..."}
           />
           <KpiHero
-            label="Recebido no mês"
-            valor={recebErr ? "indisponível" : recebMes === null ? "…" : formatBRLCompact(recebMes)}
+            label={`Recebido ${escopo}`}
+            valor={recebErr ? "indisponível" : recebVal === null ? "…" : formatBRLCompact(recebVal)}
             formula={`Pagamentos de parcelas com data de recebimento dentro de ${r.periodo.label}.\nFonte: ERP UAU (Venda/BuscarParcelasRecebidas — Data_Rec).`}
             contexto={recebErr ? "ERP UAU fora do ar agora" : receb?.total != null ? `recebido total (acum.): ${formatBRLCompact(receb.total)}${receb.parcial ? " · parcial" : ""}` : "somando recebimentos (pode levar ~30s)..."}
           />
           <KpiHero
-            label="Bônus pago no mês"
+            label={`Bônus pago ${escopo}`}
             valor={bonusPagoMesVal === null ? "…" : formatBRLCompact(bonusPagoMesVal)}
             formula={`Bônus com data de pagamento (coluna "Data Pgto Bônus" do Excel) dentro de ${r.periodo.label}.\nR$ 3.000 corretora + R$ 1.000 imobiliária.`}
             contexto={bonusPagoAcum !== null ? `acumulado: ${formatBRLCompact(bonusPagoAcum)}${bonusAPagar ? ` · a pagar ${formatBRLCompact(bonusAPagar)}` : ""}` : ""}

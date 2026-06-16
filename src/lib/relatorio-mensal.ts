@@ -18,7 +18,6 @@ import { corMeta, type Severidade } from "@/lib/utils/cores";
 import {
   getMesComercial,
   getMesComercialAnterior,
-  dataNoMesComercial,
   type MesComercial,
 } from "@/lib/utils/mesComercial";
 
@@ -81,6 +80,37 @@ export interface RelatorioMensal {
 
 const DIA_MS = 86_400_000;
 
+/** Janela de tempo do relatório — mês comercial OU período livre (data X a data Y). */
+export interface Periodo {
+  inicioISO: string;
+  fimISO: string;
+  label: string;
+  labelCurto: string;
+}
+
+function pad2(n: number): string { return String(n).padStart(2, "0"); }
+function isoDe(d: Date): string { return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`; }
+function brDe(iso: string): string { const [y, m, d] = iso.split("-"); return `${d}/${m}/${y}`; }
+
+/** Monta um Período livre a partir de duas datas ISO (de/até). */
+export function periodoLivre(deISO: string, ateISO: string): Periodo {
+  const ini = deISO <= ateISO ? deISO : ateISO;
+  const fim = deISO <= ateISO ? ateISO : deISO;
+  return { inicioISO: ini, fimISO: fim, label: `${brDe(ini)} – ${brDe(fim)}`, labelCurto: "período" };
+}
+
+/** Período imediatamente ANTERIOR, de mesma duração (pra comparação "vs anterior"). */
+function periodoAnterior(p: Periodo): Periodo {
+  const ini = new Date(p.inicioISO + "T12:00:00");
+  const fim = new Date(p.fimISO + "T12:00:00");
+  const durDias = Math.max(0, Math.round((fim.getTime() - ini.getTime()) / DIA_MS));
+  const antFim = new Date(ini.getTime() - DIA_MS);
+  const antIni = new Date(antFim.getTime() - durDias * DIA_MS);
+  return { inicioISO: isoDe(antIni), fimISO: isoDe(antFim), label: `${brDe(isoDe(antIni))} – ${brDe(isoDe(antFim))}`, labelCurto: "anterior" };
+}
+
+const noPeriodo = (data: string, p: Periodo) => data >= p.inicioISO && data <= p.fimISO;
+
 /** Meses decorridos (base 30 dias) entre o lançamento e uma data — mesma régua do Panorama. */
 function mesesDesdeLancamento(fimISO: string): number {
   const lanc = new Date(PROJETO.DATA_LANCAMENTO + "T00:00:00").getTime();
@@ -110,31 +140,35 @@ function ranking(contratos: ContratoEnriquecido[], chave: (c: ContratoEnriquecid
 }
 
 /**
- * Monta o relatório de um mês comercial a partir da lista de contratos (já filtrada
- * de investidor no servidor). Função PURA — sem fetch, fácil de testar/congelar.
+ * Monta o relatório de um PERÍODO (mês comercial ou intervalo livre) a partir da lista
+ * de contratos (já filtrada de investidor no servidor). Função PURA — sem fetch.
  */
 export function montarRelatorio(
   contratos: ContratoEnriquecido[],
-  mes: MesComercial,
-  opts?: { foraDeVenda?: number; congelado?: boolean; geradoEm?: string },
+  periodo: Periodo,
+  opts?: { foraDeVenda?: number; congelado?: boolean; geradoEm?: string; anterior?: Periodo; chave?: string; meta?: number },
 ): RelatorioMensal {
   const foraDeVenda = opts?.foraDeVenda ?? 0;
-  const anterior = getMesComercialAnterior(mes.inicio);
+  const anterior = opts?.anterior ?? periodoAnterior(periodo);
 
-  // ── Vendas DENTRO do mês comercial (pela data_contrato) ──
-  const vendasMes = contratos.filter((c) => contratoValido(c) && dataNoMesComercial(c.dataContrato!, mes));
-  const vendasAnt = contratos.filter((c) => contratoValido(c) && dataNoMesComercial(c.dataContrato!, anterior));
+  // ── Vendas DENTRO do período (pela data_contrato) ──
+  const vendasMes = contratos.filter((c) => contratoValido(c) && noPeriodo(c.dataContrato!, periodo));
+  const vendasAnt = contratos.filter((c) => contratoValido(c) && noPeriodo(c.dataContrato!, anterior));
   const lotesMes = vendasMes.length;
   const vgvMes = vendasMes.reduce((s, c) => s + (c.valor || 0), 0);
   const lotesAnt = vendasAnt.length;
   const vgvAnt = vendasAnt.reduce((s, c) => s + (c.valor || 0), 0);
 
-  // ── Acumulado ATÉ o fim do mês comercial (estado do projeto no fechamento) ──
-  const acumContratos = contratos.filter((c) => contratoValido(c) && c.dataContrato! <= mes.fimISO);
+  // Meta: 14,5/mês fixo no mês comercial; no período livre, escala pela duração.
+  const durDias = Math.max(1, Math.round((new Date(periodo.fimISO + "T12:00:00").getTime() - new Date(periodo.inicioISO + "T12:00:00").getTime()) / DIA_MS) + 1);
+  const meta = opts?.meta ?? (PROJETO.VELOCIDADE_ALVO_LOTES_MES * durDias / 30.44);
+
+  // ── Acumulado ATÉ o fim do período (estado do projeto no fechamento) ──
+  const acumContratos = contratos.filter((c) => contratoValido(c) && c.dataContrato! <= periodo.fimISO);
   const vgvAcum = calcularVgv({
     contratos: acumContratos.map((c) => ({ loteId: c.loteId, valorContratado: c.valor, status: c.status, cancelado: c.cancelado })),
   });
-  const mesesDecorridos = mesesDesdeLancamento(mes.fimISO);
+  const mesesDecorridos = mesesDesdeLancamento(periodo.fimISO);
   const vso = calcularVso({ vendidos: vgvAcum.lotesVendidos, foraDeVenda, mesesDecorridos });
 
   const ritmoMedio = vgvAcum.lotesVendidos / mesesDecorridos;
@@ -142,16 +176,16 @@ export function montarRelatorio(
   const mesesParaTermino = ritmoMedio > 0 ? lotesRestantes / ritmoMedio : null;
   let projecaoTerminoISO: string | null = null;
   if (mesesParaTermino !== null && Number.isFinite(mesesParaTermino)) {
-    const t = new Date(mes.fim.getTime() + mesesParaTermino * 30 * DIA_MS);
+    const t = new Date(new Date(periodo.fimISO + "T12:00:00").getTime() + mesesParaTermino * 30 * DIA_MS);
     projecaoTerminoISO = t.toISOString().split("T")[0];
   }
 
-  // ── Datas de TODAS as vendas que tocam o mês (por data_contrato OU emissao), com
+  // ── Datas de TODAS as vendas que tocam o período (por data_contrato OU emissao), com
   // as duas datas. divergente = caem em meses comerciais diferentes (muda o mês). ──
   const mesKey = (iso: string) => getMesComercial(new Date(iso + "T12:00:00")).inicioISO;
   const auditoriaDatas = contratos
     .filter((c) => contratoValido(c) && !!c.dataEmissao)
-    .filter((c) => dataNoMesComercial(c.dataContrato!, mes) || dataNoMesComercial(c.dataEmissao!, mes))
+    .filter((c) => noPeriodo(c.dataContrato!, periodo) || noPeriodo(c.dataEmissao!, periodo))
     .map((c) => ({
       loteId: c.loteId,
       cliente: c.cliente || "",
@@ -162,8 +196,8 @@ export function montarRelatorio(
     .sort((a, b) => (a.divergente === b.divergente ? a.dataContrato.localeCompare(b.dataContrato) : a.divergente ? -1 : 1));
 
   return {
-    mesISO: `${mes.inicio.getFullYear()}-${String(mes.inicio.getMonth() + 1).padStart(2, "0")}`,
-    periodo: { inicioISO: mes.inicioISO, fimISO: mes.fimISO, label: mes.label, labelCurto: mes.labelCurto },
+    mesISO: opts?.chave ?? `${periodo.inicioISO.slice(0, 7)}`,
+    periodo: { inicioISO: periodo.inicioISO, fimISO: periodo.fimISO, label: periodo.label, labelCurto: periodo.labelCurto },
     congelado: opts?.congelado ?? false,
     geradoEm: opts?.geradoEm ?? new Date().toISOString(),
 
@@ -171,9 +205,9 @@ export function montarRelatorio(
       lotes: lotesMes,
       vgv: vgvMes,
       ticket: lotesMes > 0 ? vgvMes / lotesMes : 0,
-      meta: PROJETO.VELOCIDADE_ALVO_LOTES_MES,
-      pctMeta: PROJETO.VELOCIDADE_ALVO_LOTES_MES > 0 ? lotesMes / PROJETO.VELOCIDADE_ALVO_LOTES_MES : 0,
-      severidade: corMeta(lotesMes, PROJETO.VELOCIDADE_ALVO_LOTES_MES),
+      meta,
+      pctMeta: meta > 0 ? lotesMes / meta : 0,
+      severidade: corMeta(lotesMes, meta),
       anteriorLotes: lotesAnt,
       anteriorVgv: vgvAnt,
       deltaLotes: lotesMes - lotesAnt,
@@ -215,5 +249,18 @@ export function mesComercialDaChave(mesISO?: string): MesComercial {
 export async function gerarRelatorioMensal(mesISO?: string, foraDeVenda?: number): Promise<RelatorioMensal> {
   const mes = mesComercialDaChave(mesISO);
   const contratos = await getContratosEggs();
-  return montarRelatorio(contratos, mes, { foraDeVenda });
+  const chave = `${mes.inicio.getFullYear()}-${pad2(mes.inicio.getMonth() + 1)}`;
+  return montarRelatorio(contratos, mes, {
+    foraDeVenda,
+    anterior: getMesComercialAnterior(mes.inicio),
+    chave,
+    meta: PROJETO.VELOCIDADE_ALVO_LOTES_MES, // mês comercial: meta fixa 14,5
+  });
+}
+
+/** Gera o relatório de um PERÍODO LIVRE (data X a data Y). Sempre ao vivo (não congela). */
+export async function gerarRelatorioPeriodo(deISO: string, ateISO: string, foraDeVenda?: number): Promise<RelatorioMensal> {
+  const periodo = periodoLivre(deISO, ateISO);
+  const contratos = await getContratosEggs();
+  return montarRelatorio(contratos, periodo, { foraDeVenda, chave: `periodo-${periodo.inicioISO}_${periodo.fimISO}` });
 }

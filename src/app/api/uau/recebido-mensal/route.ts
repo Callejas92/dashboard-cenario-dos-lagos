@@ -71,6 +71,7 @@ export async function GET() {
       .filter((v) => v.num > 0 && !INVESTOR.has(v.id));
 
     const porMes: Record<string, number> = {};
+    const porDia: Record<string, number> = {}; // data ISO → valor (pra somar qualquer período livre)
     let total = 0, falhas = 0, pagamentos = 0;
     const conc = 5;
     for (let i = 0; i < vendas.length; i += conc) {
@@ -91,13 +92,14 @@ export async function GET() {
           if (!iso) continue;
           const k = chaveMes(iso);
           porMes[k] = (porMes[k] || 0) + valor;
+          porDia[iso] = (porDia[iso] || 0) + valor;
           total += valor;
           pagamentos++;
         }
       }
     }
 
-    const data = { porMes, total, pagamentos, vendas: vendas.length, falhas, parcial: falhas > 0, geradoEm: new Date().toISOString() };
+    const data = { porMes, porDia, total, pagamentos, vendas: vendas.length, falhas, parcial: falhas > 0, geradoEm: new Date().toISOString() };
     cache = { data, ts: Date.now() };
     return NextResponse.json(data);
   } catch (e) {
