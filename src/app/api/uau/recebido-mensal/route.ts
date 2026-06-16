@@ -73,12 +73,25 @@ export async function GET(req: Request) {
 
     if (debug) {
       const amostras: unknown[] = [];
-      for (const v of vendas.slice(0, 5)) {
+      for (const v of vendas.slice(0, 6)) {
         const raw = await uauFetch(token, "Venda/BuscarParcelasRecebidas", { empresa: 2, obra: "01VEN", num_ven: v.num }, 15000);
         const rec = getRecebidas(raw);
-        amostras.push({ num: v.num, id: v.id, recebidasLen: rec.length, row1: rec[1] ?? null });
+        let somaConf = 0;
+        for (const p of rec) {
+          const val = Number(p.ValorConf_Rec) + (Number(p.VlCorrecaoConf_Rec) || 0) + (Number(p.VlMultaConf_Rec) || 0) + (Number(p.VlJurosConf_Rec) || 0) + (Number(p.VlJurosParcConf_Rec) || 0);
+          if (Number.isFinite(val)) somaConf += val;
+        }
+        // fonte oficial do acumulado pra cruzar
+        let oficial = -1;
+        try {
+          const resumo = await uauFetch(token, "Venda/ConsultarResumoVenda", { codigoObra: "01VEN", codigoEmpresa: 2, numeroVenda: v.num }, 12000);
+          const r0 = (Array.isArray(resumo) ? resumo[0] : resumo) as Record<string, unknown>;
+          const tr = (r0?.totaisrecebido as { valorTotalRecebido?: number }[] | undefined)?.[0];
+          oficial = Number(tr?.valorTotalRecebido ?? -1);
+        } catch { /* ignora */ }
+        amostras.push({ num: v.num, id: v.id, somaConf_Rec: Math.round(somaConf), oficial_valorTotalRecebido: Math.round(oficial), bate: Math.abs(somaConf - oficial) < 1 });
       }
-      return NextResponse.json({ debug: true, totalVendas: vendas.length, amostras });
+      return NextResponse.json({ debug: true, amostras });
     }
 
     const porMes: Record<string, number> = {};
