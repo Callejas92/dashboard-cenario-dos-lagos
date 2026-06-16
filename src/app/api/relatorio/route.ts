@@ -38,20 +38,20 @@ export async function GET(req: Request) {
     if (fechado) {
       const snap = await lerSnapshot(mesISO);
       if (snap) {
-        return NextResponse.json({ relatorio: snap, mesesDisponiveis: listarMeses() });
+        return NextResponse.json({ relatorio: snap, fechado, mesesDisponiveis: listarMeses() });
       }
     }
 
     // 2) Calcula ao vivo (Eggs). foraDeVenda=0 por padrão (sem depender do UAU lento).
     const relatorio = await gerarRelatorioMensal(mesISO);
 
-    // 3) Mês fechado sem snapshot → congela agora (lazy). Marca como oficial se gravou.
+    // 3) Mês fechado sem snapshot → congela agora (lazy, no Blob). Marca oficial se gravou.
     if (fechado) {
       const congelou = await congelarRelatorio(relatorio, true);
       if (congelou) relatorio.congelado = true;
     }
 
-    return NextResponse.json({ relatorio, mesesDisponiveis: listarMeses() });
+    return NextResponse.json({ relatorio, fechado, mesesDisponiveis: listarMeses() });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     console.error("relatório mensal falhou:", msg);

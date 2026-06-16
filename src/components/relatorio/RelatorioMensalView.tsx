@@ -30,7 +30,7 @@ interface Relatorio {
   auditoriaDatas: { loteId: string; cliente: string; dataContrato: string; dataEmissao: string }[];
 }
 interface MesDisp { mesISO: string; labelCurto: string; label: string; fechado: boolean }
-interface RelatorioResp { relatorio: Relatorio; mesesDisponiveis: MesDisp[]; error?: string }
+interface RelatorioResp { relatorio: Relatorio; fechado?: boolean; mesesDisponiveis: MesDisp[]; error?: string }
 
 interface FinanceiroResp {
   inadimplencia?: { percentualInadimplencia: number; totalVencido: number; totalPago: number; qtdClientesInadimplentes: number; qtdParcelasVencidas: number };
@@ -88,6 +88,13 @@ export default function RelatorioMensalView() {
   const valorSel = mesSel || r.mesISO;
   const auditoria = r.auditoriaDatas || []; // snapshots antigos podem não ter o campo
 
+  // Selo de estado: oficial congelado / fechado ao vivo (congela quando o storage voltar) / em curso
+  const selo = r.congelado
+    ? { txt: "OFICIAL · congelado", sev: "verde" as Severidade }
+    : data.fechado
+      ? { txt: "FECHADO · ao vivo", sev: "amarelo" as Severidade }
+      : { txt: "EM CURSO · ao vivo", sev: "cinza" as Severidade };
+
   // ── Bônus pago DENTRO do mês comercial (datas de pagamento) ──
   const ini = r.periodo.inicioISO, fim = r.periodo.fimISO;
   let bonusPagoMes = 0;
@@ -112,10 +119,9 @@ export default function RelatorioMensalView() {
             {"  "}
             <span style={{
               marginLeft: "0.5rem", fontSize: "0.7rem", fontWeight: 700, padding: "0.15rem 0.5rem", borderRadius: "9999px",
-              background: r.congelado ? cor("verde").bg : cor("amarelo").bg,
-              color: r.congelado ? cor("verde").value : cor("amarelo").value,
+              background: cor(selo.sev).bg, color: cor(selo.sev).value,
             }}>
-              {r.congelado ? "OFICIAL · congelado" : "EM CURSO · ao vivo"}
+              {selo.txt}
             </span>
           </div>
         </div>

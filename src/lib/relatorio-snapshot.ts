@@ -1,32 +1,52 @@
 /**
- * Congelamento do RELATÓRIO MENSAL — 1 snapshot por mês comercial no Edge Config.
+ * Congelamento do RELATÓRIO MENSAL — 1 snapshot por mês comercial.
  *
- * Por quê: ao virar o dia 15, o relatório do mês que fechou vira OFICIAL e imutável —
- * mesmo que alguém edite uma data_contrato no Eggs depois, o número publicado não muda.
+ * Onde: Vercel Blob (`relatorio/<YYYY-MM>.json`). Snapshots crescem (12/ano) e por isso
+ * NÃO cabem no Edge Config (teto TOTAL ~8KB, reservado pro crítico: token + pagos + sync).
  *
- * Onde: Edge Config (`relatorio_<YYYY-MM>`) — pequeno (~3KB), durável e à prova de
- * bloqueio do Blob. Só congela mês JÁ FECHADO (o mês em curso é sempre ao vivo).
+ * Enquanto o Blob estiver bloqueado (limite de uso): o congelamento falha de propósito
+ * (catch → false) e o relatório do mês fechado é recalculado AO VIVO. Como os dados do
+ * Eggs de meses passados são estáveis, o número é o mesmo; ao voltar o Blob, congela.
+ *
+ * Imutável: se já existe snapshot, NÃO sobrescreve (o oficial não muda).
  */
-import { edgeRead, edgeWrite } from "@/lib/edge-store";
+import { list, put } from "@vercel/blob";
 import type { RelatorioMensal } from "@/lib/relatorio-mensal";
 
-const PREFIXO = "relatorio_"; // chave Edge: relatorio_2026-05
+const PREFIXO = "relatorio/"; // relatorio/2026-05.json
 
 export async function lerSnapshot(mesISO: string): Promise<RelatorioMensal | null> {
-  const r = await edgeRead<RelatorioMensal>(`${PREFIXO}${mesISO}`);
-  if (r && typeof r === "object" && r.mesISO) {
-    return { ...r, congelado: true };
+  try {
+    const path = `${PREFIXO}${mesISO}.json`;
+    const { blobs } = await list({ prefix: path });
+    const hit = blobs.find((b) => b.pathname === path) ?? blobs[0];
+    if (!hit) return null;
+    const res = await fetch(hit.url, { cache: "no-store" });
+    if (!res.ok) return null;
+    const r = (await res.json()) as RelatorioMensal;
+    return r && r.mesISO ? { ...r, congelado: true } : null;
+  } catch {
+    return null; // Blob bloqueado/indisponível → sem snapshot (recompute ao vivo)
   }
-  return null;
 }
 
 /**
- * Congela um relatório (só se o mês estiver FECHADO). Retorna true se gravou.
- * Idempotente: se já existe snapshot, NÃO sobrescreve (o oficial é imutável).
+ * Congela um relatório (só mês FECHADO). Retorna true se gravou. Idempotente: não
+ * sobrescreve snapshot existente. Falha silenciosa se o Blob estiver bloqueado.
  */
 export async function congelarRelatorio(rel: RelatorioMensal, mesFechado: boolean): Promise<boolean> {
   if (!mesFechado) return false;
-  const existente = await edgeRead<RelatorioMensal>(`${PREFIXO}${rel.mesISO}`);
-  if (existente && typeof existente === "object" && existente.mesISO) return false; // já congelado
-  return edgeWrite(`${PREFIXO}${rel.mesISO}`, { ...rel, congelado: true });
+  try {
+    const existente = await lerSnapshot(rel.mesISO);
+    if (existente) return false; // já congelado — imutável
+    await put(`${PREFIXO}${rel.mesISO}.json`, JSON.stringify({ ...rel, congelado: true }), {
+      access: "public",
+      addRandomSuffix: false,
+      allowOverwrite: false,
+      contentType: "application/json",
+    });
+    return true;
+  } catch {
+    return false; // Blob bloqueado → não congela agora; recompute ao vivo cobre
+  }
 }
