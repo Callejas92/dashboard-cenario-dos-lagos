@@ -22,6 +22,7 @@ import { list, put } from "@vercel/blob";
 import { getAccessToken } from "@/lib/onedrive-marketing";
 import { getBonusTracking, setBonusPagamentosEmLote } from "@/lib/bonus";
 import { edgeRead, edgeWrite } from "@/lib/edge-store";
+import { setDatasVenda } from "@/lib/datas-venda";
 
 const GRAPH = "https://graph.microsoft.com/v1.0";
 const SYNC_STATE_BLOB = "cache/excel-bonus-sync.json";
@@ -45,6 +46,7 @@ export interface SyncReport {
   colunasStatus?: string;      // colunas de status detectadas (corretor/imob) — pelo header
   amostraHeader?: Record<string, string>; // headers das colunas U/V/W/X (inspeção)
   resumoStatus?: { pago: number; autorizado: number; aguardando: number }; // estado FINAL das células
+  datasVenda?: { comData: number; coluna: string }; // cobertura da coluna "Data Venda" (override de data)
   importarDoExcel?: string[];   // "pago" na célula ainda não marcado no dashboard (importa)
   desmarcarDoExcel?: string[];  // "pago" removido da célula → desmarca no dashboard
   importadosAplicados?: number; // quantos foram efetivamente aplicados nesta rodada
@@ -368,6 +370,10 @@ export async function syncBonusToExcel(opts: { dryRun?: boolean; force?: boolean
 
   // Coluna de DATA do pagamento do bônus (Felipe preenche). Se não existir, cria
   // DEPOIS de todas as colunas (header na linha de cabeçalho). Sem ela, cai em "hoje".
+  // Coluna "Data Venda" (Felipe preenche) — vira a data AUTORIDADE da venda (override do Eggs).
+  const colDataVenda = header.findIndex((h) => /data.*venda|venda.*data|dt.*venda/i.test(h));
+  const datasVendaMap: Record<string, string> = {};
+
   let colData = header.findIndex((h) => /(data|dt).*(pag|pgto)|b[oô]nus.*data|data.*b[oô]nus/i.test(h));
   if (colData < 0) {
     colData = header.length; // próxima coluna após todas
@@ -403,6 +409,9 @@ export async function syncBonusToExcel(opts: { dryRun?: boolean; force?: boolean
     const l = parseInt(lote, 10);
     if (quadra !== "" && lote !== "" && Number.isFinite(q) && Number.isFinite(l)) {
       const loteId = `Q${q}-L${l}`;
+      // Captura a "Data Venda" do Excel pra TODO lote (não só os de bônus) — vira a data autoridade.
+      const dVenda = colDataVenda >= 0 ? parseDataPgto(row[colDataVenda]) : "";
+      if (dVenda) datasVendaMap[loteId] = dVenda;
       const alvo = porLote.get(loteId);
       if (alvo) {
         casadas++;
@@ -476,11 +485,16 @@ export async function syncBonusToExcel(opts: { dryRun?: boolean; force?: boolean
     importarDoExcel: paraImportar.map((p) => `${p.loteId} (${p.parte})`),
     desmarcarDoExcel: paraDesmarcar.map((p) => `${p.loteId} (${p.parte})`),
     amostraHeader: { U: String(headerRow[20] ?? ""), V: String(headerRow[21] ?? ""), W: String(headerRow[22] ?? ""), X: String(headerRow[23] ?? "") },
+    datasVenda: { comData: Object.keys(datasVendaMap).length, coluna: colDataVenda >= 0 ? `${colLetter(colDataVenda)}(${colDataVenda})` : "(não encontrada)" },
     dryRun,
     mudou,
   };
 
   if (dryRun) return report;
+
+  // "Data Venda" do Excel vira a data autoridade da venda (override do Eggs, por lote).
+  // Roda SEMPRE (mesmo sem mudança de status) pra manter o mapa fresco.
+  await setDatasVenda(datasVendaMap).catch(() => {});
 
   if (mudou) {
     const primeira = PRIMEIRA_LINHA_DADOS + 1; // Excel 1-based

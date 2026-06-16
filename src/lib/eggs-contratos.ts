@@ -3,6 +3,7 @@
  * Exclui automaticamente contratos de lotes do investidor (Tio Ico)
  */
 import { getInvestorLots } from "@/lib/investor-lots";
+import { getDatasVenda } from "@/lib/datas-venda";
 
 const EGGS_API = "https://api.eggs.app/api/v1/PropostaContrato/Exportar";
 
@@ -249,6 +250,18 @@ export async function getContratosEggs(): Promise<ContratoEnriquecido[]> {
         },
       };
     });
+
+    // Override da DATA DA VENDA pela coluna "Data Venda" do Excel (autoridade do Felipe).
+    // Por lote: onde o Excel tem data, ela manda; senão mantém a do Eggs (data_contrato).
+    try {
+      const datasVenda = await getDatasVenda();
+      if (datasVenda.size > 0) {
+        for (const c of contratos) {
+          const ov = datasVenda.get(c.loteId);
+          if (ov) c.dataContrato = ov;
+        }
+      }
+    } catch { /* sem override → segue com a data do Eggs */ }
 
     cache = { data: contratos, timestamp: Date.now() };
     return contratos;
