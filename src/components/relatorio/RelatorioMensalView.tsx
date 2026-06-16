@@ -35,6 +35,7 @@ interface RelatorioResp { relatorio: Relatorio; fechado?: boolean; mesesDisponiv
 interface FinanceiroResp {
   inadimplencia?: { percentualInadimplencia: number; totalVencido: number; totalPago: number; qtdClientesInadimplentes: number; qtdParcelasVencidas: number };
 }
+interface RecebidoMensalResp { porMes?: Record<string, number>; total?: number; parcial?: boolean; vendas?: number }
 interface BonusResp { summary?: { aPagarAgora: number; pagoTotal: number; comprometidoTotal: number } }
 
 const PRINT_CSS = `@media print {
@@ -69,6 +70,7 @@ export default function RelatorioMensalView() {
   const { data, isLoading, error } = useSWR<RelatorioResp>(`/api/relatorio${qs}`);
   const { data: fin, error: finErr } = useSWR<FinanceiroResp>("/api/uau/financeiro");
   const { data: bonusData } = useSWR<BonusResp>("/api/bonus");
+  const { data: receb, error: recebErr } = useSWR<RecebidoMensalResp>("/api/uau/recebido-mensal");
 
   if (isLoading || !data) {
     return (
@@ -101,6 +103,7 @@ export default function RelatorioMensalView() {
   const inad = fin?.inadimplencia;
   const pctInad = inad?.percentualInadimplencia ?? null; // já em pontos percentuais (0.28 = 0,28%)
   const erpForaDoAr = !!finErr && !fin; // ERP UAU indisponível (504/erro)
+  const recebMes = receb?.porMes?.[r.mesISO] ?? null; // recebido no mês comercial selecionado
 
   return (
     <div id="relatorio-print" style={{ display: "flex", flexDirection: "column", gap: "1.25rem" }}>
@@ -221,10 +224,10 @@ export default function RelatorioMensalView() {
             contexto={erpForaDoAr ? "ERP UAU fora do ar agora — recarregue em instantes" : inad ? `${formatInt(inad.qtdClientesInadimplentes)} cliente(s) · ${formatInt(inad.qtdParcelasVencidas)} parcela(s)` : "lendo ERP UAU (pode levar até 60s)..."}
           />
           <KpiHero
-            label="Recebido acumulado"
-            valor={erpForaDoAr ? "indisponível" : inad ? formatBRLCompact(inad.totalPago) : "…"}
-            formula="Total já recebido das vendas (Mangaba), acumulado.\nO ERP não data pagamentos, então não há recorte mensal."
-            contexto={erpForaDoAr ? "ERP UAU fora do ar agora" : "acumulado (não mensal)"}
+            label="Recebido no mês"
+            valor={recebErr ? "indisponível" : recebMes === null ? "…" : formatBRLCompact(recebMes)}
+            formula={`Pagamentos de parcelas com data de recebimento dentro de ${r.periodo.label}.\nFonte: ERP UAU (Venda/BuscarParcelasRecebidas — Data_Rec).`}
+            contexto={recebErr ? "ERP UAU fora do ar agora" : receb?.total != null ? `recebido total (acum.): ${formatBRLCompact(receb.total)}${receb.parcial ? " · parcial" : ""}` : "somando recebimentos (pode levar ~30s)..."}
           />
           <KpiHero
             label="Bônus pago (acumulado)"
