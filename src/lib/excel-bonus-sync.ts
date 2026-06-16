@@ -109,6 +109,23 @@ function colLetter(idx: number): string {
   return s;
 }
 
+const COL_DATA_HEADER = "Data Pgto Bônus";
+
+/** Lê a célula de data de pagamento do Excel (serial number, dd/mm/aaaa ou ISO) → ISO yyyy-mm-dd ("" se vazia). */
+function parseDataPgto(v: unknown): string {
+  if (v == null || v === "") return "";
+  if (typeof v === "number" && v > 0) {
+    // serial do Excel (base 1899-12-30; 25569 dias até 1970-01-01)
+    const d = new Date(Math.round((v - 25569) * 86400 * 1000));
+    return Number.isNaN(d.getTime()) ? "" : d.toISOString().split("T")[0];
+  }
+  const s = String(v).trim();
+  const br = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/); // dd/mm/aaaa
+  if (br) { const y = br[3].length === 2 ? "20" + br[3] : br[3]; return `${y}-${br[2].padStart(2, "0")}-${br[1].padStart(2, "0")}`; }
+  const iso = s.match(/^(\d{4}-\d{2}-\d{2})/);
+  return iso ? iso[1] : "";
+}
+
 async function graph(token: string, url: string, init?: RequestInit): Promise<Record<string, unknown>> {
   const res = await fetch(url, {
     ...init,
@@ -349,6 +366,18 @@ export async function syncBonusToExcel(opts: { dryRun?: boolean; force?: boolean
   const colV = achaCol(/status.*corretor/i, COL_V);
   const colX = achaCol(/status.*imob/i, COL_X);
 
+  // Coluna de DATA do pagamento do bônus (Felipe preenche). Se não existir, cria
+  // DEPOIS de todas as colunas (header na linha de cabeçalho). Sem ela, cai em "hoje".
+  let colData = header.findIndex((h) => /(data|dt).*(pag|pgto)|b[oô]nus.*data|data.*b[oô]nus/i.test(h));
+  if (colData < 0) {
+    colData = header.length; // próxima coluna após todas
+    try {
+      await graph(token, `${wsPath}/range(address='${colLetter(colData)}${PRIMEIRA_LINHA_DADOS}')`, {
+        method: "PATCH", body: JSON.stringify({ values: [[COL_DATA_HEADER]] }),
+      });
+    } catch { /* se falhar, segue; usa "hoje" como fallback até a coluna existir */ }
+  }
+
   const novoV: unknown[][] = [];
   const novoX: unknown[][] = [];
   let casadas = 0, alteradas = 0, preservadas = 0;
@@ -356,7 +385,7 @@ export async function syncBonusToExcel(opts: { dryRun?: boolean; force?: boolean
   const orfaos: string[] = []; // células V/X de lote que saiu do bônus (venda desfeita) — limpar
   const orfaosLotes = new Set<string>();
   // Mão de volta Excel→dashboard: "pago" digitado pelo Felipe importa; apagado, desmarca.
-  type ParteImport = { chaveVenda: string; loteId: string; parte: "corretor" | "imobiliaria" };
+  type ParteImport = { chaveVenda: string; loteId: string; parte: "corretor" | "imobiliaria"; data: string };
   const paraImportar: ParteImport[] = [];
   const paraDesmarcar: ParteImport[] = [];
   let resumoPago = 0, resumoAut = 0, resumoAg = 0;
@@ -379,27 +408,33 @@ export async function syncBonusToExcel(opts: { dryRun?: boolean; force?: boolean
         casadas++;
         casadasLotes.add(loteId);
         const b = bonusPorLote.get(loteId);
+        const dPgto = parseDataPgto(row[colData]); // data digitada na coluna (ISO ou "")
         // "pago" na célula é do Felipe: preserva SEMPRE e importa pro dashboard se faltar.
         // (normaliza a caixa: "Pago"/"PAGO" do dropdown antigo vira "pago")
+        // Importa quando: ainda não pago OU a data da coluna mudou (correção da data real).
         if (isPago(curV)) {
           preservadas++;
           if (String(curV) !== "pago") nv = "pago";
-          if (b && !b.pagamento.pagoCorretora) paraImportar.push({ chaveVenda: b.chaveVenda, loteId, parte: "corretor" });
+          if (b && (!b.pagamento.pagoCorretora || (dPgto && dPgto !== b.pagamento.dataPagoCorretora))) {
+            paraImportar.push({ chaveVenda: b.chaveVenda, loteId, parte: "corretor", data: dPgto });
+          }
         } else {
           nv = alvo.v;
           // célula deixou de ser "pago": desmarca no dashboard SE a marcação veio do Excel
           if (b?.pagamento.pagoCorretora && (b.pagamento.observacao || "").includes("pago via Excel")) {
-            paraDesmarcar.push({ chaveVenda: b.chaveVenda, loteId, parte: "corretor" });
+            paraDesmarcar.push({ chaveVenda: b.chaveVenda, loteId, parte: "corretor", data: "" });
           }
         }
         if (isPago(curX)) {
           preservadas++;
           if (String(curX) !== "pago") nx = "pago";
-          if (b && !b.pagamento.pagoImobiliaria) paraImportar.push({ chaveVenda: b.chaveVenda, loteId, parte: "imobiliaria" });
+          if (b && (!b.pagamento.pagoImobiliaria || (dPgto && dPgto !== b.pagamento.dataPagoImobiliaria))) {
+            paraImportar.push({ chaveVenda: b.chaveVenda, loteId, parte: "imobiliaria", data: dPgto });
+          }
         } else {
           nx = alvo.x;
           if (b?.pagamento.pagoImobiliaria && (b.pagamento.observacao || "").includes("pago via Excel")) {
-            paraDesmarcar.push({ chaveVenda: b.chaveVenda, loteId, parte: "imobiliaria" });
+            paraDesmarcar.push({ chaveVenda: b.chaveVenda, loteId, parte: "imobiliaria", data: "" });
           }
         }
         if (nv !== curV) alteradas++;
@@ -472,8 +507,9 @@ export async function syncBonusToExcel(opts: { dryRun?: boolean; force?: boolean
     const hoje = new Date().toISOString().split("T")[0];
     for (const p of paraImportar) {
       const cur = patches.get(p.chaveVenda) || {};
-      if (p.parte === "corretor") { cur.pagoCorretora = true; cur.dataPagoCorretora = hoje; }
-      else { cur.pagoImobiliaria = true; cur.dataPagoImobiliaria = hoje; }
+      const d = p.data || hoje; // data digitada na coluna do Excel; senão, hoje (fallback)
+      if (p.parte === "corretor") { cur.pagoCorretora = true; cur.dataPagoCorretora = d; }
+      else { cur.pagoImobiliaria = true; cur.dataPagoImobiliaria = d; }
       cur.observacao = "pago via Excel";
       patches.set(p.chaveVenda, cur);
     }

@@ -16,28 +16,22 @@ export async function GET() {
   try {
     const token = await authenticate();
 
-    // Vários conjuntos de parâmetros — descobre o contrato pelo erro 400 ou pelo 200.
-    const tentativas: Record<string, unknown>[] = [
-      { empresa: 2, obra: "01VEN" },
-      { empresa: 2, obra: "01VEN", dataInicial: "01/01/2026", dataFinal: "31/12/2026" },
-      { empresa: 2, obra: "01VEN", dataInicio: "2026-01-01", dataFim: "2026-12-31" },
-      { empresa: 2, obra: "01VEN", dataInicialRecebimento: "01/01/2026", dataFinalRecebimento: "31/12/2026" },
-      { empresa: 2, obra: "01VEN", dataIni: "01/01/2026", dataFim: "31/12/2026" },
-      { codigoEmpresa: 2, codigoObra: "01VEN", dataInicial: "01/01/2026", dataFinal: "31/12/2026" },
-      { empresa: 2, obra: "01VEN", dataInicial: "2026-01-01", dataFinal: "2026-12-31", numeroVenda: 0 },
-    ];
-
+    // Contrato descoberto: {empresa, obra, num_ven}. Testa com vendas reais e dumpa estrutura.
     const resultados: unknown[] = [];
-    for (const params of tentativas) {
+    for (const numVen of [59, 52, 60]) {
       try {
-        const res = await uauFetch(token, EP, params, 15000);
-        // Sucesso! mostra estrutura do 1o registro de dado (achar campos de DATA)
+        const res = await uauFetch(token, EP, { empresa: 2, obra: "01VEN", num_ven: numVen }, 15000);
         const arr = Array.isArray(res) ? res : [];
-        const dataRow = arr.find((r) => r && typeof r === "object" && typeof (r as Record<string, unknown>).Empresa_prc !== "string");
-        const sample = dataRow || arr[1] || arr[0] || res;
-        resultados.push({ params: Object.keys(params), OK: true, total: Array.isArray(res) ? res.length : "n/a", campos: sample && typeof sample === "object" ? Object.keys(sample as object) : typeof sample });
+        // pula linha de schema (valores tipo "System.Int32...")
+        const dataRow = arr.find((r) => r && typeof r === "object" && Object.values(r as object).some((v) => typeof v === "number"));
+        const sample = (dataRow || arr[0]) as Record<string, unknown> | undefined;
+        // mostra campos + os que parecem DATA com um valor de exemplo
+        const campos = sample ? Object.keys(sample) : [];
+        const camposData: Record<string, unknown> = {};
+        if (sample) for (const k of campos) if (/dat|venc|pag|baixa|receb/i.test(k)) camposData[k] = sample[k];
+        resultados.push({ num_ven: numVen, OK: true, total: arr.length, campos, camposData });
       } catch (e) {
-        resultados.push({ params: Object.keys(params), OK: false, erro: (e instanceof Error ? e.message : String(e)).slice(0, 280) });
+        resultados.push({ num_ven: numVen, OK: false, erro: (e instanceof Error ? e.message : String(e)).slice(0, 200) });
       }
     }
     out.tentativas = resultados;
