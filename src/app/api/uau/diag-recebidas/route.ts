@@ -1,7 +1,6 @@
 /**
- * TEMPORÁRIO — investigação: o UAU expõe parcelas RECEBIDAS com data?
- * Usa a auth do app (que funciona). Retorna SÓ estrutura (chaves), sem PII.
- * REMOVER após a investigação.
+ * TEMPORÁRIO — descobrir os parâmetros de Venda/BuscarParcelasRecebidas (existe: 400).
+ * Usa a auth do app. Retorna estrutura + erros completos. REMOVER após investigar.
  */
 import { NextResponse } from "next/server";
 import { authenticate, uauFetch } from "@/lib/uau-auth";
@@ -10,71 +9,38 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
-function extractMyTable(raw: unknown): Record<string, unknown>[] {
-  if (Array.isArray(raw) && raw.length > 0 && (raw[0] as { MyTable?: unknown })?.MyTable) {
-    const table = (raw[0] as { MyTable?: unknown[] }).MyTable;
-    return Array.isArray(table) && table.length > 1 ? (table as Record<string, unknown>[]).slice(1) : [];
-  }
-  if (raw && typeof raw === "object" && "MyTable" in (raw as Record<string, unknown>)) {
-    const table = (raw as { MyTable?: unknown[] }).MyTable;
-    return Array.isArray(table) && table.length > 1 ? (table as Record<string, unknown>[]).slice(1) : [];
-  }
-  return [];
-}
-
-function keysOf(v: unknown): unknown {
-  if (Array.isArray(v)) return v.length && typeof v[0] === "object" ? { _array: v.length, itemKeys: Object.keys(v[0] as object) } : `array(${v.length})`;
-  if (v && typeof v === "object") return Object.keys(v as object);
-  return typeof v;
-}
+const EP = "Venda/BuscarParcelasRecebidas";
 
 export async function GET() {
   const out: Record<string, unknown> = {};
   try {
     const token = await authenticate();
-    const now = new Date();
-    const pad = (n: number) => String(n).padStart(2, "0");
-    const todayFormatted = `${pad(now.getMonth() + 1)}-${pad(now.getDate())}-${now.getFullYear()}`;
 
-    // 1) Pega um numVen real do espelho
-    const espelho = await uauFetch(token, "Espelho/BuscaUnidadesDeAcordoComWhereDetalhado", {
-      where: "WHERE Empresa_unid = 2 AND Vendido_unid = 1", retorna_venda: true, data_tabela_preco: todayFormatted,
-    }, 25000);
-    const rows = extractMyTable(espelho);
-    const numVen = rows.map((r) => Number(r.Num_Ven)).find((n) => n > 0) || 0;
-    out.numVenAmostra = numVen;
-
-    // 2) ConsultarResumoVenda — estrutura completa (procurar recebimentos com data)
-    try {
-      const resumo = await uauFetch(token, "Venda/ConsultarResumoVenda", {
-        codigoObra: "01VEN", codigoEmpresa: 2, numeroVenda: numVen,
-      }, 15000);
-      const r0 = (Array.isArray(resumo) ? resumo[0] : resumo) as Record<string, unknown>;
-      const nested: Record<string, unknown> = {};
-      for (const k of Object.keys(r0 || {})) nested[k] = keysOf(r0[k]);
-      out.resumoVenda = { topKeys: Object.keys(r0 || {}), detalhe: nested };
-    } catch (e) {
-      out.resumoVendaErro = (e instanceof Error ? e.message : String(e)).slice(0, 200);
-    }
-
-    // 3) Sonda endpoints candidatos pra parcelas recebidas/baixas com data
-    const cands = [
-      "Venda/BuscarParcelasRecebidas", "Venda/ConsultarParcelasRecebidas",
-      "Venda/BuscarBaixasParcela", "Venda/BuscarParcelasPagas", "Venda/ConsultarBaixas",
-      "Venda/ConsultarParcelasVenda", "Venda/BuscarParcelasGeral", "Financeiro/BuscarRecebimentos",
-      "Boleto/ConsultarBaixas", "Venda/ConsultarExtratoVenda",
+    // Vários conjuntos de parâmetros — descobre o contrato pelo erro 400 ou pelo 200.
+    const tentativas: Record<string, unknown>[] = [
+      { empresa: 2, obra: "01VEN" },
+      { empresa: 2, obra: "01VEN", dataInicial: "01/01/2026", dataFinal: "31/12/2026" },
+      { empresa: 2, obra: "01VEN", dataInicio: "2026-01-01", dataFim: "2026-12-31" },
+      { empresa: 2, obra: "01VEN", dataInicialRecebimento: "01/01/2026", dataFinalRecebimento: "31/12/2026" },
+      { empresa: 2, obra: "01VEN", dataIni: "01/01/2026", dataFim: "31/12/2026" },
+      { codigoEmpresa: 2, codigoObra: "01VEN", dataInicial: "01/01/2026", dataFinal: "31/12/2026" },
+      { empresa: 2, obra: "01VEN", dataInicial: "2026-01-01", dataFinal: "2026-12-31", numeroVenda: 0 },
     ];
-    const probes: Record<string, unknown> = {};
-    for (const ep of cands) {
+
+    const resultados: unknown[] = [];
+    for (const params of tentativas) {
       try {
-        const res = await uauFetch(token, ep, { empresa: 2, obra: "01VEN", codigoEmpresa: 2, codigoObra: "01VEN", numeroVenda: numVen }, 12000);
-        const r0 = Array.isArray(res) ? res[0] : res;
-        probes[ep] = { existe: true, amostra: keysOf(r0) };
+        const res = await uauFetch(token, EP, params, 15000);
+        // Sucesso! mostra estrutura do 1o registro de dado (achar campos de DATA)
+        const arr = Array.isArray(res) ? res : [];
+        const dataRow = arr.find((r) => r && typeof r === "object" && typeof (r as Record<string, unknown>).Empresa_prc !== "string");
+        const sample = dataRow || arr[1] || arr[0] || res;
+        resultados.push({ params: Object.keys(params), OK: true, total: Array.isArray(res) ? res.length : "n/a", campos: sample && typeof sample === "object" ? Object.keys(sample as object) : typeof sample });
       } catch (e) {
-        probes[ep] = { existe: false, msg: (e instanceof Error ? e.message : String(e)).slice(0, 90) };
+        resultados.push({ params: Object.keys(params), OK: false, erro: (e instanceof Error ? e.message : String(e)).slice(0, 280) });
       }
     }
-    out.probes = probes;
+    out.tentativas = resultados;
   } catch (e) {
     out.erroGeral = e instanceof Error ? e.message : String(e);
   }
