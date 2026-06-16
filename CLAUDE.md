@@ -57,12 +57,14 @@ eram 134KB) e a Vercel **bloqueou o store** ("Your store is blocked", 403 em tod
 Causa: cache-busters `?_=${Date.now()}` furavam o CDN → cada leitura virava operação cobrada.
 
 - **Edge Config** (`cenario-dados` / `ecfg_s4wortserxkvw6qd2hgxvoo9hw2q`) via `src/lib/edge-store.ts`:
-  estado durável PEQUENO que não pode sumir — `onedrive_token`, `eventos`, `investor_lots`,
-  `pix`, `bonus_payments`, `excel_sync_state`. Leitura grátis/ilimitada na borda (**imune ao
-  bloqueio do Blob**). Escrita = REST API (precisa `VERCEL_API_TOKEN` + `EDGE_CONFIG_ID` +
-  `VERCEL_TEAM_ID`). **Teto ~8KB/item** — `bonus_payments` cabe hoje (~3KB), vigiar perto de ~120 vendas.
-- **Vercel Blob** (`dashboard-metrics`): só CACHE recomputável (tracking, canais, crm, uau-vendas)
-  + `inadimplencia-historico` + `bonus-notificados`. Bloqueável; tolerar (recomputa).
+  estado durável PEQUENO que não pode sumir — `onedrive_token`, `bonus_payments`, `excel_sync_state`.
+  Leitura grátis/ilimitada na borda (**imune ao bloqueio do Blob**). Escrita = REST API (precisa
+  `VERCEL_API_TOKEN` + `EDGE_CONFIG_ID` + `VERCEL_TEAM_ID`).
+  **⚠ Teto é TOTAL ~8KB (não por-item)** — soma de TODAS as chaves. `bonus_payments` cresce (~3KB
+  @52 vendas) e vai eventualmente precisar migrar pro Blob. NÃO pôr coisa que cresce/multiplica aqui.
+- **Vercel Blob** (`dashboard-metrics`): CACHE recomputável (tracking, canais, crm, uau-vendas) +
+  `inadimplencia-historico` + `bonus-notificados` + **snapshots do relatório mensal** (`relatorio/YYYY-MM.json`).
+  É o lar do que CRESCE/multiplica. Bloqueável; tolerar (recomputa / congela quando voltar).
 - **Padrão**: ler Edge-primeiro com fallback Blob; escrever Edge-through com fallback Blob.
 
 ## Pegadinhas que já causaram bug (não repetir)
