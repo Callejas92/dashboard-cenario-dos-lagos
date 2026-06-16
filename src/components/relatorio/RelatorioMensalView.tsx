@@ -27,7 +27,7 @@ interface Relatorio {
   acumulado: { lotes: number; vgv: number; vgvTotal: number; pctVendido: number; vso: number; vsoEsperado: number; vsoSeveridade: Severidade; ritmoMedioLotesMes: number; mesesParaTermino: number | null; projecaoTerminoISO: string | null; lotesRestantes: number };
   rankingCorretores: RankingItem[];
   rankingImobiliarias: RankingItem[];
-  auditoriaDatas: { loteId: string; cliente: string; dataContrato: string; dataEmissao: string }[];
+  auditoriaDatas: { loteId: string; cliente: string; dataContrato: string; dataEmissao: string; divergente: boolean }[];
 }
 interface MesDisp { mesISO: string; labelCurto: string; label: string; fechado: boolean }
 interface RelatorioResp { relatorio: Relatorio; fechado?: boolean; mesesDisponiveis: MesDisp[]; error?: string }
@@ -35,8 +35,7 @@ interface RelatorioResp { relatorio: Relatorio; fechado?: boolean; mesesDisponiv
 interface FinanceiroResp {
   inadimplencia?: { percentualInadimplencia: number; totalVencido: number; totalPago: number; qtdClientesInadimplentes: number; qtdParcelasVencidas: number };
 }
-interface BonusEntry { autorizado: boolean; cancelado: boolean; valorCorretora: number; valorImobiliaria: number; pagamento: { pagoCorretora: boolean; dataPagoCorretora: string; pagoImobiliaria: boolean; dataPagoImobiliaria: string } }
-interface BonusResp { bonus?: BonusEntry[]; summary?: { aPagarAgora: number; pagoTotal: number; comprometidoTotal: number } }
+interface BonusResp { summary?: { aPagarAgora: number; pagoTotal: number; comprometidoTotal: number } }
 
 const PRINT_CSS = `@media print {
   body * { visibility: hidden !important; }
@@ -68,7 +67,7 @@ export default function RelatorioMensalView() {
 
   const qs = mesSel ? `?mes=${mesSel}` : "";
   const { data, isLoading, error } = useSWR<RelatorioResp>(`/api/relatorio${qs}`);
-  const { data: fin } = useSWR<FinanceiroResp>("/api/uau/financeiro");
+  const { data: fin, error: finErr } = useSWR<FinanceiroResp>("/api/uau/financeiro");
   const { data: bonusData } = useSWR<BonusResp>("/api/bonus");
 
   if (isLoading || !data) {
@@ -95,16 +94,13 @@ export default function RelatorioMensalView() {
       ? { txt: "FECHADO · ao vivo", sev: "amarelo" as Severidade }
       : { txt: "EM CURSO · ao vivo", sev: "cinza" as Severidade };
 
-  // ── Bônus pago DENTRO do mês comercial (datas de pagamento) ──
-  const ini = r.periodo.inicioISO, fim = r.periodo.fimISO;
-  let bonusPagoMes = 0;
-  for (const b of bonusData?.bonus || []) {
-    if (b.cancelado) continue;
-    if (b.pagamento?.pagoCorretora && b.pagamento.dataPagoCorretora >= ini && b.pagamento.dataPagoCorretora <= fim) bonusPagoMes += b.valorCorretora || 0;
-    if (b.pagamento?.pagoImobiliaria && b.pagamento.dataPagoImobiliaria >= ini && b.pagamento.dataPagoImobiliaria <= fim) bonusPagoMes += b.valorImobiliaria || 0;
-  }
+  // Bônus: acumulado + a pagar (o Excel não guarda a data real do pagamento, então
+  // não dá pra recortar "pago no mês" com honestidade — mostramos acumulado).
+  const bonusPagoAcum = bonusData?.summary?.pagoTotal ?? null;
+  const bonusAPagar = bonusData?.summary?.aPagarAgora ?? null;
   const inad = fin?.inadimplencia;
   const pctInad = inad?.percentualInadimplencia ?? null; // já em pontos percentuais (0.28 = 0,28%)
+  const erpForaDoAr = !!finErr && !fin; // ERP UAU indisponível (504/erro)
 
   return (
     <div id="relatorio-print" style={{ display: "flex", flexDirection: "column", gap: "1.25rem" }}>
@@ -219,59 +215,67 @@ export default function RelatorioMensalView() {
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "0.875rem" }}>
           <KpiHero
             label="Inadimplência atual"
-            valor={pctInad === null ? "…" : `${formatNum(pctInad, 2)}%`}
-            severidade={pctInad === null ? "cinza" : corInadimplencia(pctInad / 100)}
+            valor={erpForaDoAr ? "indisponível" : pctInad === null ? "…" : `${formatNum(pctInad, 2)}%`}
+            severidade={erpForaDoAr ? "cinza" : pctInad === null ? "cinza" : corInadimplencia(pctInad / 100)}
             formula="Parcelas vencidas / total a receber (estado de hoje).\nFonte: ERP UAU."
-            contexto={inad ? `${formatInt(inad.qtdClientesInadimplentes)} cliente(s) · ${formatInt(inad.qtdParcelasVencidas)} parcela(s)` : "lendo ERP UAU..."}
+            contexto={erpForaDoAr ? "ERP UAU fora do ar agora — recarregue em instantes" : inad ? `${formatInt(inad.qtdClientesInadimplentes)} cliente(s) · ${formatInt(inad.qtdParcelasVencidas)} parcela(s)` : "lendo ERP UAU (pode levar até 60s)..."}
           />
           <KpiHero
             label="Recebido acumulado"
-            valor={inad ? formatBRLCompact(inad.totalPago) : "…"}
+            valor={erpForaDoAr ? "indisponível" : inad ? formatBRLCompact(inad.totalPago) : "…"}
             formula="Total já recebido das vendas (Mangaba), acumulado.\nO ERP não data pagamentos, então não há recorte mensal."
-            contexto="acumulado (não mensal)"
+            contexto={erpForaDoAr ? "ERP UAU fora do ar agora" : "acumulado (não mensal)"}
           />
           <KpiHero
-            label="Bônus pago no mês"
-            valor={formatBRLCompact(bonusPagoMes)}
-            formula={`Bônus com data de pagamento dentro de ${r.periodo.label}.\nR$ 3.000 corretora + R$ 1.000 imobiliária.`}
-            contexto={bonusData?.summary ? `autorizado a pagar agora: ${formatBRLCompact(bonusData.summary.aPagarAgora)}` : ""}
+            label="Bônus pago (acumulado)"
+            valor={bonusPagoAcum === null ? "…" : formatBRLCompact(bonusPagoAcum)}
+            formula={"Total de bônus baixado como pago, acumulado.\nFonte: você digita \"pago\" na célula do Excel → o dashboard importa.\nO Excel não guarda a DATA do pagamento, então não há recorte mensal confiável."}
+            contexto={bonusAPagar !== null ? `a pagar agora: ${formatBRLCompact(bonusAPagar)}` : ""}
           />
         </div>
       </div>
 
-      {/* ── SEÇÃO 5 — Auditoria de datas (só aparece se houver divergência) ── */}
-      {auditoria.length > 0 && (
-        <div className="rel-secao" style={{ ...card, borderColor: cor("amarelo").value, background: cor("amarelo").bg }}>
-          <div style={{ ...secaoTitulo, color: cor("amarelo").value, marginBottom: "0.5rem" }}>
-            ⚠ Auditoria de datas — {auditoria.length} contrato(s) pra conferir no Eggs
-          </div>
-          <div style={{ fontSize: "0.78rem", color: "var(--text-muted)", marginBottom: "0.75rem" }}>
-            Nestes contratos a <strong>data do contrato</strong> e a <strong>data de emissão</strong> caem em meses comerciais
-            diferentes — então a escolha da data muda em qual mês a venda entra. Confira se a <code>data_contrato</code> no Eggs
-            é a <strong>data em que o comprador assinou</strong>.
-          </div>
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.78rem" }}>
-            <thead>
-              <tr style={{ color: "var(--text-dim)", textAlign: "left" }}>
-                <th style={{ padding: "0.3rem 0", fontWeight: 600 }}>Lote</th>
-                <th style={{ padding: "0.3rem 0", fontWeight: 600 }}>Cliente</th>
-                <th style={{ padding: "0.3rem 0", fontWeight: 600, textAlign: "right" }}>Data contrato</th>
-                <th style={{ padding: "0.3rem 0", fontWeight: 600, textAlign: "right" }}>Data emissão</th>
-              </tr>
-            </thead>
-            <tbody>
-              {auditoria.map((a, i) => (
-                <tr key={a.loteId + i} style={{ borderTop: "1px solid var(--border)" }}>
-                  <td style={{ padding: "0.4rem 0", fontWeight: 600 }}>{a.loteId}</td>
-                  <td style={{ padding: "0.4rem 0" }}>{a.cliente || "—"}</td>
-                  <td style={{ padding: "0.4rem 0", textAlign: "right" }}>{formatData(a.dataContrato)}</td>
-                  <td style={{ padding: "0.4rem 0", textAlign: "right", color: "var(--text-muted)" }}>{formatData(a.dataEmissao)}</td>
+      {/* ── SEÇÃO 5 — Datas das vendas (conferência) ── */}
+      {auditoria.length > 0 && (() => {
+        const divergentes = auditoria.filter((a) => a.divergente).length;
+        return (
+          <div className="rel-secao" style={card}>
+            <div style={secaoTitulo}>5 · Datas das vendas (conferência)</div>
+            <div style={{ fontSize: "0.78rem", color: "var(--text-muted)", marginBottom: "0.75rem" }}>
+              Todas as vendas que tocam o mês, com <strong>data do contrato</strong> e <strong>data de emissão</strong>.
+              {divergentes > 0 ? (
+                <> <strong style={{ color: cor("amarelo").value }}>{divergentes} em destaque</strong> têm as duas datas em
+                meses comerciais diferentes — a escolha da data muda em que mês a venda entra. Confira se a <code>data_contrato</code>
+                no Eggs é a <strong>data em que o comprador assinou</strong>.</>
+              ) : (
+                <> Nenhuma divergência de mês — todas batem.</>
+              )}
+            </div>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.78rem" }}>
+              <thead>
+                <tr style={{ color: "var(--text-dim)", textAlign: "left" }}>
+                  <th style={{ padding: "0.3rem 0.4rem", fontWeight: 600 }}>Lote</th>
+                  <th style={{ padding: "0.3rem 0.4rem", fontWeight: 600 }}>Cliente</th>
+                  <th style={{ padding: "0.3rem 0.4rem", fontWeight: 600, textAlign: "right" }}>Data contrato</th>
+                  <th style={{ padding: "0.3rem 0.4rem", fontWeight: 600, textAlign: "right" }}>Data emissão</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+              </thead>
+              <tbody>
+                {auditoria.map((a, i) => (
+                  <tr key={a.loteId + i} style={{ borderTop: "1px solid var(--border)", background: a.divergente ? cor("amarelo").bg : undefined }}>
+                    <td style={{ padding: "0.4rem", fontWeight: 600 }}>
+                      {a.divergente && <span title="datas em meses diferentes" style={{ color: cor("amarelo").value }}>⚠ </span>}{a.loteId}
+                    </td>
+                    <td style={{ padding: "0.4rem" }}>{a.cliente || "—"}</td>
+                    <td style={{ padding: "0.4rem", textAlign: "right" }}>{formatData(a.dataContrato)}</td>
+                    <td style={{ padding: "0.4rem", textAlign: "right", color: "var(--text-muted)" }}>{formatData(a.dataEmissao)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        );
+      })()}
 
       {/* ── Rodapé ── */}
       <div style={{ fontSize: "0.7rem", color: "var(--text-dim)", textAlign: "right", marginTop: "0.5rem" }}>
