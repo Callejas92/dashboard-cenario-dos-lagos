@@ -93,7 +93,10 @@ export async function GET(req: Request) {
         if (r.status !== "fulfilled") { falhas++; continue; }
         const arr = getRecebidas(r.value);
         for (const p of arr) {
-          const valor = Number(p.Valor_Rec); // schema row vem como string → NaN, ignorada
+          // ValorConf_Rec = valor CONFIRMADO recebido (Valor_Rec vem 0). + correção/juros/multa
+          // confirmados (cash total que entrou). Schema row vem string → NaN → ignorada.
+          const valor = Number(p.ValorConf_Rec) + (Number(p.VlCorrecaoConf_Rec) || 0)
+            + (Number(p.VlMultaConf_Rec) || 0) + (Number(p.VlJurosConf_Rec) || 0) + (Number(p.VlJurosParcConf_Rec) || 0);
           if (!Number.isFinite(valor) || valor === 0) continue;
           const iso = parseDataRec(p.Data_Rec);
           if (!iso) continue;
