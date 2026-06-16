@@ -26,6 +26,13 @@ function extractMyTable(raw: unknown): Record<string, unknown>[] {
   return Array.isArray(table) && table.length > 1 ? (table as Record<string, unknown>[]).slice(1) : [];
 }
 
+/** A resposta de BuscarParcelasRecebidas é [{Recebidas:[schemaRow, ...dados]}]. Desempacota a lista de dados. */
+function getRecebidas(raw: unknown): Record<string, unknown>[] {
+  const top = (Array.isArray(raw) ? raw[0] : raw) as { Recebidas?: unknown[] } | undefined;
+  const arr = top?.Recebidas;
+  return Array.isArray(arr) ? (arr as Record<string, unknown>[]) : [];
+}
+
 /** Data_Rec do UAU (ISO, dd/mm/aaaa ou /Date(ms)/) → ISO yyyy-mm-dd. */
 function parseDataRec(v: unknown): string {
   if (!v) return "";
@@ -66,15 +73,10 @@ export async function GET(req: Request) {
 
     if (debug) {
       const amostras: unknown[] = [];
-      for (const v of vendas.slice(0, 4)) {
-        const raw = await uauFetch(token, "Venda/BuscarParcelasRecebidas", { empresa: 2, obra: "01VEN", num_ven: v.num }, 15000) as Record<string, unknown>;
-        const rec = (raw?.Recebidas as unknown[]) || [];
-        amostras.push({
-          num: v.num, id: v.id, topKeys: Object.keys(raw || {}),
-          recebidasLen: rec.length,
-          row1: rec[1] ?? null, // primeira linha de DADO (row0 = schema)
-          row0type: rec[0] ? typeof (rec[0] as Record<string, unknown>).Valor_Rec : "n/a",
-        });
+      for (const v of vendas.slice(0, 5)) {
+        const raw = await uauFetch(token, "Venda/BuscarParcelasRecebidas", { empresa: 2, obra: "01VEN", num_ven: v.num }, 15000);
+        const rec = getRecebidas(raw);
+        amostras.push({ num: v.num, id: v.id, recebidasLen: rec.length, row1: rec[1] ?? null });
       }
       return NextResponse.json({ debug: true, totalVendas: vendas.length, amostras });
     }
@@ -89,9 +91,8 @@ export async function GET(req: Request) {
       );
       for (const r of res) {
         if (r.status !== "fulfilled") { falhas++; continue; }
-        const wrap = r.value as { Recebidas?: unknown[] };
-        const arr = Array.isArray(wrap?.Recebidas) ? wrap.Recebidas : [];
-        for (const p of arr as Record<string, unknown>[]) {
+        const arr = getRecebidas(r.value);
+        for (const p of arr) {
           const valor = Number(p.Valor_Rec); // schema row vem como string → NaN, ignorada
           if (!Number.isFinite(valor) || valor === 0) continue;
           const iso = parseDataRec(p.Data_Rec);
