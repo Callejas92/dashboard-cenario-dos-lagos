@@ -75,7 +75,9 @@ export default function VendasPorDia() {
 
   const totalLotes = vendas.length;
   const melhorDia = dias.reduce<DiaPonto>((m, d) => (d.vendas > m.vendas ? d : m), dias[0] || { dia: "", vendas: 0, valor: 0 });
-  const eventos = (evData?.eventos ?? EVENTOS_MARKETING).filter((e) => dias.some((d) => d.dia === e.data));
+  const eventos = (evData?.eventos ?? EVENTOS_MARKETING)
+    .filter((e) => dias.some((d) => d.dia === e.data))
+    .sort((a, b) => a.data.localeCompare(b.data));
   const tickInterval = Math.max(1, Math.ceil(dias.length / 6));
   const yMax = Math.max(...dias.map((d) => d.vendas), 1) + 1;
 
@@ -129,20 +131,31 @@ export default function VendasPorDia() {
                   );
                 }}
               />
-              {/* Eventos (linhas verticais) */}
-              {eventos.map((e) => (
+              {/* Eventos (linhas verticais) — número no topo; nome na legenda abaixo */}
+              {eventos.map((e, i) => (
                 <ReferenceLine
                   key={`${e.data}-${e.nome}`}
                   x={e.data}
                   stroke={COR_TIPO_EVENTO[e.tipo || "outro"]}
                   strokeDasharray="4 3"
                   strokeWidth={1.25}
-                  label={{ value: e.nome, position: "top", fontSize: 9, fill: COR_TIPO_EVENTO[e.tipo || "outro"] }}
+                  label={{ value: String(i + 1), position: "top", fontSize: 11, fontWeight: 700, fill: COR_TIPO_EVENTO[e.tipo || "outro"] }}
                 />
               ))}
               <Line type="linear" dataKey="vendas" stroke={COR_REAL} strokeWidth={2} dot={false} activeDot={{ r: 4 }} />
             </LineChart>
           </ResponsiveContainer>
+        </div>
+      )}
+
+      {eventos.length > 0 && (
+        <div style={{ display: "flex", flexWrap: "wrap", gap: "0.35rem 0.9rem", marginTop: "0.6rem" }}>
+          {eventos.map((e, i) => (
+            <span key={`leg-${e.data}-${e.nome}`} style={{ display: "inline-flex", alignItems: "center", gap: "0.3rem", fontSize: "0.72rem", color: "var(--text-muted)" }}>
+              <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 16, height: 16, borderRadius: "9999px", background: COR_TIPO_EVENTO[e.tipo || "outro"], color: "#fff", fontSize: "0.62rem", fontWeight: 700, flexShrink: 0 }}>{i + 1}</span>
+              {e.nome}
+            </span>
+          ))}
         </div>
       )}
 

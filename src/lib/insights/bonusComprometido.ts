@@ -12,6 +12,7 @@ export interface DadosBonus {
   qtdPagoTotal: number;     // bônus já pagos
   aPagarAgora: number;      // R$ a pagar
   pagoTotal: number;        // R$ já pago
+  completo: boolean;        // false = ERP UAU parcial → qtdAPagar pode estar SUBcontado
 }
 
 export function calcularBonusComprometido(dados: DadosBonus): Insight | null {
@@ -28,6 +29,10 @@ export function calcularBonusComprometido(dados: DadosBonus): Insight | null {
       prioridade: 70,
     };
   }
+
+  // qtdAPagar === 0: só afirma "nenhum pendente" com dado COMPLETO. Com ERP parcial,
+  // qtdAPagar pode estar subcontado (autorizado não confirmado) → não dar positivo falso.
+  if (!dados.completo) return null;
 
   if (dados.qtdPagoTotal > 0) {
     return {

@@ -32,6 +32,7 @@ interface MarketingResp {
   fetchedAt?: string;
 }
 interface BonusResp {
+  completo?: boolean;
   summary?: {
     qtdAPagar?: number;
     qtdPagoTotal?: number;
@@ -134,6 +135,7 @@ export default function BlocoInsights() {
         qtdPagoTotal: bonus.summary.qtdPagoTotal ?? 0,
         aPagarAgora: bonus.summary.aPagarAgora ?? 0,
         pagoTotal: bonus.summary.pagoTotal ?? 0,
+        completo: bonus.completo ?? false,
       }),
     );
   }
