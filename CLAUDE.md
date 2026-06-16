@@ -48,7 +48,13 @@ src/lib/server-auth.ts         # Bearer obrigatório em POST/DELETE de escrita
   apagado — só os vindos do Excel). Dashboard = acompanhamento; Excel = registro do pago.
 - **Lotes do investidor (39)** ficam fora de tudo — lista editável via `/api/investor-lots`.
 - Excel Comercial (OneDrive): o dashboard escreve SÓ as colunas de status de bônus
-  (hoje U=corretor, V=imob — detectadas pelo cabeçalho).
+  (hoje U=corretor, V=imob — detectadas pelo cabeçalho). Coluna **W = "Data Pgto Bônus"**
+  (criada pelo sync): Felipe digita a data real do pagamento; o sync lê e usa como
+  dataPago (senão cai em "hoje"). Mês comercial 15→14 em `utils/mesComercial.ts`.
+- **Recebido por mês**: `/api/uau/recebido-mensal` soma `ValorConf_Rec` por mês comercial
+  da `Data_Rec` (endpoint `Venda/BuscarParcelasRecebidas {empresa,obra,num_ven}` — resposta
+  vem `[{Recebidas:[schemaRow,...dados]}]`; `Valor_Rec` vem 0, o valor real é `ValorConf_Rec`,
+  validado == `ConsultarResumoVenda.valorTotalRecebido`). 1 chamada/venda, cache 30min.
 
 ## Storage: Edge Config (durável pequeno) + Vercel Blob (cache)
 
