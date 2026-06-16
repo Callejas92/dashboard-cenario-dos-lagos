@@ -44,9 +44,10 @@ function chaveMes(iso: string): string {
   return `${mc.inicio.getFullYear()}-${String(mc.inicio.getMonth() + 1).padStart(2, "0")}`;
 }
 
-export async function GET() {
+export async function GET(req: Request) {
   if (!isUauConfigured()) return NextResponse.json({ error: "UAU não configurado" }, { status: 503 });
-  if (cache && Date.now() - cache.ts < TTL) return NextResponse.json(cache.data);
+  const debug = new URL(req.url).searchParams.get("debug") === "1";
+  if (!debug && cache && Date.now() - cache.ts < TTL) return NextResponse.json(cache.data);
 
   try {
     const token = await authenticate();
@@ -62,6 +63,21 @@ export async function GET() {
     const vendas = extractMyTable(espelho)
       .map((r) => ({ num: Number(r.Num_Ven) || 0, id: String(r.Identificador_unid || "") }))
       .filter((v) => v.num > 0 && !INVESTOR.has(v.id));
+
+    if (debug) {
+      const amostras: unknown[] = [];
+      for (const v of vendas.slice(0, 4)) {
+        const raw = await uauFetch(token, "Venda/BuscarParcelasRecebidas", { empresa: 2, obra: "01VEN", num_ven: v.num }, 15000) as Record<string, unknown>;
+        const rec = (raw?.Recebidas as unknown[]) || [];
+        amostras.push({
+          num: v.num, id: v.id, topKeys: Object.keys(raw || {}),
+          recebidasLen: rec.length,
+          row1: rec[1] ?? null, // primeira linha de DADO (row0 = schema)
+          row0type: rec[0] ? typeof (rec[0] as Record<string, unknown>).Valor_Rec : "n/a",
+        });
+      }
+      return NextResponse.json({ debug: true, totalVendas: vendas.length, amostras });
+    }
 
     const porMes: Record<string, number> = {};
     let total = 0, falhas = 0, pagamentos = 0;
