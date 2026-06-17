@@ -66,8 +66,10 @@ Causa: cache-busters `?_=${Date.now()}` furavam o CDN → cada leitura virava op
   estado durável PEQUENO que não pode sumir — `onedrive_token`, `bonus_payments`, `excel_sync_state`.
   Leitura grátis/ilimitada na borda (**imune ao bloqueio do Blob**). Escrita = REST API (precisa
   `VERCEL_API_TOKEN` + `EDGE_CONFIG_ID` + `VERCEL_TEAM_ID`).
-  **⚠ Teto é TOTAL ~8KB (não por-item)** — soma de TODAS as chaves. `bonus_payments` cresce (~3KB
-  @52 vendas) e vai eventualmente precisar migrar pro Blob. NÃO pôr coisa que cresce/multiplica aqui.
+  **⚠ Teto é TOTAL ~8KB (não por-item)** — soma de TODAS as chaves. `bonus_payments` e `datas_venda`
+  CRESCEM com as vendas. **Auto-migração armada** (`lib/durable-store.ts`): gravam Blob-primeiro; quando
+  o Blob desbloquear, o 1º save migra pro Blob e APAGA a chave do Edge (cron diário dá um empurrão).
+  Enquanto o Blob está 403, ficam no Edge. Pós-migração o Edge fica só com `onedrive_token` + `excel_sync_state`.
 - **Vercel Blob** (`dashboard-metrics`): CACHE recomputável (tracking, canais, crm, uau-vendas) +
   `inadimplencia-historico` + `bonus-notificados` + **snapshots do relatório mensal** (`relatorio/YYYY-MM.json`).
   É o lar do que CRESCE/multiplica. Bloqueável; tolerar (recomputa / congela quando voltar).
