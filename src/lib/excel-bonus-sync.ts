@@ -20,7 +20,7 @@
  */
 import { list, put } from "@vercel/blob";
 import { getAccessToken } from "@/lib/onedrive-marketing";
-import { getBonusTracking, setBonusPagamentosEmLote } from "@/lib/bonus";
+import { getBonusTracking, setBonusPagamentosEmLote, getBaseImportacao } from "@/lib/bonus";
 import { edgeRead, edgeWrite } from "@/lib/edge-store";
 import { setDatasVenda } from "@/lib/datas-venda";
 
@@ -47,6 +47,7 @@ export interface SyncReport {
   amostraHeader?: Record<string, string>; // headers das colunas U/V/W/X (inspeção)
   resumoStatus?: { pago: number; autorizado: number; aguardando: number }; // estado FINAL das células
   datasVenda?: { comData: number; coluna: string }; // cobertura da coluna "Data Venda" (override de data)
+  statusEscrito?: boolean; // status/cores escritos no Excel (precisa UAU completo); import roda mesmo se false
   importarDoExcel?: string[];   // "pago" na célula ainda não marcado no dashboard (importa)
   desmarcarDoExcel?: string[];  // "pago" removido da célula → desmarca no dashboard
   importadosAplicados?: number; // quantos foram efetivamente aplicados nesta rodada
@@ -336,20 +337,25 @@ export async function syncBonusToExcel(opts: { dryRun?: boolean; force?: boolean
     }
   }
 
-  const tracking = await getBonusTracking();
-  if (!tracking.completo) return { ok: false, motivo: "dado de bônus incompleto (UAU) — sync adiado" };
+  // BASE DA IMPORTAÇÃO (RÁPIDA, só Eggs+pagamentos — SEM UAU): permite importar o "pago"
+  // do Excel pro dashboard mesmo com o ERP fora/lento. É o que MAIS importa.
+  const bonusPorLote = await getBaseImportacao();
 
-  // loteId → status desejado POR COLUNA (corretor/imob). O dashboard escreve SÓ
-  // aguardando/autorizado — "pago" é do Felipe (lido da célula, nunca escrito).
-  // Defensivo: um cache de tracking antigo pode não ter "autorizado". Sem o campo, não
-  // escreve aquele lote (evita marcar tudo "aguardando" por engano até revalidar).
+  // STATUS (autorizado/aguardando) precisa do UAU (regra 1,5%) — é BEST-EFFORT. Se o ERP
+  // estiver fora/lento, NÃO escreve status de volta no Excel, mas a importação roda igual.
   const porLote = new Map<string, { v: string; x: string }>();
-  const bonusPorLote = new Map(tracking.bonus.map((b) => [b.loteId, b]));
-  for (const b of tracking.bonus) {
-    if (typeof b.autorizado !== "boolean") continue;
-    const base = b.autorizado ? AUTORIZADO_TXT : AGUARDANDO_TXT;
-    porLote.set(b.loteId, { v: base, x: base });
-  }
+  let statusOk = false;
+  try {
+    const tracking = await getBonusTracking();
+    if (tracking.completo) {
+      statusOk = true;
+      for (const b of tracking.bonus) {
+        if (typeof b.autorizado !== "boolean") continue;
+        const base = b.autorizado ? AUTORIZADO_TXT : AGUARDANDO_TXT;
+        porLote.set(b.loteId, { v: base, x: base });
+      }
+    }
+  } catch { /* ERP fora → status não escrito; import segue */ }
 
   const token = await getAccessToken();
   const fileId = await resolveComercialFileId(token);
@@ -412,40 +418,34 @@ export async function syncBonusToExcel(opts: { dryRun?: boolean; force?: boolean
       // Captura a "Data Venda" do Excel pra TODO lote (não só os de bônus) — vira a data autoridade.
       const dVenda = colDataVenda >= 0 ? parseDataPgto(row[colDataVenda]) : "";
       if (dVenda) datasVendaMap[loteId] = dVenda;
-      const alvo = porLote.get(loteId);
-      if (alvo) {
-        casadas++;
-        casadasLotes.add(loteId);
-        const b = bonusPorLote.get(loteId);
-        const dPgto = parseDataPgto(row[colData]); // data digitada na coluna (ISO ou "")
-        // "pago" na célula é do Felipe: preserva SEMPRE e importa pro dashboard se faltar.
-        // (normaliza a caixa: "Pago"/"PAGO" do dropdown antigo vira "pago")
-        // Importa quando: ainda não pago OU a data da coluna mudou (correção da data real).
+      const b = bonusPorLote.get(loteId);
+      const dPgto = parseDataPgto(row[colData]); // data digitada na coluna W (ISO ou "")
+
+      // ── IMPORTAÇÃO (pago do Excel → dashboard) — INDEPENDE do UAU (base rápida Eggs) ──
+      // Importa quando: ainda não pago OU a data da coluna W mudou (correção da data real).
+      if (b) {
         if (isPago(curV)) {
-          preservadas++;
-          if (String(curV) !== "pago") nv = "pago";
-          if (b && (!b.pagamento.pagoCorretora || (dPgto && dPgto !== b.pagamento.dataPagoCorretora))) {
+          if (!b.pagamento.pagoCorretora || (dPgto && dPgto !== b.pagamento.dataPagoCorretora))
             paraImportar.push({ chaveVenda: b.chaveVenda, loteId, parte: "corretor", data: dPgto });
-          }
-        } else {
-          nv = alvo.v;
-          // célula deixou de ser "pago": desmarca no dashboard SE a marcação veio do Excel
-          if (b?.pagamento.pagoCorretora && (b.pagamento.observacao || "").includes("pago via Excel")) {
-            paraDesmarcar.push({ chaveVenda: b.chaveVenda, loteId, parte: "corretor", data: "" });
-          }
+        } else if (b.pagamento.pagoCorretora && (b.pagamento.observacao || "").includes("pago via Excel")) {
+          paraDesmarcar.push({ chaveVenda: b.chaveVenda, loteId, parte: "corretor", data: "" });
         }
         if (isPago(curX)) {
-          preservadas++;
-          if (String(curX) !== "pago") nx = "pago";
-          if (b && (!b.pagamento.pagoImobiliaria || (dPgto && dPgto !== b.pagamento.dataPagoImobiliaria))) {
+          if (!b.pagamento.pagoImobiliaria || (dPgto && dPgto !== b.pagamento.dataPagoImobiliaria))
             paraImportar.push({ chaveVenda: b.chaveVenda, loteId, parte: "imobiliaria", data: dPgto });
-          }
-        } else {
-          nx = alvo.x;
-          if (b?.pagamento.pagoImobiliaria && (b.pagamento.observacao || "").includes("pago via Excel")) {
-            paraDesmarcar.push({ chaveVenda: b.chaveVenda, loteId, parte: "imobiliaria", data: "" });
-          }
+        } else if (b.pagamento.pagoImobiliaria && (b.pagamento.observacao || "").includes("pago via Excel")) {
+          paraDesmarcar.push({ chaveVenda: b.chaveVenda, loteId, parte: "imobiliaria", data: "" });
         }
+      }
+
+      // ── STATUS (escrita de volta no Excel) — SÓ quando o UAU confirmou (statusOk) ──
+      const alvo = porLote.get(loteId);
+      if (statusOk && alvo) {
+        casadas++;
+        casadasLotes.add(loteId);
+        // "pago" do Felipe é preservado (normaliza "Pago"/"PAGO" → "pago"); senão escreve o status.
+        if (isPago(curV)) { preservadas++; nv = "pago"; } else { nv = alvo.v; }
+        if (isPago(curX)) { preservadas++; nx = "pago"; } else { nx = alvo.x; }
         if (nv !== curV) alteradas++;
         if (nx !== curX) alteradas++;
         for (const fin of [String(nv), String(nx)]) {
@@ -453,13 +453,13 @@ export async function syncBonusToExcel(opts: { dryRun?: boolean; force?: boolean
           else if (fin === AUTORIZADO_TXT) resumoAut++;
           else resumoAg++;
         }
-      } else if (isStatusBonus(curV) || isStatusBonus(curX)) {
-        // Órfão: lote saiu da lista de bônus (venda desfeita/liberada) mas ficou com status
-        // antigo no Excel. Limpa "autorizado"/"aguardando pgt" (nunca mexe em "pago").
+      } else if (statusOk && !b && (isStatusBonus(curV) || isStatusBonus(curX))) {
+        // Órfão: tinha status mas não é mais venda válida (Eggs). Limpa (nunca mexe em "pago").
         if (isStatusBonus(curV)) { nv = ""; alteradas++; orfaos.push(`${colLetter(colV)}${i + 1}`); }
         if (isStatusBonus(curX)) { nx = ""; alteradas++; orfaos.push(`${colLetter(colX)}${i + 1}`); }
         orfaosLotes.add(loteId);
       }
+      // !statusOk → nv/nx ficam = curV/curX (sem escrita de status); a importação já rodou acima.
     }
     novoV.push([nv]);
     novoX.push([nx]);
@@ -486,6 +486,7 @@ export async function syncBonusToExcel(opts: { dryRun?: boolean; force?: boolean
     desmarcarDoExcel: paraDesmarcar.map((p) => `${p.loteId} (${p.parte})`),
     amostraHeader: { U: String(headerRow[20] ?? ""), V: String(headerRow[21] ?? ""), W: String(headerRow[22] ?? ""), X: String(headerRow[23] ?? "") },
     datasVenda: { comData: Object.keys(datasVendaMap).length, coluna: colDataVenda >= 0 ? `${colLetter(colDataVenda)}(${colDataVenda})` : "(não encontrada)" },
+    statusEscrito: statusOk, // false = ERP fora → importou o "pago" mas não reescreveu status/cores
     dryRun,
     mudou,
   };
@@ -523,8 +524,8 @@ export async function syncBonusToExcel(opts: { dryRun?: boolean; force?: boolean
   await setDatasVenda(datasVendaMap).catch(() => {});
   await gravarSyncState({ syncedAt: new Date().toISOString(), celulasAlteradas: alteradas });
 
-  // ── Escritas DE VOLTA no Excel (cosméticas, lentas via Graph) — best-effort ──
-  if (mudou) {
+  // ── Escritas DE VOLTA no Excel (cosméticas, lentas via Graph) — só com status do UAU ──
+  if (statusOk && mudou) {
     const primeira = PRIMEIRA_LINHA_DADOS + 1; // Excel 1-based
     const ultima = totalLinhas;                // Excel 1-based (usedRange começa em A1)
     const addrV = `${colLetter(colV)}${primeira}:${colLetter(colV)}${ultima}`;
@@ -536,8 +537,8 @@ export async function syncBonusToExcel(opts: { dryRun?: boolean; force?: boolean
       console.warn("escrita de status no Excel falhou (cosmético):", e);
     }
   }
-  // Destaque por cor (âmbar "aguardando" / verde "autorizado"). Só quando muda ou forçado.
-  if (mudou || force) {
+  // Destaque por cor (âmbar "aguardando" / verde "autorizado"). Só com status do UAU.
+  if (statusOk && (mudou || force)) {
     try {
       report.destaque = await aplicarCores(token, wsPath, values, porLote, [{ letter: colLetter(colV), idx: colV, key: "v" }, { letter: colLetter(colX), idx: colX, key: "x" }], orfaos);
     } catch (e) {

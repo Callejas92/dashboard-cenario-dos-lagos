@@ -174,6 +174,29 @@ export async function nudgeMigracaoPagamentos(): Promise<void> {
   }
 }
 
+/**
+ * Base RÁPIDA pra importação Excel→dashboard: loteId → { chaveVenda, pagamento }.
+ * Só de Eggs (contratos válidos) + pagamentos persistidos — SEM tocar no UAU. Assim o
+ * sync consegue importar o "pago" do Excel mesmo com o ERP fora/lento (o UAU só é
+ * necessário pra ESCREVER o status autorizado/aguardando de volta no Excel).
+ */
+export async function getBaseImportacao(): Promise<Map<string, { chaveVenda: string; pagamento: BonusPagamento }>> {
+  const [contratos, pagamentos] = await Promise.all([getContratosEggs(), loadPagamentos()]);
+  const pg = pagamentos ?? {};
+  const ELEGIVEL = new Set(["ASSINADO", "FATURADO", "ENTREGUE AO INCORPORADOR"]);
+  const map = new Map<string, { chaveVenda: string; pagamento: BonusPagamento }>();
+  for (const c of contratos) {
+    if (c.cancelado) continue;
+    if (!ELEGIVEL.has((c.statusOriginal || c.status || "").toUpperCase().trim())) continue;
+    const chaveVenda = `${c.id}-${c.loteId}`;
+    map.set(c.loteId, {
+      chaveVenda,
+      pagamento: pg[chaveVenda] || { pagoCorretora: false, dataPagoCorretora: "", pagoImobiliaria: false, dataPagoImobiliaria: "" },
+    });
+  }
+  return map;
+}
+
 // Aplica os pagamentos ao tracking COMPLETO em cache/blob, sem reconsultar o UAU.
 // Retorna o tracking atualizado, ou null se não há base completa (chamador força recompute).
 async function patchTrackingPagamentos(pagamentos: Record<string, BonusPagamento>): Promise<BonusResponse | null> {
