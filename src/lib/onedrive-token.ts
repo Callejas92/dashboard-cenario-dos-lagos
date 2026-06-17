@@ -53,11 +53,22 @@ function decifrar(payload: string, k: Buffer): OneDriveToken {
 }
 
 export async function saveOneDriveToken(data: OneDriveToken): Promise<void> {
-  const k = chave();
-  // Sem o secret não há como cifrar — grava como antes (e sem secret o refresh
-  // tampouco funciona, então não há perda de segurança relativa).
-  const payload = k ? { v: 1, enc: cifrar(data, k) } : data;
+  // A MEMÓRIA guarda tudo (inclui access_token) p/ a instância — read-your-writes.
   tokenMem = { at: Date.now(), data };
+
+  // PERSISTE só o durável: o access_token é um JWT efêmero (~2KB!) que se re-obtém do
+  // refresh no cold start. Guardá-lo enchia o Edge (teto 8KB) e quebrava o save dos pagos.
+  // Agora o token persistido fica ~500 bytes.
+  const persist: OneDriveToken = {
+    refresh_token: data.refresh_token,
+    scope: data.scope,
+    connected_at: data.connected_at,
+    last_refreshed: data.last_refreshed,
+  };
+  const k = chave();
+  // Sem o secret não há como cifrar — grava como antes (e sem secret o refresh tampouco
+  // funciona, então não há perda de segurança relativa).
+  const payload = k ? { v: 1, enc: cifrar(persist, k) } : persist;
   // 1) Edge Config (sobrevive a bloqueio do Blob). 2) fallback Blob (sem token de escrita).
   const okEdge = await edgeWrite(EDGE_KEY, payload);
   if (!okEdge) {

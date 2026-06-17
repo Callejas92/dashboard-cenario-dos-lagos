@@ -3,6 +3,7 @@ import { gerarRelatorioMensal } from "@/lib/relatorio-mensal";
 import { congelarRelatorio } from "@/lib/relatorio-snapshot";
 import { getDatasVenda, setDatasVenda } from "@/lib/datas-venda";
 import { nudgeMigracaoPagamentos } from "@/lib/bonus";
+import { loadOneDriveToken, saveOneDriveToken } from "@/lib/onedrive-token";
 
 const META_TOKEN_URL = "https://graph.facebook.com/v21.0/oauth/access_token";
 const META_DEBUG_URL = "https://graph.facebook.com/debug_token";
@@ -141,6 +142,9 @@ export async function GET(request: Request) {
   // o Blob está bloqueado, isto só regrava no Edge (no-op efetivo). Best-effort.
   let migracaoStores: string | null = null;
   try {
+    // Encolhe o token do OneDrive (re-salva sem o access_token efêmero ~2KB) — libera o Edge.
+    const tk = await loadOneDriveToken();
+    if (tk?.refresh_token) await saveOneDriveToken(tk);
     const dv = await getDatasVenda();
     if (dv.size > 0) await setDatasVenda(Object.fromEntries(dv));
     await nudgeMigracaoPagamentos();
