@@ -6,32 +6,30 @@
  * O sync (excel-bonus-sync) lê a coluna e grava aqui; getContratosEggs aplica o override
  * POR LOTE — onde não há data no Excel, mantém a do Eggs (fallback seguro).
  *
- * Mapa pequeno (loteId → ISO) no Edge Config (sobrevive a bloqueio do Blob).
+ * Storage: Blob-primeiro com auto-migração (Edge enquanto o Blob está bloqueado). Cresce
+ * com as vendas, então o lar definitivo é o Blob — ver lib/durable-store.ts.
  */
-import { edgeRead, edgeWrite } from "@/lib/edge-store";
+import { loadDurable, saveDurable } from "@/lib/durable-store";
 
 const EDGE_KEY = "datas_venda";
+const BLOB_PATH = "config/datas-venda.json";
 const TTL = 5 * 60 * 1000;
 
 let cache: { map: Map<string, string>; ts: number } | null = null;
 
 export async function getDatasVenda(): Promise<Map<string, string>> {
   if (cache && Date.now() - cache.ts < TTL) return cache.map;
-  try {
-    const obj = await edgeRead<Record<string, string>>(EDGE_KEY);
-    const map = new Map<string, string>(
-      obj && typeof obj === "object" && !Array.isArray(obj) ? Object.entries(obj) : [],
-    );
-    cache = { map, ts: Date.now() };
-    return map;
-  } catch {
-    return new Map();
-  }
+  const obj = await loadDurable<Record<string, string>>(BLOB_PATH, EDGE_KEY);
+  const map = new Map<string, string>(
+    obj && typeof obj === "object" && !Array.isArray(obj) ? Object.entries(obj) : [],
+  );
+  cache = { map, ts: Date.now() };
+  return map;
 }
 
-/** Grava o mapa loteId→ISO (chamado pelo sync). Retorna true se gravou no Edge. */
+/** Grava o mapa loteId→ISO (chamado pelo sync). Blob-primeiro; migra sozinho quando o Blob volta. */
 export async function setDatasVenda(mapa: Record<string, string>): Promise<boolean> {
-  const ok = await edgeWrite(EDGE_KEY, mapa);
-  if (ok) cache = { map: new Map(Object.entries(mapa)), ts: Date.now() };
-  return ok;
+  const r = await saveDurable(BLOB_PATH, EDGE_KEY, mapa);
+  if (r !== "none") cache = { map: new Map(Object.entries(mapa)), ts: Date.now() };
+  return r !== "none";
 }

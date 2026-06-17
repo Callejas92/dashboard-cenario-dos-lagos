@@ -15,7 +15,8 @@ import { getContratosEggs, type ContratoEnriquecido } from "@/lib/eggs-contratos
 import { authenticate, isUauConfigured, uauFetch } from "@/lib/uau-auth";
 import { getInvestorLots } from "@/lib/investor-lots";
 import { detectarENotificarAutorizados } from "@/lib/bonus-notify";
-import { edgeRead, edgeWrite } from "@/lib/edge-store";
+import { edgeRead } from "@/lib/edge-store";
+import { saveDurable } from "@/lib/durable-store";
 
 // Regras de negócio centralizadas em constants/negocio.ts (re-exportadas p/ compat).
 import { BONUS_CORRETORA, BONUS_IMOBILIARIA, BONUS_TOTAL_POR_VENDA, PCT_AUTORIZACAO } from "@/lib/constants/negocio";
@@ -151,22 +152,26 @@ const escritasRecentes = new Map<string, { at: number; pagamento: BonusPagamento
 const JANELA_PROPAGACAO = 2 * 60 * 1000;
 
 async function savePagamentos(pagamentos: Record<string, BonusPagamento>): Promise<BonusResponse | null> {
-  // 1) Edge Config (sobrevive a bloqueio do Blob). 2) fallback Blob se o Edge não
-  //    estiver disponível p/ escrita, ou se estourar o teto (~8KB) — aí o Blob assume.
-  const okEdge = await edgeWrite(PAGAMENTOS_EDGE_KEY, pagamentos);
-  if (!okEdge) {
-    await put(PAGAMENTOS_BLOB, JSON.stringify(pagamentos, null, 2), {
-      access: "public",
-      addRandomSuffix: false,
-      allowOverwrite: true, // sobrescreve o registro de pagamentos a cada marcação
-      contentType: "application/json",
-    });
-  }
+  // Blob-primeiro com auto-migração: quando o Blob volta, grava lá e limpa o Edge (libera
+  // os ~8KB). Enquanto bloqueado, cai no Edge. Ver lib/durable-store.ts.
+  await saveDurable(PAGAMENTOS_BLOB, PAGAMENTOS_EDGE_KEY, pagamentos);
   // Marcar/desmarcar/isentar é mudança PURA de pagamento — aplica no tracking em memória/blob
   // SEM reconsultar o UAU (lento/instável). Se não houver base completa, força recompute.
   const tracking = await patchTrackingPagamentos(pagamentos);
   if (!tracking) { cache = null; await invalidateTrackingBlob(); }
   return tracking;
+}
+
+/**
+ * Empurrão de migração Edge→Blob (chamado pelo cron). Relê os pagamentos e regrava
+ * via saveDurable — quando o Blob voltar, isso move pro Blob e limpa o Edge. NÃO mexe
+ * no tracking (move puro de storage). Best-effort.
+ */
+export async function nudgeMigracaoPagamentos(): Promise<void> {
+  const p = await loadPagamentos();
+  if (p && Object.keys(p).length > 0) {
+    await saveDurable(PAGAMENTOS_BLOB, PAGAMENTOS_EDGE_KEY, p).catch(() => {});
+  }
 }
 
 // Aplica os pagamentos ao tracking COMPLETO em cache/blob, sem reconsultar o UAU.

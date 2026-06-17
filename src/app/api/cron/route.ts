@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { gerarRelatorioMensal } from "@/lib/relatorio-mensal";
 import { congelarRelatorio } from "@/lib/relatorio-snapshot";
+import { getDatasVenda, setDatasVenda } from "@/lib/datas-venda";
+import { nudgeMigracaoPagamentos } from "@/lib/bonus";
 
 const META_TOKEN_URL = "https://graph.facebook.com/v21.0/oauth/access_token";
 const META_DEBUG_URL = "https://graph.facebook.com/debug_token";
@@ -134,9 +136,23 @@ export async function GET(request: Request) {
     relatorioCongelado = `falhou: ${e instanceof Error ? e.message : String(e)}`;
   }
 
+  // Empurrão de migração Edge→Blob: quando o Blob volta a aceitar escrita, os stores que
+  // crescem (datas_venda, bonus_payments) migram pro Blob e liberam o Edge (~8KB). Enquanto
+  // o Blob está bloqueado, isto só regrava no Edge (no-op efetivo). Best-effort.
+  let migracaoStores: string | null = null;
+  try {
+    const dv = await getDatasVenda();
+    if (dv.size > 0) await setDatasVenda(Object.fromEntries(dv));
+    await nudgeMigracaoPagamentos();
+    migracaoStores = "ok";
+  } catch (e) {
+    migracaoStores = `falhou: ${e instanceof Error ? e.message : String(e)}`;
+  }
+
   return NextResponse.json({
     timestamp: new Date().toISOString(),
     meta: metaStatus,
     relatorioCongelado,
+    migracaoStores,
   });
 }
