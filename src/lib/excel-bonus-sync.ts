@@ -492,30 +492,9 @@ export async function syncBonusToExcel(opts: { dryRun?: boolean; force?: boolean
 
   if (dryRun) return report;
 
-  // "Data Venda" do Excel vira a data autoridade da venda (override do Eggs, por lote).
-  // Roda SEMPRE (mesmo sem mudança de status) pra manter o mapa fresco.
-  await setDatasVenda(datasVendaMap).catch(() => {});
-
-  if (mudou) {
-    const primeira = PRIMEIRA_LINHA_DADOS + 1; // Excel 1-based
-    const ultima = totalLinhas;                // Excel 1-based (usedRange começa em A1)
-    const addrV = `${colLetter(colV)}${primeira}:${colLetter(colV)}${ultima}`;
-    const addrX = `${colLetter(colX)}${primeira}:${colLetter(colX)}${ultima}`;
-    await graph(token, `${wsPath}/range(address='${addrV}')`, { method: "PATCH", body: JSON.stringify({ values: novoV }) });
-    await graph(token, `${wsPath}/range(address='${addrX}')`, { method: "PATCH", body: JSON.stringify({ values: novoX }) });
-  }
-
-  // Destaque por cor (âmbar "aguardando" / verde "autorizado"). Só quando muda ou forçado.
-  if (mudou || force) {
-    try {
-      report.destaque = await aplicarCores(token, wsPath, values, porLote, [{ letter: colLetter(colV), idx: colV, key: "v" }, { letter: colLetter(colX), idx: colX, key: "x" }], orfaos);
-    } catch (e) {
-      report.destaque = "erro: " + (e instanceof Error ? e.message : String(e));
-    }
-  }
-
-  // Mão de volta Excel→dashboard: aplica os "pago" lidos da célula (e desmarca os
-  // removidos) em LOTE — 1 escrita no blob independente do volume.
+  // ── ORDEM IMPORTA ── Primeiro o CRÍTICO e RÁPIDO: importar os "pago" do Excel pro
+  // dashboard (+ desmarcar). As escritas DE VOLTA no Excel (status/cores) são lentas via
+  // Graph e cosméticas — vêm DEPOIS. Se elas estourarem os 60s, a importação já está salva.
   try {
     const patches = new Map<string, Record<string, unknown>>();
     const hoje = new Date().toISOString().split("T")[0];
@@ -533,16 +512,38 @@ export async function syncBonusToExcel(opts: { dryRun?: boolean; force?: boolean
       else { cur.pagoImobiliaria = false; cur.dataPagoImobiliaria = ""; }
       patches.set(p.chaveVenda, cur);
     }
-    await setBonusPagamentosEmLote(Array.from(patches, ([chaveVenda, patch]) => ({ chaveVenda, patch })));
+    if (patches.size > 0) await setBonusPagamentosEmLote(Array.from(patches, ([chaveVenda, patch]) => ({ chaveVenda, patch })));
     report.importadosAplicados = paraImportar.length + paraDesmarcar.length;
   } catch (e) {
     console.warn("importação Excel→dashboard falhou:", e);
     report.importadosAplicados = 0;
   }
 
-  // Marca o horário do sync (mesmo sem mudança) p/ o throttle do caminho automático.
-  // Sucesso LIMPA a última falha registrada (admin volta a mostrar verde).
+  // Data Venda (override) + carimbo do sync — rápidos, antes das escritas lentas no Excel.
+  await setDatasVenda(datasVendaMap).catch(() => {});
   await gravarSyncState({ syncedAt: new Date().toISOString(), celulasAlteradas: alteradas });
+
+  // ── Escritas DE VOLTA no Excel (cosméticas, lentas via Graph) — best-effort ──
+  if (mudou) {
+    const primeira = PRIMEIRA_LINHA_DADOS + 1; // Excel 1-based
+    const ultima = totalLinhas;                // Excel 1-based (usedRange começa em A1)
+    const addrV = `${colLetter(colV)}${primeira}:${colLetter(colV)}${ultima}`;
+    const addrX = `${colLetter(colX)}${primeira}:${colLetter(colX)}${ultima}`;
+    try {
+      await graph(token, `${wsPath}/range(address='${addrV}')`, { method: "PATCH", body: JSON.stringify({ values: novoV }) });
+      await graph(token, `${wsPath}/range(address='${addrX}')`, { method: "PATCH", body: JSON.stringify({ values: novoX }) });
+    } catch (e) {
+      console.warn("escrita de status no Excel falhou (cosmético):", e);
+    }
+  }
+  // Destaque por cor (âmbar "aguardando" / verde "autorizado"). Só quando muda ou forçado.
+  if (mudou || force) {
+    try {
+      report.destaque = await aplicarCores(token, wsPath, values, porLote, [{ letter: colLetter(colV), idx: colV, key: "v" }, { letter: colLetter(colX), idx: colX, key: "x" }], orfaos);
+    } catch (e) {
+      report.destaque = "erro: " + (e instanceof Error ? e.message : String(e));
+    }
+  }
 
   return report;
 }
