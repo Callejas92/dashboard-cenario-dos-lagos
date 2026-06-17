@@ -346,8 +346,13 @@ export async function syncBonusToExcel(opts: { dryRun?: boolean; force?: boolean
   const porLote = new Map<string, { v: string; x: string }>();
   let statusOk = false;
   try {
-    const tracking = await getBonusTracking();
-    if (tracking.completo) {
+    // Timeout curto: se o UAU pendurar, NÃO deixa travar os 60s — pula o status e
+    // segue pra importação (que é o que importa e não depende do UAU).
+    const tracking = await Promise.race([
+      getBonusTracking(),
+      new Promise<null>((_, rej) => setTimeout(() => rej(new Error("tracking timeout 25s")), 25000)),
+    ]);
+    if (tracking && tracking.completo) {
       statusOk = true;
       for (const b of tracking.bonus) {
         if (typeof b.autorizado !== "boolean") continue;
@@ -355,7 +360,7 @@ export async function syncBonusToExcel(opts: { dryRun?: boolean; force?: boolean
         porLote.set(b.loteId, { v: base, x: base });
       }
     }
-  } catch { /* ERP fora → status não escrito; import segue */ }
+  } catch { /* ERP fora/lento → status não escrito; import segue normal */ }
 
   const token = await getAccessToken();
   const fileId = await resolveComercialFileId(token);
