@@ -45,7 +45,10 @@ const overlayStyle: CSSProperties = {
   zIndex: 1000, padding: "1rem",
 };
 const cardStyle: CSSProperties = {
-  background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "0.75rem",
+  // --surface é quase transparente (2-4%) — serve pra tom sutil SOBRE fundo sólido.
+  // Num modal flutuante isso deixa o gráfico vazar através do card ("zoada"). Modais/
+  // drawers usam --bg-secondary (sólido), igual CorretorDrawer/BonusDrawer.
+  background: "var(--bg-secondary, #fff)", border: "1px solid var(--border)", borderRadius: "0.75rem",
   width: "100%", maxWidth: 460, maxHeight: "85vh", overflow: "auto",
   padding: "1rem 1.1rem", boxShadow: "0 12px 40px rgba(0,0,0,0.4)",
   // o modal é filho do cabeçalho do gráfico (uppercase): reseta pra texto normal
