@@ -51,8 +51,10 @@ export default function CorretorDrawer({ corretorNome, contratos, bonus, onClose
   const imob = meus.find((c) => c.imobiliaria?.razaoSocial)?.imobiliaria?.razaoSocial || "";
   const ultimaVenda = firmes.reduce((m, c) => (c.dataContrato && c.dataContrato > m ? c.dataContrato : m), "");
 
-  // Cálculo compartilhado (mesma conta da coluna LTV do ranking) — lib/calculations/ltv.ts
-  const ltv = calcularLtvCorretor(corretorNome, contratos, bonus, uauVendas?.vendas ?? null, financ?.parcelasAReceber ?? null);
+  // Cálculo compartilhado (mesma conta da coluna LTV do ranking) — lib/calculations/ltv.ts.
+  // parcelas ?? [] (não null): LTV não depende de /uau/financeiro (504 frio + parcelas
+  // vazias hoje). Com vendas presente (cache), uauPronto=true e o LTV aparece. Igual SubTabCorretores.
+  const ltv = calcularLtvCorretor(corretorNome, contratos, bonus, uauVendas?.vendas ?? null, financ?.parcelasAReceber ?? []);
   const { vgv, ticket, custoBonus, custoComissao, custoTotal, uauPronto, mangaba, inadLotes, pctInad, ltvLiquido, qualidade, ltvAjustado } = ltv;
   const pctQuitada = ltv.pctAutorizado;
   const pctCancel = ltv.pctCancel;

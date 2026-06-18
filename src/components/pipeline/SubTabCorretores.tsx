@@ -100,10 +100,14 @@ export default function SubTabCorretores() {
     }
 
     // LTV ajustado por corretor (mesma conta do drawer — lib/calculations/ltv.ts).
-    // Só preenche quando o UAU chegou; antes fica null ("…" na coluna).
-    if (uauVendas?.vendas && financ?.parcelasAReceber && bonusData?.bonus) {
+    // Depende do ERP só pro "Mangaba" (valorPrincipal), que vem de /uau/vendas — servido
+    // do cache (sobrevive mesmo com o Blob suspenso, em modo stale). NÃO depende mais de
+    // /uau/financeiro: ele dá 504 frio e travava a coluna em "…", e suas parcelas vêm
+    // VAZIAS hoje (inadimplência já era 0 de qualquer forma). Se as parcelas voltarem a
+    // popular, a inadimplência entra no cálculo automaticamente (parcelas ?? []).
+    if (uauVendas?.vendas && bonusData?.bonus) {
       for (const l of map.values()) {
-        const r = calcularLtvCorretor(l.nome, data?.contratos || [], bonusData.bonus, uauVendas.vendas, financ.parcelasAReceber);
+        const r = calcularLtvCorretor(l.nome, data?.contratos || [], bonusData.bonus, uauVendas.vendas, financ?.parcelasAReceber ?? []);
         l.ltvAjustado = r.ltvAjustado;
         l.qualidade = r.qualidade;
       }
@@ -250,9 +254,9 @@ export default function SubTabCorretores() {
                 <td style={{ padding: "0.5rem 0.25rem", color: "var(--text-muted)", fontSize: "0.75rem" }}>{truncate(l.imobiliaria || "—", 22)}</td>
                 <td style={{ padding: "0.5rem 0.25rem", textAlign: "right", color: "var(--text)" }}>{l.lotes}</td>
                 <td style={{ padding: "0.5rem 0.25rem", textAlign: "right", color: "var(--text)", fontWeight: 600 }}>{formatBRLCompact(l.vgv)}</td>
-                <td style={{ padding: "0.5rem 0.25rem", textAlign: "right" }} title="LTV líquido (Mangaba − bônus − comissões) × qualidade. Clique no corretor pra ver o detalhe.">
+                <td style={{ padding: "0.5rem 0.25rem", textAlign: "right" }} title="LTV líquido (Mangaba − bônus − comissões) × qualidade. Mangaba vem do ERP via cache (pode ter atraso). Inadimplência não entra enquanto o ERP não envia as parcelas. Clique no corretor pra ver o detalhe.">
                   {l.ltvAjustado === null ? (
-                    <span style={{ color: "var(--text-dim)", fontSize: "0.7rem", fontStyle: "italic" }}>…</span>
+                    <span style={{ color: "var(--text-dim)", fontSize: "0.7rem", fontStyle: "italic" }} title="Aguardando vendas do ERP (cache)">…</span>
                   ) : (
                     <span style={{ fontWeight: 600, color: l.ltvAjustado >= 0 ? "var(--text)" : "#dc2626" }}>
                       {formatBRLCompact(l.ltvAjustado)}
