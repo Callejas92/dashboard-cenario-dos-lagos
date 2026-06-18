@@ -50,6 +50,7 @@ export interface SyncReport {
   statusEscrito?: boolean; // status/cores escritos no Excel (precisa UAU completo); import roda mesmo se false
   importarDoExcel?: string[];   // "pago" na célula ainda não marcado no dashboard (importa)
   desmarcarDoExcel?: string[];  // "pago" removido da célula → desmarca no dashboard
+  pagoForaDaBase?: string[];    // "pago" no Excel mas lote fora da base elegível → import pula (diag)
   importadosAplicados?: number; // quantos foram efetivamente aplicados nesta rodada
   erroImport?: string;          // se a persistência do import falhou (ex.: Edge cheio) — surfacar, não mascarar
   dryRun?: boolean;
@@ -387,6 +388,7 @@ export async function syncBonusToExcel(opts: { dryRun?: boolean; force?: boolean
   const paraImportar: ParteImport[] = [];
   const paraDesmarcar: ParteImport[] = [];
   const casadasLotes = new Set<string>();
+  const pagoForaDaBase: string[] = []; // "pago" no Excel mas lote não-elegível → import pula (suspeito)
   let resumoPago = 0, resumoAut = 0, resumoAg = 0;
 
   // ── PASSO 1: IMPORTAÇÃO (pago do Excel → dashboard) + Data Venda + resumo das células ──
@@ -419,6 +421,11 @@ export async function syncBonusToExcel(opts: { dryRun?: boolean; force?: boolean
       } else if (b.pagamento.pagoImobiliaria && (b.pagamento.observacao || "").includes("pago via Excel")) {
         paraDesmarcar.push({ chaveVenda: b.chaveVenda, loteId, parte: "imobiliaria", data: "" });
       }
+    } else {
+      // Lote marcado "pago" no Excel MAS fora da base elegível (contrato não-ASSINADO/FATURADO/
+      // ENTREGUE, ou cancelado) → o import PULA silenciosamente. É o suspeito de "não atualizou".
+      if (isPago(curV)) pagoForaDaBase.push(`${loteId} (corretor)`);
+      if (isPago(curX)) pagoForaDaBase.push(`${loteId} (imob)`);
     }
     for (const cell of [curV, curX]) { // resumo do estado ATUAL das células (reflete o Excel)
       const t = String(cell).trim().toLowerCase();
@@ -444,6 +451,8 @@ export async function syncBonusToExcel(opts: { dryRun?: boolean; force?: boolean
     resumoStatus: { pago: resumoPago, autorizado: resumoAut, aguardando: resumoAg },
     importarDoExcel: paraImportar.map((p) => `${p.loteId} (${p.parte})`),
     desmarcarDoExcel: paraDesmarcar.map((p) => `${p.loteId} (${p.parte})`),
+    pagoForaDaBase,
+
     amostraHeader: { U: String(headerRow[20] ?? ""), V: String(headerRow[21] ?? ""), W: String(headerRow[22] ?? ""), X: String(headerRow[23] ?? "") },
     datasVenda: { comData: Object.keys(datasVendaMap).length, coluna: colDataVenda >= 0 ? `${colLetter(colDataVenda)}(${colDataVenda})` : "(não encontrada)" },
     statusEscrito: false,
