@@ -47,7 +47,8 @@ export interface SyncReport {
   amostraHeader?: Record<string, string>; // headers das colunas U/V/W/X (inspeção)
   resumoStatus?: { pago: number; autorizado: number; aguardando: number }; // estado FINAL das células
   datasVenda?: { comData: number; coluna: string }; // cobertura da coluna "Data Venda" (override de data)
-  statusEscrito?: boolean; // status/cores escritos no Excel (precisa UAU completo); import roda mesmo se false
+  statusEscrito?: boolean; // status/cores escritos no Excel; import roda mesmo se false
+  statusParcial?: boolean; // status escrito com dado parcial do UAU (só upgrades "autorizado")
   importarDoExcel?: string[];   // "pago" na célula ainda não marcado no dashboard (importa)
   desmarcarDoExcel?: string[];  // "pago" removido da célula → desmarca no dashboard
   pagoForaDaBase?: string[];    // "pago" no Excel mas lote fora da base elegível → import pula (diag)
@@ -500,16 +501,25 @@ export async function syncBonusToExcel(opts: { dryRun?: boolean; force?: boolean
   try {
     const tracking = await Promise.race([
       getBonusTracking(),
-      new Promise<null>((_, rej) => setTimeout(() => rej(new Error("tracking timeout 30s")), 30000)),
+      new Promise<null>((_, rej) => setTimeout(() => rej(new Error("tracking timeout 20s")), 20000)),
     ]);
-    if (tracking && tracking.completo) {
-      statusOk = true;
-      report.statusEscrito = true;
+    if (tracking) {
+      const trackingCompleto = !!tracking.completo;
+      // Dado parcial do UAU é comum (ERP lento) e o snapshot completo (Blob) está bloqueado.
+      // Regra anti-info-errada pra ainda assim DESTRAVAR o status do Excel:
+      //  • autorizado=true é EVIDÊNCIA por lote (cliente pagou ≥1,5% OU liberado manual) →
+      //    seguro marcar "autorizado pgt" mesmo vindo de um batch incompleto.
+      //  • autorizado=false só é confiável quando o batch veio COMPLETO (senão pode ser uma
+      //    consulta de entrada que falhou no ERP) → só então escreve "aguardando pgt".
+      // Nunca regride "autorizado"/"pago" por falha do ERP. (Antes exigia completo p/ TUDO →
+      // o status congelou desde que o Blob bloqueou em 11/jun.)
       for (const b of tracking.bonus) {
-        if (typeof b.autorizado !== "boolean") continue;
-        const base = b.autorizado ? AUTORIZADO_TXT : AGUARDANDO_TXT;
-        porLote.set(b.loteId, { v: base, x: base });
+        if (b.autorizado === true) porLote.set(b.loteId, { v: AUTORIZADO_TXT, x: AUTORIZADO_TXT });
+        else if (trackingCompleto && b.autorizado === false) porLote.set(b.loteId, { v: AGUARDANDO_TXT, x: AGUARDANDO_TXT });
       }
+      statusOk = porLote.size > 0;
+      report.statusEscrito = statusOk;
+      report.statusParcial = statusOk && !trackingCompleto;
       const novoV: unknown[][] = [];
       const novoX: unknown[][] = [];
       const orfaos: string[] = []; // células de lote que saiu do bônus (venda desfeita) — limpar
