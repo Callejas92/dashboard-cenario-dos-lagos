@@ -51,6 +51,7 @@ export interface SyncReport {
   importarDoExcel?: string[];   // "pago" na célula ainda não marcado no dashboard (importa)
   desmarcarDoExcel?: string[];  // "pago" removido da célula → desmarca no dashboard
   importadosAplicados?: number; // quantos foram efetivamente aplicados nesta rodada
+  erroImport?: string;          // se a persistência do import falhou (ex.: Edge cheio) — surfacar, não mascarar
   dryRun?: boolean;
   mudou?: boolean;
   destaque?: string; // status da formatação condicional (âmbar/verde)
@@ -343,24 +344,10 @@ export async function syncBonusToExcel(opts: { dryRun?: boolean; force?: boolean
 
   // STATUS (autorizado/aguardando) precisa do UAU (regra 1,5%) — é BEST-EFFORT. Se o ERP
   // estiver fora/lento, NÃO escreve status de volta no Excel, mas a importação roda igual.
+  // O STATUS (autorizado/aguardando) precisa do UAU e é buscado SÓ DEPOIS da importação
+  // (lá embaixo), pra que a importação NUNCA espere o ERP. Aqui ficam vazios.
   const porLote = new Map<string, { v: string; x: string }>();
   let statusOk = false;
-  try {
-    // Timeout curto: se o UAU pendurar, NÃO deixa travar os 60s — pula o status e
-    // segue pra importação (que é o que importa e não depende do UAU).
-    const tracking = await Promise.race([
-      getBonusTracking(),
-      new Promise<null>((_, rej) => setTimeout(() => rej(new Error("tracking timeout 25s")), 25000)),
-    ]);
-    if (tracking && tracking.completo) {
-      statusOk = true;
-      for (const b of tracking.bonus) {
-        if (typeof b.autorizado !== "boolean") continue;
-        const base = b.autorizado ? AUTORIZADO_TXT : AGUARDANDO_TXT;
-        porLote.set(b.loteId, { v: base, x: base });
-      }
-    }
-  } catch { /* ERP fora/lento → status não escrito; import segue normal */ }
 
   const token = await getAccessToken();
   const fileId = await resolveComercialFileId(token);
@@ -395,105 +382,73 @@ export async function syncBonusToExcel(opts: { dryRun?: boolean; force?: boolean
     } catch { /* se falhar, segue; usa "hoje" como fallback até a coluna existir */ }
   }
 
-  const novoV: unknown[][] = [];
-  const novoX: unknown[][] = [];
-  let casadas = 0, alteradas = 0, preservadas = 0;
-  const casadasLotes = new Set<string>();
-  const orfaos: string[] = []; // células V/X de lote que saiu do bônus (venda desfeita) — limpar
-  const orfaosLotes = new Set<string>();
   // Mão de volta Excel→dashboard: "pago" digitado pelo Felipe importa; apagado, desmarca.
   type ParteImport = { chaveVenda: string; loteId: string; parte: "corretor" | "imobiliaria"; data: string };
   const paraImportar: ParteImport[] = [];
   const paraDesmarcar: ParteImport[] = [];
+  const casadasLotes = new Set<string>();
   let resumoPago = 0, resumoAut = 0, resumoAg = 0;
 
+  // ── PASSO 1: IMPORTAÇÃO (pago do Excel → dashboard) + Data Venda + resumo das células ──
+  // NÃO depende do UAU (usa só a base rápida Eggs+pagamentos). É o que mais importa.
   for (let i = PRIMEIRA_LINHA_DADOS; i < totalLinhas; i++) {
     const row = values[i] || [];
-    const quadra = String(row[0] ?? "").trim();
-    const lote = String(row[1] ?? "").trim();
-    const curV = row[colV] ?? "";
-    const curX = row[colX] ?? "";
-    let nv: unknown = curV;
-    let nx: unknown = curX;
+    const q = parseInt(String(row[0] ?? "").trim(), 10);
+    const l = parseInt(String(row[1] ?? "").trim(), 10);
+    if (!Number.isFinite(q) || !Number.isFinite(l)) continue;
+    const loteId = `Q${q}-L${l}`;
+    const curV = row[colV] ?? "", curX = row[colX] ?? "";
 
-    const q = parseInt(quadra, 10);
-    const l = parseInt(lote, 10);
-    if (quadra !== "" && lote !== "" && Number.isFinite(q) && Number.isFinite(l)) {
-      const loteId = `Q${q}-L${l}`;
-      // Captura a "Data Venda" do Excel pra TODO lote (não só os de bônus) — vira a data autoridade.
-      const dVenda = colDataVenda >= 0 ? parseDataPgto(row[colDataVenda]) : "";
-      if (dVenda) datasVendaMap[loteId] = dVenda;
-      const b = bonusPorLote.get(loteId);
+    const dVenda = colDataVenda >= 0 ? parseDataPgto(row[colDataVenda]) : "";
+    if (dVenda) datasVendaMap[loteId] = dVenda;
+
+    const b = bonusPorLote.get(loteId);
+    if (b) {
+      casadasLotes.add(loteId);
       const dPgto = parseDataPgto(row[colData]); // data digitada na coluna W (ISO ou "")
-
-      // ── IMPORTAÇÃO (pago do Excel → dashboard) — INDEPENDE do UAU (base rápida Eggs) ──
       // Importa quando: ainda não pago OU a data da coluna W mudou (correção da data real).
-      if (b) {
-        if (isPago(curV)) {
-          if (!b.pagamento.pagoCorretora || (dPgto && dPgto !== b.pagamento.dataPagoCorretora))
-            paraImportar.push({ chaveVenda: b.chaveVenda, loteId, parte: "corretor", data: dPgto });
-        } else if (b.pagamento.pagoCorretora && (b.pagamento.observacao || "").includes("pago via Excel")) {
-          paraDesmarcar.push({ chaveVenda: b.chaveVenda, loteId, parte: "corretor", data: "" });
-        }
-        if (isPago(curX)) {
-          if (!b.pagamento.pagoImobiliaria || (dPgto && dPgto !== b.pagamento.dataPagoImobiliaria))
-            paraImportar.push({ chaveVenda: b.chaveVenda, loteId, parte: "imobiliaria", data: dPgto });
-        } else if (b.pagamento.pagoImobiliaria && (b.pagamento.observacao || "").includes("pago via Excel")) {
-          paraDesmarcar.push({ chaveVenda: b.chaveVenda, loteId, parte: "imobiliaria", data: "" });
-        }
+      if (isPago(curV)) {
+        if (!b.pagamento.pagoCorretora || (dPgto && dPgto !== b.pagamento.dataPagoCorretora))
+          paraImportar.push({ chaveVenda: b.chaveVenda, loteId, parte: "corretor", data: dPgto });
+      } else if (b.pagamento.pagoCorretora && (b.pagamento.observacao || "").includes("pago via Excel")) {
+        paraDesmarcar.push({ chaveVenda: b.chaveVenda, loteId, parte: "corretor", data: "" });
       }
-
-      // ── STATUS (escrita de volta no Excel) — SÓ quando o UAU confirmou (statusOk) ──
-      const alvo = porLote.get(loteId);
-      if (statusOk && alvo) {
-        casadas++;
-        casadasLotes.add(loteId);
-        // "pago" do Felipe é preservado (normaliza "Pago"/"PAGO" → "pago"); senão escreve o status.
-        if (isPago(curV)) { preservadas++; nv = "pago"; } else { nv = alvo.v; }
-        if (isPago(curX)) { preservadas++; nx = "pago"; } else { nx = alvo.x; }
-        if (nv !== curV) alteradas++;
-        if (nx !== curX) alteradas++;
-        for (const fin of [String(nv), String(nx)]) {
-          if (isPago(fin)) resumoPago++;
-          else if (fin === AUTORIZADO_TXT) resumoAut++;
-          else resumoAg++;
-        }
-      } else if (statusOk && !b && (isStatusBonus(curV) || isStatusBonus(curX))) {
-        // Órfão: tinha status mas não é mais venda válida (Eggs). Limpa (nunca mexe em "pago").
-        if (isStatusBonus(curV)) { nv = ""; alteradas++; orfaos.push(`${colLetter(colV)}${i + 1}`); }
-        if (isStatusBonus(curX)) { nx = ""; alteradas++; orfaos.push(`${colLetter(colX)}${i + 1}`); }
-        orfaosLotes.add(loteId);
+      if (isPago(curX)) {
+        if (!b.pagamento.pagoImobiliaria || (dPgto && dPgto !== b.pagamento.dataPagoImobiliaria))
+          paraImportar.push({ chaveVenda: b.chaveVenda, loteId, parte: "imobiliaria", data: dPgto });
+      } else if (b.pagamento.pagoImobiliaria && (b.pagamento.observacao || "").includes("pago via Excel")) {
+        paraDesmarcar.push({ chaveVenda: b.chaveVenda, loteId, parte: "imobiliaria", data: "" });
       }
-      // !statusOk → nv/nx ficam = curV/curX (sem escrita de status); a importação já rodou acima.
     }
-    novoV.push([nv]);
-    novoX.push([nx]);
+    for (const cell of [curV, curX]) { // resumo do estado ATUAL das células (reflete o Excel)
+      const t = String(cell).trim().toLowerCase();
+      if (isPago(cell)) resumoPago++;
+      else if (t === AUTORIZADO_TXT) resumoAut++;
+      else if (t === AGUARDANDO_TXT) resumoAg++;
+    }
   }
 
   const naoEncontradas: string[] = [];
-  for (const id of porLote.keys()) if (!casadasLotes.has(id)) naoEncontradas.push(id);
+  for (const id of bonusPorLote.keys()) if (!casadasLotes.has(id)) naoEncontradas.push(id);
 
-  const mudou = alteradas > 0;
   const report: SyncReport = {
     ok: true,
     arquivo: "Cenário_Comercial.xlsx",
     aba: wsName,
     totalLinhas,
-    casadas,
+    casadas: casadasLotes.size,
     naoEncontradas,
-    celulasAlteradas: alteradas,
-    preservadasPago: preservadas,
-    orfaosLimpos: orfaos.length,
-    orfaosLotes: Array.from(orfaosLotes),
+    celulasAlteradas: 0,
+    orfaosLimpos: 0,
     colunasStatus: `corretor=${colLetter(colV)}(${colV}) imob=${colLetter(colX)}(${colX})`,
     resumoStatus: { pago: resumoPago, autorizado: resumoAut, aguardando: resumoAg },
     importarDoExcel: paraImportar.map((p) => `${p.loteId} (${p.parte})`),
     desmarcarDoExcel: paraDesmarcar.map((p) => `${p.loteId} (${p.parte})`),
     amostraHeader: { U: String(headerRow[20] ?? ""), V: String(headerRow[21] ?? ""), W: String(headerRow[22] ?? ""), X: String(headerRow[23] ?? "") },
     datasVenda: { comData: Object.keys(datasVendaMap).length, coluna: colDataVenda >= 0 ? `${colLetter(colDataVenda)}(${colDataVenda})` : "(não encontrada)" },
-    statusEscrito: statusOk, // false = ERP fora → importou o "pago" mas não reescreveu status/cores
+    statusEscrito: false,
     dryRun,
-    mudou,
+    mudou: false,
   };
 
   if (dryRun) return report;
@@ -523,33 +478,79 @@ export async function syncBonusToExcel(opts: { dryRun?: boolean; force?: boolean
   } catch (e) {
     console.warn("importação Excel→dashboard falhou:", e);
     report.importadosAplicados = 0;
+    report.erroImport = e instanceof Error ? e.message : String(e);
   }
 
   // Data Venda (override) + carimbo do sync — rápidos, antes das escritas lentas no Excel.
   await setDatasVenda(datasVendaMap).catch(() => {});
-  await gravarSyncState({ syncedAt: new Date().toISOString(), celulasAlteradas: alteradas });
+  await gravarSyncState({ syncedAt: new Date().toISOString(), celulasAlteradas: report.importadosAplicados || 0 });
 
-  // ── Escritas DE VOLTA no Excel (cosméticas, lentas via Graph) — só com status do UAU ──
-  if (statusOk && mudou) {
-    const primeira = PRIMEIRA_LINHA_DADOS + 1; // Excel 1-based
-    const ultima = totalLinhas;                // Excel 1-based (usedRange começa em A1)
-    const addrV = `${colLetter(colV)}${primeira}:${colLetter(colV)}${ultima}`;
-    const addrX = `${colLetter(colX)}${primeira}:${colLetter(colX)}${ultima}`;
-    try {
-      await graph(token, `${wsPath}/range(address='${addrV}')`, { method: "PATCH", body: JSON.stringify({ values: novoV }) });
-      await graph(token, `${wsPath}/range(address='${addrX}')`, { method: "PATCH", body: JSON.stringify({ values: novoX }) });
-    } catch (e) {
-      console.warn("escrita de status no Excel falhou (cosmético):", e);
+  // ── PASSO 3: STATUS (autorizado/aguardando + cores) — BEST-EFFORT, precisa do UAU (regra
+  // 1,5%). Roda DEPOIS do import (que já está salvo acima). Timeout curto: se o ERP pendurar,
+  // pula sem derrubar nada — o "pago" não depende disto. Reescreve as colunas V/X num 2º passo. ──
+  try {
+    const tracking = await Promise.race([
+      getBonusTracking(),
+      new Promise<null>((_, rej) => setTimeout(() => rej(new Error("tracking timeout 30s")), 30000)),
+    ]);
+    if (tracking && tracking.completo) {
+      statusOk = true;
+      report.statusEscrito = true;
+      for (const b of tracking.bonus) {
+        if (typeof b.autorizado !== "boolean") continue;
+        const base = b.autorizado ? AUTORIZADO_TXT : AGUARDANDO_TXT;
+        porLote.set(b.loteId, { v: base, x: base });
+      }
+      const novoV: unknown[][] = [];
+      const novoX: unknown[][] = [];
+      const orfaos: string[] = []; // células de lote que saiu do bônus (venda desfeita) — limpar
+      let alt = 0;
+      for (let i = PRIMEIRA_LINHA_DADOS; i < totalLinhas; i++) {
+        const row = values[i] || [];
+        const cv = row[colV] ?? "", cx = row[colX] ?? "";
+        let nv: unknown = cv, nx: unknown = cx;
+        const q = parseInt(String(row[0] ?? "").trim(), 10);
+        const l = parseInt(String(row[1] ?? "").trim(), 10);
+        if (Number.isFinite(q) && Number.isFinite(l)) {
+          const loteId = `Q${q}-L${l}`;
+          const alvo = porLote.get(loteId);
+          if (alvo) {
+            // "pago" do Felipe é preservado (normaliza); senão escreve o status do UAU.
+            nv = isPago(cv) ? "pago" : alvo.v;
+            nx = isPago(cx) ? "pago" : alvo.x;
+          } else if (!bonusPorLote.has(loteId)) {
+            // Órfão: tinha status mas não é mais venda válida (Eggs). Limpa (nunca mexe em "pago").
+            if (isStatusBonus(cv)) { nv = ""; orfaos.push(`${colLetter(colV)}${i + 1}`); }
+            if (isStatusBonus(cx)) { nx = ""; orfaos.push(`${colLetter(colX)}${i + 1}`); }
+          }
+        }
+        novoV.push([nv]); novoX.push([nx]);
+        if (String(nv) !== String(cv)) alt++;
+        if (String(nx) !== String(cx)) alt++;
+      }
+      report.celulasAlteradas = alt;
+      report.orfaosLimpos = orfaos.length;
+      report.mudou = alt > 0;
+      if (alt > 0) {
+        const primeira = PRIMEIRA_LINHA_DADOS + 1; // Excel 1-based
+        const addrV = `${colLetter(colV)}${primeira}:${colLetter(colV)}${totalLinhas}`;
+        const addrX = `${colLetter(colX)}${primeira}:${colLetter(colX)}${totalLinhas}`;
+        try {
+          await graph(token, `${wsPath}/range(address='${addrV}')`, { method: "PATCH", body: JSON.stringify({ values: novoV }) });
+          await graph(token, `${wsPath}/range(address='${addrX}')`, { method: "PATCH", body: JSON.stringify({ values: novoX }) });
+        } catch (e) {
+          console.warn("escrita de status no Excel falhou (cosmético):", e);
+        }
+      }
+      if (alt > 0 || force) {
+        try {
+          report.destaque = await aplicarCores(token, wsPath, values, porLote, [{ letter: colLetter(colV), idx: colV, key: "v" }, { letter: colLetter(colX), idx: colX, key: "x" }], orfaos);
+        } catch (e) {
+          report.destaque = "erro: " + (e instanceof Error ? e.message : String(e));
+        }
+      }
     }
-  }
-  // Destaque por cor (âmbar "aguardando" / verde "autorizado"). Só com status do UAU.
-  if (statusOk && (mudou || force)) {
-    try {
-      report.destaque = await aplicarCores(token, wsPath, values, porLote, [{ letter: colLetter(colV), idx: colV, key: "v" }, { letter: colLetter(colX), idx: colX, key: "x" }], orfaos);
-    } catch (e) {
-      report.destaque = "erro: " + (e instanceof Error ? e.message : String(e));
-    }
-  }
+  } catch { /* ERP fora/lento → sem status; o "pago" já foi importado e salvo acima */ }
 
   return report;
 }

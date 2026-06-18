@@ -154,7 +154,11 @@ const JANELA_PROPAGACAO = 2 * 60 * 1000;
 async function savePagamentos(pagamentos: Record<string, BonusPagamento>): Promise<BonusResponse | null> {
   // Blob-primeiro com auto-migração: quando o Blob volta, grava lá e limpa o Edge (libera
   // os ~8KB). Enquanto bloqueado, cai no Edge. Ver lib/durable-store.ts.
-  await saveDurable(PAGAMENTOS_BLOB, PAGAMENTOS_EDGE_KEY, pagamentos);
+  const persist = await saveDurable(PAGAMENTOS_BLOB, PAGAMENTOS_EDGE_KEY, pagamentos);
+  // "none" = Blob bloqueado E Edge indisponível/cheio → NÃO persistiu. Lança pra NÃO mascarar:
+  // o overlay escritasRecentes esconderia a perda por ~2min e a marcação sumiria depois (foi
+  // exatamente o que escondeu o bug de import de jun/2026).
+  if (persist === "none") throw new Error("Falha ao persistir pagamentos: Blob bloqueado e Edge indisponível (cheio?).");
   // Marcar/desmarcar/isentar é mudança PURA de pagamento — aplica no tracking em memória/blob
   // SEM reconsultar o UAU (lento/instável). Se não houver base completa, força recompute.
   const tracking = await patchTrackingPagamentos(pagamentos);
@@ -235,8 +239,9 @@ export async function setBonusPagamento(
   };
   const novo: BonusPagamento = { ...atual, ...patch };
   pagamentos[chaveVenda] = novo;
+  const tracking = await savePagamentos(pagamentos); // lança se não persistir
+  // Overlay read-your-writes SÓ depois de persistir (senão mascara falha de save).
   escritasRecentes.set(chaveVenda, { at: Date.now(), pagamento: novo });
-  const tracking = await savePagamentos(pagamentos);
   return { pagamento: novo, tracking };
 }
 
@@ -252,6 +257,7 @@ export async function setBonusPagamentosEmLote(
   const carregados = await loadPagamentos();
   if (carregados === null) throw new Error("Storage de pagamentos indisponível (store suspenso?) — importação não salva.");
   const pagamentos = carregados;
+  const aplicados: { chaveVenda: string; novo: BonusPagamento }[] = [];
   for (const { chaveVenda, patch } of itens) {
     const atual = pagamentos[chaveVenda] || {
       pagoCorretora: false, dataPagoCorretora: "",
@@ -259,9 +265,12 @@ export async function setBonusPagamentosEmLote(
     };
     const novo: BonusPagamento = { ...atual, ...patch };
     pagamentos[chaveVenda] = novo;
-    escritasRecentes.set(chaveVenda, { at: Date.now(), pagamento: novo });
+    aplicados.push({ chaveVenda, novo });
   }
-  return savePagamentos(pagamentos);
+  const tracking = await savePagamentos(pagamentos); // lança se não persistir
+  // Overlay read-your-writes SÓ depois de persistir (senão mascara falha de save).
+  for (const { chaveVenda, novo } of aplicados) escritasRecentes.set(chaveVenda, { at: Date.now(), pagamento: novo });
+  return tracking;
 }
 
 // ── UAU: status da entrada por venda ───────────────────────────────────────
