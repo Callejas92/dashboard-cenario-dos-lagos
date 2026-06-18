@@ -42,8 +42,9 @@ interface LinhaCorretor {
   pctVGV: number;
   ultimaVenda: string;
   ativoUltimos30d: boolean;
-  ltvAjustado: number | null; // null = UAU ainda carregando
+  ltvAjustado: number | null; // null = bônus ainda carregando
   qualidade: number | null;
+  ltvEstimado: boolean;       // true = ERP de vendas indisponível → Mangaba estimado por fator
 }
 
 type SortField = "vgv" | "lotes" | "ultima" | "nome" | "ltv";
@@ -78,6 +79,7 @@ export default function SubTabCorretores() {
           ativoUltimos30d: false,
           ltvAjustado: null,
           qualidade: null,
+          ltvEstimado: false,
         };
         map.set(nome, l);
       }
@@ -100,16 +102,19 @@ export default function SubTabCorretores() {
     }
 
     // LTV ajustado por corretor (mesma conta do drawer — lib/calculations/ltv.ts).
-    // Depende do ERP só pro "Mangaba" (valorPrincipal), que vem de /uau/vendas — servido
-    // do cache (sobrevive mesmo com o Blob suspenso, em modo stale). NÃO depende mais de
-    // /uau/financeiro: ele dá 504 frio e travava a coluna em "…", e suas parcelas vêm
-    // VAZIAS hoje (inadimplência já era 0 de qualquer forma). Se as parcelas voltarem a
-    // popular, a inadimplência entra no cálculo automaticamente (parcelas ?? []).
-    if (uauVendas?.vendas && bonusData?.bonus) {
+    // Só depende do BÔNUS (Edge, confiável) + contratos (Eggs, rápido). O ERP só refina o
+    // "Mangaba": quando /uau/vendas responde, usa valorPrincipal real; quando cai (504/Blob
+    // suspenso), passa [] → calcularLtvCorretor estima o Mangaba pelo FATOR (valor×0,935) e
+    // marcamos como estimativa. NÃO depende de /uau/financeiro (504 frio + parcelas vazias).
+    // Antes o gate exigia os 2 endpoints do UAU → qualquer um caindo travava a coluna em "…".
+    if (bonusData?.bonus) {
+      const vendasUau = uauVendas?.vendas ?? [];
+      const estimado = vendasUau.length === 0; // sem ERP de vendas → Mangaba por fator
       for (const l of map.values()) {
-        const r = calcularLtvCorretor(l.nome, data?.contratos || [], bonusData.bonus, uauVendas.vendas, financ?.parcelasAReceber ?? []);
+        const r = calcularLtvCorretor(l.nome, data?.contratos || [], bonusData.bonus, vendasUau, financ?.parcelasAReceber ?? []);
         l.ltvAjustado = r.ltvAjustado;
         l.qualidade = r.qualidade;
+        l.ltvEstimado = estimado;
       }
     }
 
@@ -256,10 +261,10 @@ export default function SubTabCorretores() {
                 <td style={{ padding: "0.5rem 0.25rem", textAlign: "right", color: "var(--text)", fontWeight: 600 }}>{formatBRLCompact(l.vgv)}</td>
                 <td style={{ padding: "0.5rem 0.25rem", textAlign: "right" }} title="LTV líquido (Mangaba − bônus − comissões) × qualidade. Mangaba vem do ERP via cache (pode ter atraso). Inadimplência não entra enquanto o ERP não envia as parcelas. Clique no corretor pra ver o detalhe.">
                   {l.ltvAjustado === null ? (
-                    <span style={{ color: "var(--text-dim)", fontSize: "0.7rem", fontStyle: "italic" }} title="Aguardando vendas do ERP (cache)">…</span>
+                    <span style={{ color: "var(--text-dim)", fontSize: "0.7rem", fontStyle: "italic" }} title="Aguardando bônus">…</span>
                   ) : (
-                    <span style={{ fontWeight: 600, color: l.ltvAjustado >= 0 ? "var(--text)" : "#dc2626" }}>
-                      {formatBRLCompact(l.ltvAjustado)}
+                    <span style={{ fontWeight: 600, color: l.ltvAjustado >= 0 ? "var(--text)" : "#dc2626" }} title={l.ltvEstimado ? "Estimativa: ERP de vendas indisponível — Mangaba calculado pelo fator (valor×0,935). Refina quando o ERP responder." : undefined}>
+                      {l.ltvEstimado ? "~" : ""}{formatBRLCompact(l.ltvAjustado)}
                       <span style={{ marginLeft: "0.3rem", fontSize: "0.65rem", fontWeight: 700, color: (l.qualidade ?? 0) >= 70 ? "#10b981" : (l.qualidade ?? 0) >= 45 ? "#f59e0b" : "#dc2626" }}>
                         {l.qualidade}
                       </span>
