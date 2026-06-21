@@ -76,24 +76,21 @@ export default function RitmoHonesto() {
         <span style={{ fontSize: "0.85rem", color: "var(--text)", lineHeight: 1.4 }}>{verdito}</span>
       </div>
 
-      {/* Números-chave */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(110px, 1fr))", gap: "0.6rem", marginBottom: "0.875rem" }}>
-        <div style={{ background: "var(--bg-secondary, rgba(127,127,127,0.04))", border: "1px solid var(--border)", borderRadius: "0.5rem", padding: "0.55rem 0.7rem" }}>
-          <div style={{ fontSize: "0.68rem", color: "var(--text-muted)" }}>Agora (30 dias)</div>
-          <div style={{ fontSize: "1.25rem", fontWeight: 700, color: cor, lineHeight: 1.1 }}>{recente}<span style={{ fontSize: "0.68rem", color: "var(--text-dim)", fontWeight: 400 }}>/mês</span></div>
+      {/* Números-chave — cada ritmo com a SUA data de encerramento */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: "0.6rem", marginBottom: "0.875rem" }}>
+        <div style={{ background: "var(--bg-secondary, rgba(127,127,127,0.04))", border: "1px solid var(--border)", borderRadius: "0.5rem", padding: "0.6rem 0.75rem" }}>
+          <div style={{ fontSize: "0.68rem", color: "var(--text-muted)" }}>Ritmo (30 dias)</div>
+          <div style={{ fontSize: "1.4rem", fontWeight: 700, color: cor, lineHeight: 1.1 }}>{recente}<span style={{ fontSize: "0.68rem", color: "var(--text-dim)", fontWeight: 400 }}> lotes/mês</span></div>
+          <div style={{ fontSize: "0.7rem", color: "var(--text-muted)", marginTop: "0.15rem" }}>encerra <strong style={{ color: "var(--text)" }}>{t.esgotamentoLabel}</strong></div>
         </div>
-        <div style={{ background: "var(--bg-secondary, rgba(127,127,127,0.04))", border: "1px solid var(--border)", borderRadius: "0.5rem", padding: "0.55rem 0.7rem" }}>
+        <div style={{ background: "var(--bg-secondary, rgba(127,127,127,0.04))", border: "1px solid var(--border)", borderRadius: "0.5rem", padding: "0.6rem 0.75rem" }}>
           <div style={{ fontSize: "0.68rem", color: "var(--text-muted)" }}>Meta inicial</div>
-          <div style={{ fontSize: "1.25rem", fontWeight: 700, color: "var(--text)", lineHeight: 1.1 }}>{PROJETO.VELOCIDADE_ALVO_LOTES_MES.toFixed(1).replace(".", ",")}<span style={{ fontSize: "0.68rem", color: "var(--text-dim)", fontWeight: 400 }}>/mês</span></div>
-          <div style={{ fontSize: "0.62rem", color: "var(--text-dim)" }}>encerrar em 1 ano (174 ÷ 12)</div>
+          <div style={{ fontSize: "1.4rem", fontWeight: 700, color: "var(--text)", lineHeight: 1.1 }}>{PROJETO.VELOCIDADE_ALVO_LOTES_MES.toFixed(1).replace(".", ",")}<span style={{ fontSize: "0.68rem", color: "var(--text-dim)", fontWeight: 400 }}> lotes/mês</span></div>
+          <div style={{ fontSize: "0.7rem", color: "var(--text-muted)", marginTop: "0.15rem" }}>p/ bater · encerra <strong style={{ color: "var(--text)" }}>{mesAno(t.prazoMs)}</strong></div>
         </div>
-        <div style={{ background: "var(--bg-secondary, rgba(127,127,127,0.04))", border: "1px solid var(--border)", borderRadius: "0.5rem", padding: "0.55rem 0.7rem" }}>
-          <div style={{ fontSize: "0.68rem", color: "var(--text-muted)" }}>Esgota (previsão)</div>
-          <div style={{ fontSize: "1.25rem", fontWeight: 700, color: "var(--text)", lineHeight: 1.1 }}>{t.esgotamentoLabel}</div>
-        </div>
-        <div style={{ background: "var(--bg-secondary, rgba(127,127,127,0.04))", border: "1px solid var(--border)", borderRadius: "0.5rem", padding: "0.55rem 0.7rem" }}>
+        <div style={{ background: "var(--bg-secondary, rgba(127,127,127,0.04))", border: "1px solid var(--border)", borderRadius: "0.5rem", padding: "0.6rem 0.75rem" }}>
           <div style={{ fontSize: "0.68rem", color: "var(--text-muted)" }}>Tendência</div>
-          <div style={{ fontSize: "0.95rem", fontWeight: 700, color: corDir, lineHeight: 1.1, display: "flex", alignItems: "center", gap: "0.2rem", marginTop: "0.2rem" }}>{iconDir} {dir === "acelerando" ? "subindo" : dir === "desacelerando" ? "caindo" : "estável"}</div>
+          <div style={{ fontSize: "1.1rem", fontWeight: 700, color: corDir, lineHeight: 1.1, display: "flex", alignItems: "center", gap: "0.25rem", marginTop: "0.3rem" }}>{iconDir} {dir === "acelerando" ? "subindo" : dir === "desacelerando" ? "caindo" : "estável"}</div>
         </div>
       </div>
 
