@@ -180,6 +180,32 @@ export async function GET(request: Request) {
       isKeyEvent: parseInt(row.metricValues[1].value) > 0,
     }));
 
+    // WhatsApp por botão (wa_source) — dimensão personalizada do evento click_whatsapp.
+    // Resiliente: se a dimensão não estiver registrada (ou sem dado), devolve []; só popula
+    // dos cliques DEPOIS do registro no GA4 (os antigos vêm como "(not set)").
+    let whatsappPorBotao: { source: string; cliques: number }[] = [];
+    try {
+      const waRes = await fetch(`${GA_API}/properties/${propertyId}:runReport`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          dateRanges: [{ startDate: `${days}daysAgo`, endDate: "today" }],
+          dimensions: [{ name: "customEvent:wa_source" }],
+          metrics: [{ name: "eventCount" }],
+          dimensionFilter: { filter: { fieldName: "eventName", stringFilter: { value: "click_whatsapp" } } },
+          orderBys: [{ metric: { metricName: "eventCount" }, desc: true }],
+          limit: 20,
+        }),
+      });
+      if (waRes.ok) {
+        const waData = await waRes.json();
+        whatsappPorBotao = (waData.rows || []).map((row: { dimensionValues: { value: string }[]; metricValues: { value: string }[] }) => ({
+          source: row.dimensionValues[0].value,
+          cliques: parseInt(row.metricValues[0].value),
+        }));
+      }
+    } catch { /* dimensão não registrada ainda */ }
+
     return NextResponse.json({
       configured: true,
       days,
@@ -195,6 +221,7 @@ export async function GET(request: Request) {
       daily,
       topPages,
       eventos,
+      whatsappPorBotao,
       fetchedAt: new Date().toISOString(),
     });
   } catch (error) {

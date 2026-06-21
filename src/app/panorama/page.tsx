@@ -23,6 +23,7 @@ import PrevisaoTermino from "@/components/panorama/PrevisaoTermino";
 import RitmoHonesto from "@/components/panorama/RitmoHonesto";
 import SaudeMarketing from "@/components/panorama/SaudeMarketing";
 import VisibilidadeDigital from "@/components/panorama/VisibilidadeDigital";
+import EstruturaCusto from "@/components/panorama/EstruturaCusto";
 import ListaAlertas from "@/components/panorama/ListaAlertas";
 import BlocoInsights from "@/components/panorama/BlocoInsights";
 
@@ -44,6 +45,7 @@ export default function PanoramaPage() {
         <RitmoHonesto />
         <SaudeMarketing />
         <VisibilidadeDigital />
+        <EstruturaCusto />
         <ListaAlertas />
         <BlocoInsights />
       </div>

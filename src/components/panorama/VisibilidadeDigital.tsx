@@ -18,7 +18,13 @@ import { formatInt } from "@/lib/utils/formatters";
 interface MetaResp { totals?: { reach?: number; impressions?: number; clicks?: number; leads?: number } }
 interface GoogleResp { totals?: { impressions?: number; clicks?: number; conversions?: number } }
 interface IgResp { configured?: boolean; perfil?: { seguidores?: number }; metricas?: { engagementRate?: number } }
-interface GaResp { configured?: boolean; overview?: { sessions?: number }; sources?: { channel: string; sessions: number }[] }
+interface GaResp {
+  configured?: boolean;
+  overview?: { sessions?: number };
+  sources?: { channel: string; sessions: number }[];
+  eventos?: { nome: string; qtd: number }[];
+  whatsappPorBotao?: { source: string; cliques: number }[];
+}
 interface VdResp { valor?: number }
 
 const ORG_DIR = new Set(["Organic Search", "Organic Social", "Direct"]);
@@ -39,10 +45,13 @@ export default function VisibilidadeDigital() {
   const imprGoogle = goog?.totals?.impressions;
   const segIg = ig?.perfil?.seguidores;
   const engIg = ig?.metricas?.engagementRate;
-  const leadsDigital =
-    meta?.totals || goog?.totals
-      ? (meta?.totals?.leads ?? 0) + (goog?.totals?.conversions ?? 0)
-      : undefined;
+  // Ações reais no site (GA4) — muito mais honestas que reach/impressão.
+  const ev = (nome: string) => ga?.eventos?.find((e) => e.nome === nome)?.qtd;
+  const leadsSite = ga?.eventos ? (ev("generate_lead") ?? 0) : undefined; // leads reais (todas origens)
+  const whats = ga?.eventos ? (ev("click_whatsapp") ?? 0) : undefined;    // ponte digital→corretor
+  const shares = ga?.eventos ? (ev("book_share") ?? 0) : undefined;
+  const NAO_DEF = /not.?set|não def|nao def/i;
+  const waBotoes = (ga?.whatsappPorBotao || []).filter((b) => b.source && !NAO_DEF.test(b.source));
   const gaSessions = ga?.configured ? ga?.overview?.sessions : undefined;
   const orgDir = ga?.sources
     ? ga.sources.filter((s) => ORG_DIR.has(s.channel)).reduce((a, s) => a + s.sessions, 0)
@@ -82,11 +91,12 @@ export default function VisibilidadeDigital() {
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))", gap: "0.6rem" }}>
-        {tile("Alcance (Meta)", fmt(reach), reach != null ? "pessoas alcançadas" : "carregando")}
+        {tile("Alcance (Meta)", fmt(reach), "pessoas alcançadas")}
         {tile("Tráfego do site (GA4)", fmt(gaSessions), orgDir != null ? `${formatInt(orgDir)} orgânico+direto` : "sessões")}
         {tile("Impressões (Google)", fmt(imprGoogle), "anúncios")}
+        {tile("Leads do site", fmt(leadsSite), "generate_lead · todas as origens")}
+        {tile("WhatsApp", fmt(whats), waBotoes.length ? `${waBotoes.length} botão(ões)` : "por botão: coletando", true)}
         {tile("Seguidores IG", fmt(segIg), engIg != null ? `${engIg}% engajamento` : "instagram")}
-        {tile("Leads digitais", fmt(leadsDigital), "Meta + Google")}
 
         {/* Venda direta — editável */}
         <div style={{ background: "#3b82f614", border: "1px solid #3b82f640", borderRadius: "0.5rem", padding: "0.7rem 0.85rem" }}>
@@ -121,7 +131,7 @@ export default function VisibilidadeDigital() {
       </div>
 
       <div style={{ marginTop: "0.75rem", padding: "0.5rem 0.75rem", background: "#3b82f614", borderRadius: "0.375rem", fontSize: "0.74rem", color: "var(--text)", lineHeight: 1.5 }}>
-        Muito alcance e {leadsDigital != null ? `~${formatInt(leadsDigital)} leads` : "leads"}, mas <strong>{fmt(vendaDireta)} venda{(vendaDireta ?? 0) === 1 ? "" : "s"} direta{(vendaDireta ?? 0) === 1 ? "" : "s"}</strong>. Não é falha do digital nem prova de sucesso — o resto fecha pelo canal (o &quot;funil escuro&quot;), e isso não é atribuível. Aqui medimos <strong>visibilidade</strong>; o tráfego <strong>orgânico+direto</strong> é o sinal de marca pegando, sem ninguém reportar nada.
+<strong>{fmt(whats)} cliques no WhatsApp</strong> e {fmt(leadsSite)} leads do site, mas <strong>{fmt(vendaDireta)} venda direta</strong>. O WhatsApp é a <strong>ponte pro corretor</strong> — o digital gera intenção que fecha pelo canal (o &quot;funil escuro&quot;), e isso não é atribuível. O tráfego <strong>orgânico+direto</strong> é o sinal de marca pegando.{shares != null && shares > 0 ? ` ${shares} compartilhamentos do book.` : ""}
       </div>
     </div>
   );
