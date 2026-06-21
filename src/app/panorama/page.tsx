@@ -19,7 +19,6 @@ import VelocidadeVendas from "@/components/panorama/VelocidadeVendas";
 import VelocidadeNoTempo from "@/components/panorama/VelocidadeNoTempo";
 import VendasPorDia from "@/components/panorama/VendasPorDia";
 import CurvaVendasAcumuladas from "@/components/panorama/CurvaVendasAcumuladas";
-import PrevisaoTermino from "@/components/panorama/PrevisaoTermino";
 import RitmoHonesto from "@/components/panorama/RitmoHonesto";
 import SaudeMarketing from "@/components/panorama/SaudeMarketing";
 import VisibilidadeDigital from "@/components/panorama/VisibilidadeDigital";
@@ -41,7 +40,6 @@ export default function PanoramaPage() {
         <VelocidadeNoTempo />
         <VendasPorDia />
         <CurvaVendasAcumuladas />
-        <PrevisaoTermino />
         <RitmoHonesto />
         <SaudeMarketing />
         <VisibilidadeDigital />

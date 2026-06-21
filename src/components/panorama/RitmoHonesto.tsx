@@ -1,17 +1,16 @@
 "use client";
 
 /**
- * Ritmo — leitura HONESTA (a derivada que o selo "no prazo" esconde).
+ * Ritmo & Previsão — funde o "Previsão de Término" com a leitura honesta da tendência.
  *
- * O "Previsão de Término" e os KPIs comparam a MÉDIA desde o lançamento (que carrega o
- * pico) com o necessário → fica verde mesmo desacelerando. Aqui mostramos o ritmo RECENTE
- * (30d), a DIREÇÃO (recente vs 30d anteriores) e a curva do ritmo móvel, com veredito
- * baseado no recente — não na média. Só usa contratos do Eggs (não depende do UAU/Blob).
+ * Gráfico burn-up: realizado (cheio) + previsão no ritmo recente (tracejado) + plano até o
+ * prazo (pontilhado). Veredito pelo ritmo RECENTE (não pela média que carrega o pico).
+ * Só usa contratos do Eggs (independe do UAU/Blob).
  */
 import useSWR from "swr";
-import { Activity, TrendingDown, TrendingUp, Minus } from "lucide-react";
+import { LineChart, Line, XAxis, YAxis, ReferenceLine, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
+import { TrendingUp, TrendingDown, Minus, CheckCircle2, AlertTriangle } from "lucide-react";
 import LoadingCard from "@/components/shared/LoadingCard";
-import TooltipDefinicao from "@/components/shared/TooltipDefinicao";
 import { isVenda } from "@/lib/constants/projeto";
 import { calcularTendencia } from "@/lib/calculations/tendencia";
 
@@ -19,13 +18,15 @@ interface CrmContratosResp {
   contratos?: { valor: number; status: string; cancelado: boolean; dataContrato?: string }[];
 }
 
-const VERDE = "#10b981", AMBAR = "#f59e0b", VERMELHO = "#dc2626", CINZA = "#6b7280";
+const VERDE = "#10b981", AMBAR = "#f59e0b", VERMELHO = "#dc2626", CINZA = "#9ca3af";
+const MESES = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"];
+const mesAno = (ms: number) => { const d = new Date(ms); return `${MESES[d.getMonth()]}/${String(d.getFullYear()).slice(-2)}`; };
 
 export default function RitmoHonesto() {
   const { data, isLoading } = useSWR<CrmContratosResp>("/api/crm/contratos");
 
   if (isLoading || !data) {
-    return <LoadingCard height={150} label="Ritmo — tendência" hint="lendo contratos..." />;
+    return <LoadingCard height={300} label="Ritmo & Previsão" hint="lendo contratos..." />;
   }
 
   const vendas = (data.contratos || [])
@@ -33,74 +34,111 @@ export default function RitmoHonesto() {
     .map((c) => ({ dataVenda: (c.dataContrato as string).slice(0, 10), valor: c.valor }));
 
   const t = calcularTendencia(vendas);
+  const cor = t.veredito === "no_ritmo" ? VERDE : t.veredito === "caindo" ? AMBAR : VERMELHO;
 
-  const corVeredito = t.veredito === "no_ritmo" ? VERDE : t.veredito === "caindo" ? AMBAR : VERMELHO;
-  const textoVeredito =
-    t.veredito === "no_ritmo"
-      ? "No ritmo recente, fecha no prazo."
+  const recente = t.recente30d;
+  const nec = t.necessario;
+  const semRitmo = t.esgotamentoMs == null;
+  const verdito =
+    semRitmo
+      ? `Ritmo parado — sem vendas recentes. Precisa de ${nec.toFixed(0)}/mês pra fechar no prazo (${mesAno(t.prazoMs)}).`
+      : t.veredito === "no_ritmo"
+      ? `No ritmo de agora (${recente}/mês) você esgota ~${t.esgotamentoLabel} — antes do prazo (${mesAno(t.prazoMs)}).`
       : t.veredito === "caindo"
-      ? "Pelo ritmo recente ainda dá — mas está caindo. A média esconde isso."
-      : "Ritmo recente abaixo do necessário. A média desde o lançamento mascara.";
+      ? `Ainda dá (${recente}/mês), mas o ritmo está caindo. Previsão de esgotar: ~${t.esgotamentoLabel}. Fique de olho.`
+      : `Abaixo do necessário: ${recente}/mês vs ${nec.toFixed(0)}/mês. No ritmo atual só esgota ~${t.esgotamentoLabel}, depois do prazo (${mesAno(t.prazoMs)}).`;
 
   const dir = t.direcao;
   const corDir = dir === "acelerando" ? VERDE : dir === "desacelerando" ? AMBAR : CINZA;
   const iconDir = dir === "acelerando" ? <TrendingUp size={12} /> : dir === "desacelerando" ? <TrendingDown size={12} /> : <Minus size={12} />;
-  const labelDir = dir === "acelerando" ? "acelerando" : dir === "desacelerando" ? "desacelerando" : "estável";
-  const deltaTxt = t.anterior30d > 0 ? `${t.deltaPct >= 0 ? "+" : ""}${Math.round(t.deltaPct * 100)}% vs 30d anteriores` : "sem base anterior";
 
-  // ── Sparkline do ritmo móvel 30d ──
-  const W = 280, H = 64, PAD = 4;
-  const serie = t.serie;
-  const maxY = Math.max(t.necessario, ...serie.map((p) => p.ritmo30d), 1) * 1.15;
-  const x = (i: number) => PAD + (serie.length <= 1 ? 0 : (i / (serie.length - 1)) * (W - 2 * PAD));
-  const y = (v: number) => H - PAD - (v / maxY) * (H - 2 * PAD);
-  const pts = serie.map((p, i) => `${x(i).toFixed(1)},${y(p.ritmo30d).toFixed(1)}`).join(" ");
-  const yNec = y(t.necessario);
+  // Ticks mensais (a cada 2 meses) pro eixo X
+  const ticks: number[] = [];
+  if (t.serie.length) {
+    const d = new Date(t.serie[0].t); d.setDate(1);
+    const last = t.serie[t.serie.length - 1].t;
+    for (let m = d.getTime(); m <= last;) { ticks.push(m); const nd = new Date(m); nd.setMonth(nd.getMonth() + 2); m = nd.getTime(); }
+  }
 
   return (
     <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "0.75rem", padding: "1rem 1.25rem" }}>
-      <div style={{ fontSize: "0.75rem", color: "var(--text-dim)", fontWeight: 700, letterSpacing: "0.05em", textTransform: "uppercase", marginBottom: "0.875rem", display: "flex", alignItems: "center", gap: "0.4rem" }}>
-        <Activity size={12} />
-        <TooltipDefinicao
-          texto={`Ritmo RECENTE (últimos 30 dias) vs o necessário pra fechar no prazo, e a DIREÇÃO (recente vs os 30 dias anteriores).\n\nO selo "no prazo" usa a média desde o lançamento (${t.mediaAcumulada.toFixed(1)}/mês), que carrega o pico e fica verde mesmo desacelerando. Aqui o veredito usa o ritmo recente.`}
-        >
-          <span>Ritmo — tendência</span>
-        </TooltipDefinicao>
+      <div style={{ fontSize: "0.75rem", color: "var(--text-dim)", fontWeight: 700, letterSpacing: "0.05em", textTransform: "uppercase", marginBottom: "0.75rem", display: "flex", alignItems: "center", gap: "0.4rem" }}>
+        <TrendingUp size={12} />
+        <span>Ritmo &amp; Previsão</span>
         <span style={{ marginLeft: "auto", fontSize: "0.7rem", color: "var(--text-muted)", fontWeight: 400, textTransform: "none", letterSpacing: 0 }}>
-          a derivada que o selo esconde
+          vai fechar no prazo? (ritmo recente, não a média)
         </span>
       </div>
 
-      <div style={{ display: "flex", gap: "1.25rem", flexWrap: "wrap", alignItems: "flex-start" }}>
-        {/* Números */}
-        <div style={{ flex: "1 1 200px", minWidth: 200 }}>
-          <div style={{ display: "flex", alignItems: "baseline", gap: "0.5rem", flexWrap: "wrap" }}>
-            <span style={{ fontSize: "2rem", fontWeight: 700, color: corVeredito, lineHeight: 1 }}>{t.recente30d}</span>
-            <span style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>lotes/mês · últimos 30d</span>
-            <span style={{ display: "inline-flex", alignItems: "center", gap: "0.2rem", fontSize: "0.68rem", fontWeight: 700, color: corDir, background: `${corDir}1a`, padding: "0.1rem 0.45rem", borderRadius: "9999px" }}>
-              {iconDir} {labelDir}
-            </span>
-          </div>
-          <div style={{ fontSize: "0.74rem", color: "var(--text-muted)", marginTop: "0.4rem", lineHeight: 1.5 }}>
-            necessário <strong style={{ color: "var(--text)" }}>{t.necessario.toFixed(1)}/mês</strong> · {deltaTxt}
-            <br />
-            <span style={{ textDecoration: "line-through", color: "var(--text-dim)" }}>média {t.mediaAcumulada.toFixed(1)}</span>
-            <span style={{ color: "var(--text-dim)" }}> (carrega o pico — engana)</span>
-          </div>
-        </div>
-
-        {/* Sparkline */}
-        <svg viewBox={`0 0 ${W} ${H}`} style={{ width: W, height: H, maxWidth: "100%", flexShrink: 0 }} role="img" aria-label="curva do ritmo móvel de 30 dias ao longo do tempo">
-          <line x1={PAD} y1={yNec} x2={W - PAD} y2={yNec} stroke={CINZA} strokeWidth={1} strokeDasharray="4 3" opacity={0.6} />
-          <text x={PAD} y={Math.max(9, yNec - 3)} style={{ fontSize: 9, fill: "var(--text-dim)" }}>necessário {t.necessario.toFixed(0)}</text>
-          {serie.length > 1 && <polyline points={pts} fill="none" stroke="#3b82f6" strokeWidth={2} />}
-          {serie.length > 0 && <circle cx={x(serie.length - 1)} cy={y(serie[serie.length - 1].ritmo30d)} r={3.5} fill={corVeredito} />}
-          <text x={W - PAD} y={H - 1} textAnchor="end" style={{ fontSize: 9, fill: "var(--text-dim)" }}>lançamento → hoje</text>
-        </svg>
+      {/* Veredito sempre visível */}
+      <div style={{ display: "flex", alignItems: "center", gap: "0.6rem", background: `${cor}14`, borderRadius: "0.5rem", padding: "0.6rem 0.85rem", marginBottom: "0.875rem" }}>
+        {t.veredito === "no_ritmo" ? <CheckCircle2 size={20} style={{ color: cor, flexShrink: 0 }} /> : <AlertTriangle size={20} style={{ color: cor, flexShrink: 0 }} />}
+        <span style={{ fontSize: "0.85rem", color: "var(--text)", lineHeight: 1.4 }}>{verdito}</span>
       </div>
 
-      <div style={{ marginTop: "0.75rem", padding: "0.5rem 0.75rem", background: `${corVeredito}14`, borderRadius: "0.375rem", fontSize: "0.74rem", color: "var(--text)" }}>
-        <strong style={{ color: corVeredito }}>{textoVeredito}</strong>
+      {/* Números-chave */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(110px, 1fr))", gap: "0.6rem", marginBottom: "0.875rem" }}>
+        <div style={{ background: "var(--bg-secondary, rgba(127,127,127,0.04))", border: "1px solid var(--border)", borderRadius: "0.5rem", padding: "0.55rem 0.7rem" }}>
+          <div style={{ fontSize: "0.68rem", color: "var(--text-muted)" }}>Agora (30 dias)</div>
+          <div style={{ fontSize: "1.25rem", fontWeight: 700, color: cor, lineHeight: 1.1 }}>{recente}<span style={{ fontSize: "0.68rem", color: "var(--text-dim)", fontWeight: 400 }}>/mês</span></div>
+        </div>
+        <div style={{ background: "var(--bg-secondary, rgba(127,127,127,0.04))", border: "1px solid var(--border)", borderRadius: "0.5rem", padding: "0.55rem 0.7rem" }}>
+          <div style={{ fontSize: "0.68rem", color: "var(--text-muted)" }}>Precisa</div>
+          <div style={{ fontSize: "1.25rem", fontWeight: 700, color: "var(--text)", lineHeight: 1.1 }}>{nec.toFixed(0)}<span style={{ fontSize: "0.68rem", color: "var(--text-dim)", fontWeight: 400 }}>/mês</span></div>
+        </div>
+        <div style={{ background: "var(--bg-secondary, rgba(127,127,127,0.04))", border: "1px solid var(--border)", borderRadius: "0.5rem", padding: "0.55rem 0.7rem" }}>
+          <div style={{ fontSize: "0.68rem", color: "var(--text-muted)" }}>Esgota (previsão)</div>
+          <div style={{ fontSize: "1.25rem", fontWeight: 700, color: "var(--text)", lineHeight: 1.1 }}>{t.esgotamentoLabel}</div>
+        </div>
+        <div style={{ background: "var(--bg-secondary, rgba(127,127,127,0.04))", border: "1px solid var(--border)", borderRadius: "0.5rem", padding: "0.55rem 0.7rem" }}>
+          <div style={{ fontSize: "0.68rem", color: "var(--text-muted)" }}>Tendência</div>
+          <div style={{ fontSize: "0.95rem", fontWeight: 700, color: corDir, lineHeight: 1.1, display: "flex", alignItems: "center", gap: "0.2rem", marginTop: "0.2rem" }}>{iconDir} {dir === "acelerando" ? "subindo" : dir === "desacelerando" ? "caindo" : "estável"}</div>
+        </div>
+      </div>
+
+      {/* Gráfico burn-up */}
+      <div style={{ width: "100%", height: 200 }}>
+        <ResponsiveContainer>
+          <LineChart data={t.serie} margin={{ top: 8, right: 12, left: -8, bottom: 0 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
+            <XAxis dataKey="t" type="number" scale="time" domain={["dataMin", "dataMax"]} ticks={ticks} tickFormatter={mesAno} tick={{ fontSize: 10, fill: "var(--text-muted)" }} axisLine={false} tickLine={false} />
+            <YAxis domain={[0, t.lotesVendaveis]} ticks={[0, Math.round(t.lotesVendaveis / 2), t.lotesVendaveis]} tick={{ fontSize: 10, fill: "var(--text-muted)" }} axisLine={false} tickLine={false} width={32} />
+            <Tooltip
+              content={(p) => {
+                if (!p.active || !p.payload?.length) return null;
+                const ms = p.payload[0]?.payload?.t as number;
+                const row = p.payload[0]?.payload as { real: number | null; previsto: number | null; plano: number | null };
+                return (
+                  <div style={{ background: "var(--bg-secondary, #fff)", border: "1px solid var(--border)", borderRadius: "0.375rem", padding: "0.4rem 0.6rem", fontSize: "0.72rem" }}>
+                    <div style={{ fontWeight: 700, color: "var(--text)" }}>{mesAno(ms)}</div>
+                    {row.real != null && <div style={{ color: VERDE }}>realizado: {Math.round(row.real)}</div>}
+                    {row.previsto != null && <div style={{ color: VERDE }}>previsão: {Math.round(row.previsto)}</div>}
+                    {row.plano != null && <div style={{ color: "var(--text-muted)" }}>plano: {Math.round(row.plano)}</div>}
+                  </div>
+                );
+              }}
+            />
+            <ReferenceLine y={t.lotesVendaveis} stroke={CINZA} strokeDasharray="2 2" label={{ value: `meta ${t.lotesVendaveis}`, position: "insideTopLeft", fontSize: 9, fill: "var(--text-dim)" }} />
+            <ReferenceLine x={t.hojeMs} stroke="var(--text-dim)" strokeDasharray="3 3" label={{ value: "hoje", position: "insideTopRight", fontSize: 9, fill: "var(--text-dim)" }} />
+            <ReferenceLine x={t.prazoMs} stroke={CINZA} strokeDasharray="3 3" label={{ value: `prazo ${mesAno(t.prazoMs)}`, position: "insideBottomRight", fontSize: 9, fill: "var(--text-dim)" }} />
+            {t.esgotamentoMs != null && t.esgotamentoMs <= t.serie[t.serie.length - 1].t && (
+              <ReferenceLine x={t.esgotamentoMs} stroke={cor} strokeDasharray="3 3" label={{ value: `esgota ${t.esgotamentoLabel}`, position: "insideTopLeft", fontSize: 9, fill: cor }} />
+            )}
+            <Line type="monotone" dataKey="plano" stroke={CINZA} strokeWidth={1.5} strokeDasharray="1 4" dot={false} connectNulls name="plano" isAnimationActive={false} />
+            <Line type="monotone" dataKey="previsto" stroke={VERDE} strokeWidth={2} strokeDasharray="6 4" dot={false} connectNulls name="previsão" isAnimationActive={false} />
+            <Line type="monotone" dataKey="real" stroke={VERDE} strokeWidth={2.5} dot={false} connectNulls name="realizado" isAnimationActive={false} />
+          </LineChart>
+        </ResponsiveContainer>
+      </div>
+
+      {/* Legenda + explicação */}
+      <div style={{ display: "flex", gap: "0.9rem", flexWrap: "wrap", marginTop: "0.5rem", fontSize: "0.7rem", color: "var(--text-muted)" }}>
+        <span><span style={{ display: "inline-block", width: 16, height: 2.5, background: VERDE, verticalAlign: "middle" }} /> realizado ({t.vendidos})</span>
+        <span><span style={{ display: "inline-block", width: 16, borderTop: `2px dashed ${VERDE}`, verticalAlign: "middle" }} /> previsão (ritmo atual)</span>
+        <span><span style={{ display: "inline-block", width: 16, borderTop: `2px dotted ${CINZA}`, verticalAlign: "middle" }} /> plano (fechar no prazo)</span>
+      </div>
+      <div style={{ marginTop: "0.5rem", fontSize: "0.72rem", color: "var(--text-dim)", lineHeight: 1.5 }}>
+        Onde a <strong>previsão</strong> (tracejada) toca os {t.lotesVendaveis} = data prevista de esgotamento. Antes da linha &quot;prazo&quot; = adiantado; depois = atrasado. A previsão usa o ritmo recente, não a média ({t.mediaAcumulada.toFixed(0)}/mês) que carrega o pico do lançamento.
       </div>
     </div>
   );
