@@ -156,7 +156,7 @@ export async function GET() {
     // Enrich with ConsultarResumoVenda in batches
     const vendasComNumero = baseVendas.filter(v => v.numVen > 0);
     const resumoMap = new Map<number, Record<string, unknown>>();
-    const concurrency = 5;
+    const concurrency = 10; // alinhado com /uau/vendas e bônus (valor já comprovado seguro)
 
     for (let i = 0; i < vendasComNumero.length; i += concurrency) {
       const batch = vendasComNumero.slice(i, i + concurrency);
