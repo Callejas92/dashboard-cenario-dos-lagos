@@ -11,7 +11,7 @@ import useSWR from "swr";
 import { LineChart, Line, XAxis, YAxis, ReferenceLine, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
 import { TrendingUp, TrendingDown, Minus, CheckCircle2, AlertTriangle } from "lucide-react";
 import LoadingCard from "@/components/shared/LoadingCard";
-import { isVenda } from "@/lib/constants/projeto";
+import { isVenda, PROJETO } from "@/lib/constants/projeto";
 import { calcularTendencia } from "@/lib/calculations/tendencia";
 
 interface CrmContratosResp {
@@ -83,8 +83,14 @@ export default function RitmoHonesto() {
           <div style={{ fontSize: "1.25rem", fontWeight: 700, color: cor, lineHeight: 1.1 }}>{recente}<span style={{ fontSize: "0.68rem", color: "var(--text-dim)", fontWeight: 400 }}>/mês</span></div>
         </div>
         <div style={{ background: "var(--bg-secondary, rgba(127,127,127,0.04))", border: "1px solid var(--border)", borderRadius: "0.5rem", padding: "0.55rem 0.7rem" }}>
-          <div style={{ fontSize: "0.68rem", color: "var(--text-muted)" }}>Precisa</div>
+          <div style={{ fontSize: "0.68rem", color: "var(--text-muted)" }}>Precisa agora</div>
           <div style={{ fontSize: "1.25rem", fontWeight: 700, color: "var(--text)", lineHeight: 1.1 }}>{nec.toFixed(0)}<span style={{ fontSize: "0.68rem", color: "var(--text-dim)", fontWeight: 400 }}>/mês</span></div>
+          <div style={{ fontSize: "0.62rem", color: "var(--text-dim)" }}>daqui até abr/27</div>
+        </div>
+        <div style={{ background: "var(--bg-secondary, rgba(127,127,127,0.04))", border: "1px solid var(--border)", borderRadius: "0.5rem", padding: "0.55rem 0.7rem" }}>
+          <div style={{ fontSize: "0.68rem", color: "var(--text-muted)" }}>Alvo (1 ano)</div>
+          <div style={{ fontSize: "1.25rem", fontWeight: 700, color: "var(--text)", lineHeight: 1.1 }}>{PROJETO.VELOCIDADE_ALVO_LOTES_MES.toFixed(1).replace(".", ",")}<span style={{ fontSize: "0.68rem", color: "var(--text-dim)", fontWeight: 400 }}>/mês</span></div>
+          <div style={{ fontSize: "0.62rem", color: "var(--text-dim)" }}>174 ÷ 12 = fecha em abr/27</div>
         </div>
         <div style={{ background: "var(--bg-secondary, rgba(127,127,127,0.04))", border: "1px solid var(--border)", borderRadius: "0.5rem", padding: "0.55rem 0.7rem" }}>
           <div style={{ fontSize: "0.68rem", color: "var(--text-muted)" }}>Esgota (previsão)</div>
