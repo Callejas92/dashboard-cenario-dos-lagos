@@ -29,6 +29,8 @@ export default function LayoutV2({ children }: { children: ReactNode }) {
   const router = useRouter();
   const [authenticated, setAuthenticated] = useState<boolean | null>(null);
   const [dark, setDark] = useState(false);
+  // Logo do empreendimento (já existe em public/) — dark-aware; cai pro texto se falhar.
+  const [logoErro, setLogoErro] = useState(false);
 
   // Restaura sessão + tema do localStorage
   useEffect(() => {
@@ -113,12 +115,23 @@ export default function LayoutV2({ children }: { children: ReactNode }) {
               flexWrap: "wrap",
             }}
           >
-            <div style={{ fontWeight: 700, fontSize: "0.95rem", color: "var(--text)", marginRight: "0.5rem" }}>
-              <span className="header-logo-full">Cenário dos Lagos</span>
-              <span className="header-logo-short" style={{ display: "none" }}>CDL</span>
+            <div style={{ fontWeight: 700, fontSize: "0.95rem", color: "var(--text)", marginRight: "0.5rem", display: "flex", alignItems: "center" }}>
+              {!logoErro ? (
+                <img
+                  src={dark ? "/logo-cenario-negativa.png" : "/logo-cenario.png"}
+                  alt="Cenário dos Lagos"
+                  style={{ height: 30, width: "auto", display: "block" }}
+                  onError={() => setLogoErro(true)}
+                />
+              ) : (
+                <>
+                  <span className="header-logo-full">Cenário dos Lagos</span>
+                  <span className="header-logo-short" style={{ display: "none" }}>CDL</span>
+                </>
+              )}
             </div>
 
-            <nav style={{ display: "flex", gap: "0.25rem", flex: 1, overflowX: "auto" }}>
+            <nav className="nav-desktop" style={{ display: "flex", gap: "0.25rem", flex: 1, overflowX: "auto" }}>
               {TABS.map(({ href, label, icon: Icon }) => {
                 const ativo = pathname.startsWith(href);
                 return (
@@ -194,6 +207,51 @@ export default function LayoutV2({ children }: { children: ReactNode }) {
         >
           {children}
         </main>
+
+        {/* Navegação inferior — só no mobile (CSS .nav-mobile). Abas grandes, polegar-friendly. */}
+        <nav
+          className="nav-mobile"
+          style={{
+            position: "fixed",
+            bottom: 0,
+            left: 0,
+            right: 0,
+            zIndex: 100,
+            background: "var(--bg-header, var(--bg-primary, #ffffff))",
+            backdropFilter: "blur(12px)",
+            WebkitBackdropFilter: "blur(12px)",
+            borderTop: "1px solid var(--border)",
+            padding: "0.3rem 0.4rem",
+            paddingBottom: "max(0.3rem, env(safe-area-inset-bottom))",
+            justifyContent: "space-around",
+          }}
+        >
+          {TABS.map(({ href, label, icon: Icon }) => {
+            const ativo = pathname.startsWith(href);
+            return (
+              <button
+                key={href}
+                onClick={() => router.push(href)}
+                aria-label={label}
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  gap: "0.15rem",
+                  flex: 1,
+                  padding: "0.3rem",
+                  background: "transparent",
+                  border: 0,
+                  cursor: "pointer",
+                  color: ativo ? "var(--text)" : "var(--text-muted)",
+                }}
+              >
+                <Icon size={19} />
+                <span style={{ fontSize: "0.62rem", fontWeight: ativo ? 700 : 500 }}>{label}</span>
+              </button>
+            );
+          })}
+        </nav>
       </div>
     </SwrProvider>
   );

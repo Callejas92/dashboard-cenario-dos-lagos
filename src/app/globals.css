@@ -143,12 +143,20 @@ input[type="number"]::-webkit-outer-spin-button {
   color: var(--text-muted);
 }
 
+/* Barra de navegação inferior — só aparece no mobile (regra abaixo) */
+.nav-mobile { display: none; }
+
 /* ── Mobile responsive (≤ 640px) ─────────────────────────────────────────── */
 @media (max-width: 640px) {
-  /* Layout principal: padding menor */
+  /* Layout principal: padding menor + espaço pra barra inferior fixa */
   main {
     padding: 0.625rem !important;
+    padding-bottom: 5rem !important;
   }
+
+  /* Navegação: abas vão pra barra inferior fixa (padrão app) */
+  .nav-desktop { display: none !important; }
+  .nav-mobile { display: flex !important; }
 
   /* Tabelas: scroll horizontal nativo, indicador visual */
   .mobile-scroll-x {
