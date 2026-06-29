@@ -47,8 +47,10 @@ export const PROJETO = {
   /** 3-5% é amarelo (atenção). Acima de 5% é vermelho. */
   INADIMPLENCIA_AMARELO_MAX: 0.05,
 
-  // ─── Mês comercial (CRÍTICO — não é mês civil) ──────────────────────────
-  /** Mês comercial vai do dia 15 ao dia 14 do mês seguinte. */
+  // ─── Âncora p/ resolver mês a partir da chave "YYYY-MM" ─────────────────
+  /** Dia usado só pra resolver um mês de calendário a partir da chave YYYY-MM
+   *  (15 = meio do mês, à prova de fuso). O antigo corte do "mês comercial" 15→14
+   *  foi DESATIVADO em jun/2026 — agora todo mês do dashboard é mês civil (1→fim). */
   DIA_INICIO_MES_COMERCIAL: 15,
 
   // ─── Definição operacional de "VENDA" ────────────────────────────────────

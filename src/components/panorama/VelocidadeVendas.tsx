@@ -44,7 +44,7 @@ export default function VelocidadeVendas() {
     >
       <div style={{ fontSize: "0.75rem", color: "var(--text-dim)", fontWeight: 700, letterSpacing: "0.05em", textTransform: "uppercase", marginBottom: "0.875rem", display: "flex", alignItems: "center", gap: "0.4rem" }}>
         <Zap size={12} />
-        <TooltipDefinicao texto="Vendas distribuídas em 4 janelas: 7d e 30d são móveis. Mês comercial vai do dia 15 ao dia 14 do mês seguinte. Acumulado começa em 14/04/2026. Fonte: Eggs CRM (data do contrato).">
+        <TooltipDefinicao texto="Vendas distribuídas em 4 janelas: 7d e 30d são móveis. O mês é o mês de calendário (dia 1 ao último dia). Acumulado começa em 14/04/2026. Fonte: Eggs CRM (data do contrato).">
           <span>Velocidade de Vendas</span>
         </TooltipDefinicao>
       </div>
@@ -77,7 +77,7 @@ export default function VelocidadeVendas() {
           valor={`${formatInt(velocidade.mesComercialAtual.qtdVendas)} lotes`}
           severidade={velocidade.mesComercialAtual.severidade}
           contexto={`alvo ${velocidade.mesComercialAtual.meta.toFixed(1)} · ${formatBRLCompact(velocidade.mesComercialAtual.valorTotal)}`}
-          formula={`Vendas com dataContrato no mês comercial atual.\nMeta: ${velocidade.mesComercialAtual.meta.toFixed(1)} lotes/mês.\nFonte: Eggs CRM.`}
+          formula={`Vendas com dataContrato no mês atual (calendário).\nMeta: ${velocidade.mesComercialAtual.meta.toFixed(1)} lotes/mês.\nFonte: Eggs CRM.`}
         />
         <KpiSmall
           label="Desde lançamento"

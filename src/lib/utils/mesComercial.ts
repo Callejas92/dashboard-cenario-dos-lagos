@@ -1,27 +1,30 @@
 /**
- * Mês comercial Cenário dos Lagos: vai do dia 15 ao dia 14 do mês seguinte.
+ * Mês do dashboard Cenário dos Lagos: mês de CALENDÁRIO (dia 1 ao último dia do mês).
  *
  * Exemplo:
- *  - hoje = 2026-05-20 → mês comercial: 2026-05-15 a 2026-06-14
- *  - hoje = 2026-05-10 → mês comercial: 2026-04-15 a 2026-05-14
+ *  - hoje = 2026-05-20 → mês: 2026-05-01 a 2026-05-31
+ *  - hoje = 2026-05-10 → mês: 2026-05-01 a 2026-05-31
  *
- * IMPORTANTE: este é o DEFAULT temporal de toda métrica do dashboard V2.
- * Quem precisar mês civil deve pedir explicitamente.
+ * HISTÓRICO: até jun/2026 o dashboard usava "mês comercial" (15 → 14 do mês seguinte).
+ * A pedido do Felipe, migrou pro mês civil. Os NOMES das funções foram mantidos
+ * (getMesComercial, dataNoMesComercial, etc.) só pra não quebrar os ~17 consumidores —
+ * o que mudou foi a LÓGICA (agora calendário) e os labels (sem "comercial").
+ *
+ * IMPORTANTE: este é o DEFAULT temporal de toda métrica mensal do dashboard V2.
  */
-import { PROJETO } from "@/lib/constants/projeto";
 
 export interface MesComercial {
-  /** Início do mês comercial (00:00:00 do dia 15). */
+  /** Início do mês (00:00:00 do dia 1). */
   inicio: Date;
-  /** Fim do mês comercial (23:59:59 do dia 14). */
+  /** Fim do mês (23:59:59 do último dia). */
   fim: Date;
   /** ISO yyyy-mm-dd do início — útil pra queries de API. */
   inicioISO: string;
   /** ISO yyyy-mm-dd do fim. */
   fimISO: string;
-  /** Label legível: "15/05/2026 – 14/06/2026". */
+  /** Label legível: "01/05/2026 – 31/05/2026". */
   label: string;
-  /** Label curto: "Mai/26 (comercial)". */
+  /** Label curto: "Mai/26". */
   labelCurto: string;
 }
 
@@ -43,26 +46,17 @@ const MESES_BR = [
 ];
 
 /**
- * Retorna o mês comercial que CONTÉM a data informada.
+ * Retorna o mês de calendário que CONTÉM a data informada.
  * Default: hoje.
  */
 export function getMesComercial(refDate?: Date): MesComercial {
   const ref = refDate ?? new Date();
-  const dia = ref.getDate();
   const mes = ref.getMonth();
   const ano = ref.getFullYear();
 
-  // Se dia >= 15, mês comercial atual começou no dia 15 deste mês.
-  // Se dia < 15, começou no dia 15 do mês anterior.
-  const inicio = dia >= PROJETO.DIA_INICIO_MES_COMERCIAL
-    ? new Date(ano, mes, PROJETO.DIA_INICIO_MES_COMERCIAL, 0, 0, 0, 0)
-    : new Date(ano, mes - 1, PROJETO.DIA_INICIO_MES_COMERCIAL, 0, 0, 0, 0);
-
-  // Fim = dia 14 do mês seguinte ao início, 23:59:59.
-  const fim = new Date(inicio);
-  fim.setMonth(fim.getMonth() + 1);
-  fim.setDate(PROJETO.DIA_INICIO_MES_COMERCIAL - 1);
-  fim.setHours(23, 59, 59, 999);
+  // Mês civil: dia 1 ao último dia (dia 0 do mês seguinte = último dia deste mês).
+  const inicio = new Date(ano, mes, 1, 0, 0, 0, 0);
+  const fim = new Date(ano, mes + 1, 0, 23, 59, 59, 999);
 
   return {
     inicio,
@@ -70,35 +64,35 @@ export function getMesComercial(refDate?: Date): MesComercial {
     inicioISO: toISO(inicio),
     fimISO: toISO(fim),
     label: `${formatBR(inicio)} – ${formatBR(fim)}`,
-    labelCurto: `${MESES_BR[inicio.getMonth()]}/${String(inicio.getFullYear()).slice(-2)} (comercial)`,
+    labelCurto: `${MESES_BR[inicio.getMonth()]}/${String(inicio.getFullYear()).slice(-2)}`,
   };
 }
 
-/** Atalho: mês comercial atual (= mês comercial contendo hoje). */
+/** Atalho: mês atual (= mês de calendário contendo hoje). */
 export function getMesComercialAtual(): MesComercial {
   return getMesComercial();
 }
 
-/** Mês comercial ANTERIOR ao informado (ou ao atual). */
+/** Mês ANTERIOR ao informado (ou ao atual). */
 export function getMesComercialAnterior(refDate?: Date): MesComercial {
   const atual = getMesComercial(refDate);
-  // 1 dia antes do início → cai dentro do mês comercial anterior
+  // 1 dia antes do dia 1 → cai no último dia do mês anterior
   const umDiaAntes = new Date(atual.inicio);
   umDiaAntes.setDate(umDiaAntes.getDate() - 1);
   return getMesComercial(umDiaAntes);
 }
 
-/** Mês comercial PRÓXIMO ao informado. */
+/** PRÓXIMO mês ao informado. */
 export function getProximoMesComercial(refDate?: Date): MesComercial {
   const atual = getMesComercial(refDate);
-  // 1 dia depois do fim → cai dentro do próximo mês comercial
+  // 1 dia depois do último dia → cai no dia 1 do mês seguinte
   const umDiaDepois = new Date(atual.fim);
   umDiaDepois.setDate(umDiaDepois.getDate() + 1);
   return getMesComercial(umDiaDepois);
 }
 
 /**
- * Lista os últimos N meses comerciais (incluindo o atual).
+ * Lista os últimos N meses (incluindo o atual).
  * Útil pra gráficos e séries temporais.
  */
 export function listarUltimosMesesComerciais(n: number): MesComercial[] {
@@ -109,7 +103,7 @@ export function listarUltimosMesesComerciais(n: number): MesComercial[] {
   return result;
 }
 
-/** Verifica se uma data (ISO yyyy-mm-dd ou Date) cai dentro do mês comercial. */
+/** Verifica se uma data (ISO yyyy-mm-dd ou Date) cai dentro do mês. */
 export function dataNoMesComercial(data: string | Date, mes: MesComercial): boolean {
   const d = typeof data === "string" ? new Date(data + "T12:00:00") : data;
   return d >= mes.inicio && d <= mes.fim;

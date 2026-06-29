@@ -137,7 +137,7 @@ export default function RelatorioMensalView() {
         <div>
           <h1 style={{ fontSize: "1.4rem", fontWeight: 700, margin: 0 }}>Relatório Comercial</h1>
           <div style={{ fontSize: "0.85rem", color: "var(--text-muted)", marginTop: "0.25rem" }}>
-            {data.custom ? "Período" : "Mês comercial"} <strong>{r.periodo.label}</strong>
+            {data.custom ? "Período" : "Mês"} <strong>{r.periodo.label}</strong>
             {"  "}
             <span style={{
               marginLeft: "0.5rem", fontSize: "0.7rem", fontWeight: 700, padding: "0.15rem 0.5rem", borderRadius: "9999px",
@@ -148,13 +148,13 @@ export default function RelatorioMensalView() {
           </div>
         </div>
         <div className="no-print" style={{ display: "flex", gap: "0.5rem", alignItems: "center", flexWrap: "wrap" }}>
-          {/* Toggle: mês comercial × período livre */}
+          {/* Toggle: mês (calendário) × período livre */}
           <div style={{ display: "flex", border: "1px solid var(--border)", borderRadius: "0.5rem", overflow: "hidden" }}>
             {(["mes", "periodo"] as const).map((m) => (
               <button key={m} onClick={() => setModo(m)}
                 style={{ padding: "0.45rem 0.75rem", fontSize: "0.8rem", border: "none", cursor: "pointer",
                   background: modo === m ? cor("verde").value : "var(--surface)", color: modo === m ? "#fff" : "var(--text)" }}>
-                {m === "mes" ? "Mês comercial" : "Período"}
+                {m === "mes" ? "Mês" : "Período"}
               </button>
             ))}
           </div>
@@ -207,7 +207,7 @@ export default function RelatorioMensalView() {
             label={custom ? "Período anterior" : "Mês anterior"}
             valor={`${r.vendasMes.anteriorLotes} lotes`}
             severidade="cinza"
-            formula={`Vendas no ${custom ? "período de mesma duração imediatamente anterior" : "mês comercial anterior"}, pra comparação.`}
+            formula={`Vendas no ${custom ? "período de mesma duração imediatamente anterior" : "mês anterior"}, pra comparação.`}
             contexto={`${formatBRLCompact(r.vendasMes.anteriorVgv)} de VGV`}
           />
         </div>
@@ -322,7 +322,7 @@ export default function RelatorioMensalView() {
 
       {/* ── Rodapé ── */}
       <div style={{ fontSize: "0.7rem", color: "var(--text-dim)", textAlign: "right", marginTop: "0.5rem" }}>
-        {r.congelado ? "Comercial congelado" : "Comercial ao vivo"} · gerado {formatData(r.geradoEm.split("T")[0])} · mês comercial 15→14 · data da venda = data_contrato (Eggs)
+        {r.congelado ? "Congelado" : "Ao vivo"} · gerado {formatData(r.geradoEm.split("T")[0])} · mês de calendário · data da venda = data_contrato (Eggs)
       </div>
     </div>
   );

@@ -127,7 +127,7 @@ export default function LinhaKpisGigantes() {
         label={`Velocidade · ${mc.labelCurto}`}
         valor={`${qtdMes} lotes`}
         severidade={severidadeVel}
-        formula={`Vendas com data de contrato no mês comercial atual (${mc.label}).\nFonte: Eggs Contratos (dataContrato).\nMeta: ${PROJETO.VELOCIDADE_ALVO_LOTES_MES} lotes/mês.`}
+        formula={`Vendas com data de contrato no mês atual — calendário (${mc.label}).\nFonte: Eggs Contratos (dataContrato).\nMeta: ${PROJETO.VELOCIDADE_ALVO_LOTES_MES} lotes/mês.`}
         contexto={`alvo ${PROJETO.VELOCIDADE_ALVO_LOTES_MES.toFixed(1)} lotes/mês · ${formatBRLCompact(valorMes)} contratado`}
         progresso={qtdMes / PROJETO.VELOCIDADE_ALVO_LOTES_MES}
         extra={

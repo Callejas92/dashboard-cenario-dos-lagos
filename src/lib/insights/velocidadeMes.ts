@@ -1,5 +1,5 @@
 /**
- * Insight: ritmo de venda do mês comercial vs alvo.
+ * Insight: ritmo de venda do mês (calendário) vs alvo.
  *
  * Comenta se está acima/abaixo/no ritmo da velocidade alvo (11.6 lotes/mês).
  */
@@ -35,7 +35,7 @@ export function calcularVelocidadeMes(dados: DadosVelocidade): Insight | null {
 
   return {
     id: "velocidade-mes",
-    titulo: "Velocidade do mês comercial",
+    titulo: "Velocidade do mês",
     texto: `${dados.vendasMesComercial} venda${dados.vendasMesComercial === 1 ? "" : "s"} em ${dados.diasDecorridosNoMesComercial} dia${dados.diasDecorridosNoMesComercial === 1 ? "" : "s"}. ${comentario}`,
     severidade,
     icon: TrendingUp,

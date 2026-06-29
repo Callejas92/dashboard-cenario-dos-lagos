@@ -13,7 +13,11 @@
 import { list, put } from "@vercel/blob";
 import type { RelatorioMensal } from "@/lib/relatorio-mensal";
 
-const PREFIXO = "relatorio/"; // relatorio/2026-05.json
+// "relatorio-cal/" = mês civil. O prefixo antigo "relatorio/" guardava snapshots do
+// mês comercial 15→14 — ao migrar pro mês de calendário (jun/2026) trocamos o prefixo
+// pra NÃO servir período errado; os snapshots antigos ficam órfãos (ignorados) e os
+// meses fechados recalculam ao vivo até o Blob voltar e o cron recongelar no novo prefixo.
+const PREFIXO = "relatorio-cal/"; // relatorio-cal/2026-05.json
 
 export async function lerSnapshot(mesISO: string): Promise<RelatorioMensal | null> {
   try {
