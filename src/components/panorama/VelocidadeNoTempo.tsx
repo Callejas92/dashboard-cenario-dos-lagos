@@ -8,23 +8,27 @@
  *   "Venda de N lotes" = N lotes do MESMO comprador (CPF/CNPJ) fechados na MESMA data.
  *   (No ERP cada lote é um registro separado; reconstruímos por comprador+data.)
  *   A legenda é clicável e filtra as categorias.
+ *   CLICAR numa barra abre o detalhe do mês: cada comprador + os lotes que levou.
  * Âmbar = meta (14,5 lotes/mês — ritmo que fecha o projeto no prazo).
  * Azul  = velocidade atual = lotes nos ÚLTIMOS 30 DIAS (mesmo número do card "Velocidade").
  *
- * Fonte única: /api/crm/contratos (já traz clienteCpfCnpj por contrato).
+ * Fonte única: /api/crm/contratos (já traz cliente + clienteCpfCnpj + loteId por contrato).
  */
 import { useState } from "react";
 import useSWR from "swr";
 import { BarChart, Bar, XAxis, YAxis, ReferenceLine, Tooltip, ResponsiveContainer, CartesianGrid, LabelList } from "recharts";
-import { TrendingUp } from "lucide-react";
+import { TrendingUp, X } from "lucide-react";
 import LoadingCard from "@/components/shared/LoadingCard";
 import { PROJETO, isVenda } from "@/lib/constants/projeto";
 import { calcularVelocidade } from "@/lib/calculations/velocidade";
 import { getMesComercial, getMesComercialAtual, getProximoMesComercial, dataNoMesComercial } from "@/lib/utils/mesComercial";
 import { formatBRLCompact } from "@/lib/utils/formatters";
 
-interface CrmContrato { valor: number; status: string; cancelado: boolean; dataContrato?: string; clienteCpfCnpj?: string }
+interface CrmContrato { valor: number; status: string; cancelado: boolean; dataContrato?: string; clienteCpfCnpj?: string; cliente?: string; loteId?: string; unidade?: string }
 interface CrmResp { contratos?: CrmContrato[] }
+
+interface Venda { data: string; valor: number; cpf: string; cliente: string; lote: string }
+interface Grupo { cliente: string; data: string; lotes: string[]; valor: number }
 
 type CatKey = "c1" | "c2" | "c3";
 const CATS: { key: CatKey; label: string; cor: string }[] = [
@@ -32,7 +36,6 @@ const CATS: { key: CatKey; label: string; cor: string }[] = [
   { key: "c2", label: "2 lotes", cor: "#8b5cf6" },  // violeta
   { key: "c3", label: "3+ lotes", cor: "#f43f5e" }, // rosa
 ];
-const LABEL_CAT: Record<CatKey, string> = { c1: "1 lote", c2: "2 lotes", c3: "3+ lotes" };
 const COR_CAT: Record<CatKey, string> = { c1: "#10b981", c2: "#8b5cf6", c3: "#f43f5e" };
 
 interface Ponto {
@@ -56,6 +59,7 @@ function catKeyDe(n: number): CatKey {
 export default function VelocidadeNoTempo() {
   const { data, isLoading } = useSWR<CrmResp>("/api/crm/contratos");
   const [ativos, setAtivos] = useState<Set<CatKey>>(new Set<CatKey>(["c1", "c2", "c3"]));
+  const [selMes, setSelMes] = useState<string | null>(null);
 
   if (isLoading || !data) {
     return <LoadingCard height={300} label="Velocidade no tempo" hint="lendo CRM Eggs..." />;
@@ -65,11 +69,13 @@ export default function VelocidadeNoTempo() {
     (c) => !c.cancelado && isVenda(c.status) && c.dataContrato,
   );
 
-  // Cada lote → { data, valor, cpf }. "Venda de N lotes" = mesmo CPF na mesma data.
-  const vendas = contratosVenda.map((c) => ({
+  // Cada lote → venda completa (com nome do comprador + lote). "Venda de N lotes" = mesmo CPF na mesma data.
+  const vendas: Venda[] = contratosVenda.map((c) => ({
     data: c.dataContrato as string,
     valor: Number(c.valor) || 0,
     cpf: (c.clienteCpfCnpj || "").trim(),
+    cliente: (c.cliente || "").trim() || "—",
+    lote: c.loteId || c.unidade || "?",
   }));
   // Tamanho de cada venda (CPF+data). Sem CPF não dá pra agrupar com confiança → conta como 1 lote.
   const tamanho = new Map<string, number>();
@@ -78,7 +84,7 @@ export default function VelocidadeNoTempo() {
     const k = `${v.cpf}|${v.data}`;
     tamanho.set(k, (tamanho.get(k) || 0) + 1);
   }
-  const catDe = (v: { cpf: string; data: string }): CatKey =>
+  const catDe = (v: Venda): CatKey =>
     v.cpf ? catKeyDe(tamanho.get(`${v.cpf}|${v.data}`) || 1) : "c1";
 
   // Velocidade ATUAL = últimos 30 dias (mesma fonte/cálculo do card "Velocidade de Vendas").
@@ -87,8 +93,9 @@ export default function VelocidadeNoTempo() {
   const deltaPct = META > 0 ? Math.round(((velAtual - META) / META) * 100) : 0;
   const acima = velAtual >= META;
 
-  // Barras: meses de calendário do mês da 1ª venda até o atual.
+  // Barras: meses de calendário do mês da 1ª venda até o atual. Guarda as vendas de cada mês p/ o detalhe.
   const dados: Ponto[] = [];
+  const vendasPorMes = new Map<string, Venda[]>();
   if (vendas.length) {
     const minData = vendas.reduce((m, v) => (v.data < m ? v.data : m), vendas[0].data);
     const atual = getMesComercialAtual();
@@ -96,6 +103,7 @@ export default function VelocidadeNoTempo() {
     let guard = 0;
     while (mc.inicio.getTime() <= atual.inicio.getTime() && guard < 48) {
       const noMes = vendas.filter((v) => dataNoMesComercial(v.data, mc));
+      vendasPorMes.set(mc.labelCurto, noMes);
       let c1 = 0, c2 = 0, c3 = 0;
       for (const v of noMes) {
         const k = catDe(v);
@@ -126,6 +134,23 @@ export default function VelocidadeNoTempo() {
   const totalLotes = totCat.c1 + totCat.c2 + totCat.c3;
 
   const yMax = Math.ceil(Math.max(...dadosRender.map((d) => d._total), META, velAtual, 1) * 1.18);
+
+  // Detalhe do mês selecionado: agrupa por venda (CPF+data), respeitando o filtro de categorias.
+  const gruposSel: Grupo[] = (() => {
+    if (!selMes) return [];
+    const m = new Map<string, Grupo>();
+    for (const v of (vendasPorMes.get(selMes) || [])) {
+      const key = v.cpf ? `${v.cpf}|${v.data}` : `solo|${v.lote}`;
+      const g = m.get(key) || { cliente: v.cliente, data: v.data, lotes: [], valor: 0 };
+      g.lotes.push(v.lote);
+      g.valor += v.valor;
+      m.set(key, g);
+    }
+    return [...m.values()]
+      .filter((g) => ativos.has(catKeyDe(g.lotes.length)))
+      .sort((a, b) => b.lotes.length - a.lotes.length || a.data.localeCompare(b.data));
+  })();
+  const lotesSel = gruposSel.reduce((s, g) => s + g.lotes.length, 0);
 
   function toggle(cat: CatKey) {
     setAtivos((prev) => {
@@ -200,7 +225,15 @@ export default function VelocidadeNoTempo() {
       ) : (
         <div style={{ width: "100%", height: 240 }}>
           <ResponsiveContainer>
-            <BarChart data={dadosRender} margin={{ top: 18, right: 16, left: 0, bottom: 0 }}>
+            <BarChart
+              data={dadosRender}
+              margin={{ top: 18, right: 16, left: 0, bottom: 0 }}
+              onClick={(st) => {
+                const lbl = st?.activeLabel;
+                if (lbl != null) setSelMes((p) => (p === String(lbl) ? null : String(lbl)));
+              }}
+              style={{ cursor: "pointer" }}
+            >
               <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
               <XAxis dataKey="mes" tick={{ fontSize: 11, fill: "var(--text-muted)" }} axisLine={false} tickLine={false} />
               <YAxis allowDecimals={false} domain={[0, yMax]} tick={{ fontSize: 11, fill: "var(--text-muted)" }} axisLine={false} tickLine={false} width={34} />
@@ -217,6 +250,7 @@ export default function VelocidadeNoTempo() {
                       ))}
                       <div style={{ color: "var(--text)", fontWeight: 600, marginTop: "0.15rem" }}>{d._total} lote{d._total === 1 ? "" : "s"} no mês</div>
                       <div style={{ color: "var(--text-muted)" }}>{formatBRLCompact(d._valor)}</div>
+                      <div style={{ color: "var(--text-dim)", fontSize: "0.66rem", marginTop: "0.2rem" }}>clique pra ver os compradores</div>
                     </div>
                   );
                 }}
@@ -250,9 +284,46 @@ export default function VelocidadeNoTempo() {
         </div>
       )}
 
+      {/* Detalhe do mês clicado: compradores + lotes */}
+      {selMes && (
+        <div style={{ marginTop: "0.75rem", borderTop: "1px solid var(--border)", paddingTop: "0.6rem" }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "0.45rem" }}>
+            <span style={{ fontSize: "0.8rem", fontWeight: 700, color: "var(--text)" }}>
+              Vendas de {selMes} <span style={{ fontWeight: 400, color: "var(--text-dim)" }}>· {gruposSel.length} venda{gruposSel.length === 1 ? "" : "s"}, {lotesSel} lote{lotesSel === 1 ? "" : "s"}</span>
+            </span>
+            <button onClick={() => setSelMes(null)} title="Fechar"
+              style={{ display: "inline-flex", alignItems: "center", gap: "0.2rem", fontSize: "0.7rem", color: "var(--text-dim)", background: "transparent", border: "1px solid var(--border)", borderRadius: "0.4rem", padding: "0.15rem 0.45rem", cursor: "pointer" }}>
+              <X size={12} /> fechar
+            </button>
+          </div>
+          {gruposSel.length === 0 ? (
+            <div style={{ fontSize: "0.74rem", color: "var(--text-dim)", fontStyle: "italic" }}>Nada nas categorias filtradas.</div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: "0.3rem", maxHeight: 230, overflowY: "auto" }}>
+              {gruposSel.map((g, i) => {
+                const cor = COR_CAT[catKeyDe(g.lotes.length)];
+                return (
+                  <div key={i} style={{ display: "flex", flexDirection: "column", gap: "0.1rem", padding: "0.35rem 0.55rem", background: "var(--bg-secondary)", borderRadius: "0.4rem", borderLeft: `3px solid ${cor}` }}>
+                    <div style={{ display: "flex", alignItems: "baseline", gap: "0.5rem" }}>
+                      <span style={{ fontWeight: 600, color: "var(--text)", fontSize: "0.76rem", flex: "1 1 auto", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{g.cliente}</span>
+                      <span style={{ color: cor, fontWeight: 700, fontSize: "0.74rem", whiteSpace: "nowrap" }}>{g.lotes.length} lote{g.lotes.length > 1 ? "s" : ""}</span>
+                      <span style={{ color: "var(--text-muted)", fontSize: "0.72rem", whiteSpace: "nowrap" }}>{formatBRLCompact(g.valor)}</span>
+                    </div>
+                    <div style={{ fontSize: "0.68rem", color: "var(--text-dim)" }}>
+                      {g.lotes.join(", ")} · {g.data.slice(8, 10)}/{g.data.slice(5, 7)}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
       <div style={{ fontSize: "0.66rem", color: "var(--text-dim)", marginTop: "0.4rem", lineHeight: 1.4 }}>
         {totalLotes} lote{totalLotes === 1 ? "" : "s"} desde o lançamento, por mês de calendário. As cores separam o
-        <strong> tamanho da venda</strong> (1 / 2 / 3+ lotes do mesmo comprador na mesma data) — clique na legenda pra filtrar.
+        <strong> tamanho da venda</strong> (1 / 2 / 3+ lotes do mesmo comprador na mesma data) — clique na legenda pra filtrar
+        e <strong>clique numa barra</strong> pra ver quem comprou.
         A linha <strong style={{ color: COR_ATUAL }}>azul</strong> é o ritmo atual (últimos 30 dias) e a
         <strong style={{ color: COR_META }}> âmbar</strong> é a meta de {metaTxt}/mês pra fechar em {PROJETO.PRAZO_COMERCIALIZACAO_MESES} meses.
       </div>
