@@ -28,7 +28,7 @@ interface CrmContrato { valor: number; status: string; cancelado: boolean; dataC
 interface CrmResp { contratos?: CrmContrato[] }
 
 interface Venda { data: string; valor: number; cpf: string; cliente: string; lote: string }
-interface Grupo { cliente: string; data: string; lotes: string[]; valor: number }
+interface Grupo { cliente: string; datas: string[]; lotes: string[]; valor: number }
 
 type CatKey = "c1" | "c2" | "c3";
 const CATS: { key: CatKey; label: string; cor: string }[] = [
@@ -56,6 +56,14 @@ function catKeyDe(n: number): CatKey {
   return n === 1 ? "c1" : n === 2 ? "c2" : "c3";
 }
 
+// Datas de um grupo → "dd/mm" (uma só) ou "dd/mm–dd/mm" (intervalo, quando o comprador
+// fechou em dias diferentes dentro do mês).
+function fmtDatas(datas: string[]): string {
+  const u = [...new Set(datas)].sort();
+  const f = (d: string) => `${d.slice(8, 10)}/${d.slice(5, 7)}`;
+  return u.length === 1 ? f(u[0]) : `${f(u[0])}–${f(u[u.length - 1])}`;
+}
+
 export default function VelocidadeNoTempo() {
   const { data, isLoading } = useSWR<CrmResp>("/api/crm/contratos");
   const [ativos, setAtivos] = useState<Set<CatKey>>(new Set<CatKey>(["c1", "c2", "c3"]));
@@ -77,15 +85,17 @@ export default function VelocidadeNoTempo() {
     cliente: (c.cliente || "").trim() || "—",
     lote: c.loteId || c.unidade || "?",
   }));
-  // Tamanho de cada venda (CPF+data). Sem CPF não dá pra agrupar com confiança → conta como 1 lote.
+  // Tamanho da venda = quantos lotes o mesmo CPF levou NO MÊS (mesmo em dias diferentes).
+  // Sem CPF não dá pra agrupar com confiança → conta como 1 lote.
+  const mesDe = (d: string) => d.slice(0, 7); // "YYYY-MM" = mês de calendário
   const tamanho = new Map<string, number>();
   for (const v of vendas) {
     if (!v.cpf) continue;
-    const k = `${v.cpf}|${v.data}`;
+    const k = `${v.cpf}|${mesDe(v.data)}`;
     tamanho.set(k, (tamanho.get(k) || 0) + 1);
   }
   const catDe = (v: Venda): CatKey =>
-    v.cpf ? catKeyDe(tamanho.get(`${v.cpf}|${v.data}`) || 1) : "c1";
+    v.cpf ? catKeyDe(tamanho.get(`${v.cpf}|${mesDe(v.data)}`) || 1) : "c1";
 
   // Velocidade ATUAL = últimos 30 dias (mesma fonte/cálculo do card "Velocidade de Vendas").
   const vel = calcularVelocidade(contratosVenda.map((c) => ({ dataVenda: c.dataContrato as string, valor: Number(c.valor) || 0 })));
@@ -140,15 +150,16 @@ export default function VelocidadeNoTempo() {
     if (!selMes) return [];
     const m = new Map<string, Grupo>();
     for (const v of (vendasPorMes.get(selMes) || [])) {
-      const key = v.cpf ? `${v.cpf}|${v.data}` : `solo|${v.lote}`;
-      const g = m.get(key) || { cliente: v.cliente, data: v.data, lotes: [], valor: 0 };
+      const key = v.cpf ? v.cpf : `solo|${v.lote}`; // dentro do mês: agrupa pelo comprador
+      const g = m.get(key) || { cliente: v.cliente, datas: [], lotes: [], valor: 0 };
       g.lotes.push(v.lote);
+      g.datas.push(v.data);
       g.valor += v.valor;
       m.set(key, g);
     }
     return [...m.values()]
       .filter((g) => ativos.has(catKeyDe(g.lotes.length)))
-      .sort((a, b) => b.lotes.length - a.lotes.length || a.data.localeCompare(b.data));
+      .sort((a, b) => b.lotes.length - a.lotes.length || [...a.datas].sort()[0].localeCompare([...b.datas].sort()[0]));
   })();
   const lotesSel = gruposSel.reduce((s, g) => s + g.lotes.length, 0);
 
@@ -310,7 +321,7 @@ export default function VelocidadeNoTempo() {
                       <span style={{ color: "var(--text-muted)", fontSize: "0.72rem", whiteSpace: "nowrap" }}>{formatBRLCompact(g.valor)}</span>
                     </div>
                     <div style={{ fontSize: "0.68rem", color: "var(--text-dim)" }}>
-                      {g.lotes.join(", ")} · {g.data.slice(8, 10)}/{g.data.slice(5, 7)}
+                      {g.lotes.join(", ")} · {fmtDatas(g.datas)}
                     </div>
                   </div>
                 );
