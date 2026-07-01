@@ -88,7 +88,7 @@ export function uauHeaders(token: string): Record<string, string> {
   };
 }
 
-export async function uauFetch(token: string, endpoint: string, body: unknown, timeoutMs = 15000): Promise<unknown> {
+export async function uauFetch(token: string, endpoint: string, body: unknown, timeoutMs = 25000): Promise<unknown> {
   let lastError: Error | null = null;
 
   for (let attempt = 0; attempt < 2; attempt++) {

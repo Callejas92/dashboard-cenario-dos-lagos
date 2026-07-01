@@ -125,7 +125,7 @@ export interface GetVendasOptions {
  * Busca vendas do ERP UAU Senior no período [startDate, endDate].
  * Cache 5min compartilhado. Dedupe de chamadas simultâneas via inflight map.
  */
-const INFLIGHT_TIMEOUT_MS = 50_000; // 50s: depois disso libera o lock pra próxima tentar
+const INFLIGHT_TIMEOUT_MS = 280_000; // 50s: depois disso libera o lock pra próxima tentar
 
 export async function getVendas(startDate?: string, endDate?: string, opts: GetVendasOptions = {}): Promise<VendasResponse> {
   const from = startDate || getDefaultStartDate();
@@ -143,7 +143,7 @@ export async function getVendas(startDate?: string, endDate?: string, opts: GetV
   // Wrap em timeout: se UAU travou, libera o lock pra próxima chamada não esperar pra sempre
   const fetchPromise = doFetchVendas(from, to, opts);
   const timeoutPromise = new Promise<VendasResponse>((_, reject) => {
-    setTimeout(() => reject(new Error("getVendas timeout 50s")), INFLIGHT_TIMEOUT_MS);
+    setTimeout(() => reject(new Error("getVendas timeout 280s")), INFLIGHT_TIMEOUT_MS);
   });
 
   const promise = Promise.race([fetchPromise, timeoutPromise])

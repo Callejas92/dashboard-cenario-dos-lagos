@@ -3,7 +3,7 @@ import { list } from "@vercel/blob";
 import { loadOneDriveToken } from "@/lib/onedrive-token";
 import { edgeRead } from "@/lib/edge-store";
 
-export const maxDuration = 30;
+export const maxDuration = 120;
 
 interface IntegracaoStatus {
   nome: string;

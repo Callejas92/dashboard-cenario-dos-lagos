@@ -3,7 +3,7 @@ import { getBonusTracking, setBonusPagamento, clearBonusCache, type BonusPagamen
 import { syncBonusToExcel, logSyncFalha } from "@/lib/excel-bonus-sync";
 import { checkWriteAuth } from "@/lib/server-auth";
 
-export const maxDuration = 60;
+export const maxDuration = 300;
 
 // GET → lista completa + summary
 export async function GET() {

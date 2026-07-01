@@ -17,7 +17,7 @@ const ISO_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-export const maxDuration = 60;
+export const maxDuration = 300;
 
 function chaveDoMes(mes: MesComercial): string {
   return `${mes.inicio.getFullYear()}-${String(mes.inicio.getMonth() + 1).padStart(2, "0")}`;

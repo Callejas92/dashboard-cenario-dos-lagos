@@ -10,7 +10,7 @@ import { cachedJson } from "@/lib/blob-cache";
 const META_API = "https://graph.facebook.com/v21.0";
 const CRM_API = "http://leadsc2s.eggs.com.br/api/webhook/leads";
 
-export const maxDuration = 60;
+export const maxDuration = 300;
 
 const CACHE_TTL = 5 * 60 * 1000;
 

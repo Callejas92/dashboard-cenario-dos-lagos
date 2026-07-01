@@ -358,7 +358,7 @@ async function getEntradasStatus(loteIds: string[]): Promise<{ map: Map<string, 
     let pendentes = Array.from(loteParaVenda.entries());
     const conc = 10;
     for (let tentativa = 0; tentativa < 3 && pendentes.length > 0; tentativa++) {
-      const timeout = tentativa === 0 ? 10000 : 15000;
+      const timeout = tentativa === 0 ? 20000 : 30000;
       const falhou: typeof pendentes = [];
       for (let i = 0; i < pendentes.length; i += conc) {
         const batch = pendentes.slice(i, i + conc);

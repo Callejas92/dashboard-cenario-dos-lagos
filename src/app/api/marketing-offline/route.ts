@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getMarketingData, clearMarketingCache, listOnedriveFiles } from "@/lib/onedrive-marketing";
 
-export const maxDuration = 30;
+export const maxDuration = 120;
 
 // GET: retorna dados ricos do Cenario_Marketing.xlsx
 export async function GET(request: NextRequest) {

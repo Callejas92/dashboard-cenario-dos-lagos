@@ -18,7 +18,7 @@ import { getContratosEggs } from "@/lib/eggs-contratos";
 import { getBonusTracking } from "@/lib/bonus";
 import { syncBonusToExcel, logSyncFalha } from "@/lib/excel-bonus-sync";
 
-export const maxDuration = 60; // Vercel: até 60s pra aquecer
+export const maxDuration = 300; // Vercel: até 60s pra aquecer
 
 export async function GET(request: Request) {
   // Auth

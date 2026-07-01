@@ -13,7 +13,7 @@
 import { list, put } from "@vercel/blob";
 import { edgeRead, edgeWrite, edgeDelete } from "@/lib/edge-store";
 
-const BLOB_TIMEOUT_MS = 6000; // não deixa o put travar o sync se o Blob estiver lento/bloqueado
+const BLOB_TIMEOUT_MS = 10000; // não deixa o put travar o sync se o Blob estiver lento/bloqueado
 
 export async function saveDurable(blobPath: string, edgeKey: string, value: unknown): Promise<"blob" | "edge" | "none"> {
   try {

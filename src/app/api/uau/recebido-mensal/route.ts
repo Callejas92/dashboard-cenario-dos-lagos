@@ -15,7 +15,7 @@ import { getMesComercial } from "@/lib/utils/mesComercial";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-export const maxDuration = 60;
+export const maxDuration = 300;
 
 let cache: { data: unknown; ts: number } | null = null;
 const TTL = 30 * 60 * 1000;

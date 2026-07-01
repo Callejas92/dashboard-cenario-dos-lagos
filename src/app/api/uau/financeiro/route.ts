@@ -7,7 +7,7 @@ import { COMISSAO_TOTAL_PCT } from "@/lib/constants/negocio";
 import lotesData from "@/data/lotes.json";
 import { getInvestorLots } from "@/lib/investor-lots";
 
-export const maxDuration = 60;
+export const maxDuration = 300;
 
 interface LoteStatic {
   id: string;

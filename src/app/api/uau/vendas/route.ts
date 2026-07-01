@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getVendas, clearVendasCache } from "@/lib/uau-vendas";
 import { cachedJson } from "@/lib/blob-cache";
 
-export const maxDuration = 60;
+export const maxDuration = 300;
 const CACHE_TTL = 5 * 60 * 1000;
 
 export async function GET(request: NextRequest) {

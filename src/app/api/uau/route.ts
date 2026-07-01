@@ -371,7 +371,7 @@ function buildEnrichedResponse(
   return result;
 }
 
-export const maxDuration = 60;
+export const maxDuration = 300;
 
 // ── Cache em memória (10min) ───────────────────────────────────────────────
 // O Estoque é pesado (2x UAU 25s + 1x CRM 15s). Sem cache, TODA visita esperava

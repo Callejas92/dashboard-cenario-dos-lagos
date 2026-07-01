@@ -525,7 +525,7 @@ export async function syncBonusToExcel(opts: { dryRun?: boolean; force?: boolean
   try {
     const tracking = await Promise.race([
       getBonusTracking(),
-      new Promise<null>((_, rej) => setTimeout(() => rej(new Error("tracking timeout 20s")), 20000)),
+      new Promise<null>((_, rej) => setTimeout(() => rej(new Error("tracking timeout 90s")), 90000)),
     ]);
     if (tracking) {
       const trackingCompleto = !!tracking.completo;

@@ -50,8 +50,8 @@ export default function LayoutV2({ children }: { children: ReactNode }) {
   }, []);
 
   // Pré-aquecimento: quando autenticado, dispara os fetches pesados do ERP UAU em
-  // background. Sem cron (plano Hobby não permite). Quando o usuário navegar pro
-  // Estoque/Pipeline, o cache do servidor (10min) já estará quente.
+  // background. Complementa o cron /api/cron/warm (Pro: a cada 5min em horário comercial).
+  // Quando o usuário navegar pro Estoque/Pipeline, o cache do servidor já estará quente.
   useEffect(() => {
     if (!authenticated) return;
     const warmUrls = ["/api/uau", "/api/uau/vendas", "/api/uau/financeiro"];

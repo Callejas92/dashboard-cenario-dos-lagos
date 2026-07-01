@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCustosOffline, clearCustosCache, listOnedriveFiles } from "@/lib/onedrive-custos";
 
-export const maxDuration = 30;
+export const maxDuration = 120;
 
 // Re-exporta o tipo pra outros arquivos importarem daqui (compat)
 export type { LancamentoOffline } from "@/lib/onedrive-custos";
