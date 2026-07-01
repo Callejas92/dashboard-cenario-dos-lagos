@@ -204,11 +204,35 @@ async function aplicarCores(token: string, wsPath: string, values: unknown[][], 
   return `cores: ${okc}/${ops.length} faixas` + (orfaos.length ? ` · órfãos limpos: ${okClear}/${orfaos.length}` : "");
 }
 
+// Pasta onde o Felipe guarda os Excels do dashboard (a MESMA do marketing, que acha o
+// arquivo por navegação e nunca quebrou). Navegar por aqui não depende do índice de busca
+// do OneDrive — que perdeu o Cenário_Comercial ~22/06 e derrubou o sync de bônus.
+const PASTA_ONEDRIVE = "/Cenário dos Lagos/90-100 Pessoal";
+
 async function resolveComercialFileId(token: string): Promise<string> {
+  // 1) ROBUSTO: navega pela pasta conhecida e acha o arquivo por regex (comercial, .xls, não marketing).
+  try {
+    let currentId = "root";
+    for (const seg of PASTA_ONEDRIVE.split("/").filter(Boolean)) {
+      const url = currentId === "root"
+        ? `${GRAPH}/me/drive/root/children?$select=name,id&$top=200`
+        : `${GRAPH}/me/drive/items/${currentId}/children?$select=name,id&$top=200`;
+      const j = await graph(token, url);
+      const match = ((j.value as { name: string; id: string }[]) || []).find((it) => it.name === seg);
+      if (!match) throw new Error(`pasta "${seg}" não encontrada`);
+      currentId = match.id;
+    }
+    const j = await graph(token, `${GRAPH}/me/drive/items/${currentId}/children?$select=name,id&$top=200`);
+    const file = ((j.value as { name: string; id: string }[]) || [])
+      .find((f) => /\.xls/i.test(f.name) && /comercial/i.test(f.name) && !/marketing/i.test(f.name));
+    if (file) return file.id;
+  } catch { /* pasta mudou de lugar → cai no fallback da busca */ }
+
+  // 2) FALLBACK: busca por índice (frágil, mas cobre o caso do arquivo estar em outra pasta).
   const j = await graph(token, `${GRAPH}/me/drive/root/search(q='comercial')?$select=name,id&$top=25`);
   const cands = ((j.value as { name: string; id: string }[]) || []).filter((f) => /\.xls/i.test(f.name));
   const file = cands.find((f) => /comercial/i.test(f.name) && !/marketing/i.test(f.name)) || cands[0];
-  if (!file) throw new Error("Cenário_Comercial.xlsx não encontrado no OneDrive");
+  if (!file) throw new Error("Cenário_Comercial.xlsx não encontrado no OneDrive (navegação por pasta e busca falharam)");
   return file.id;
 }
 
